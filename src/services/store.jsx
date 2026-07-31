@@ -5,6 +5,7 @@ import{runIncrementalSync}from'./syncTransport.js'
 import{AUTO_SYNC_INTERVAL_MS,runtimeState,shouldAutoSync}from'./autoSyncRuntime.js'
 import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
 import{appendHealthEvent}from'./syncHealth.js'
+import{loadOrganizationDeviceHealth,normalizeRemoteDeviceHealth,reportDeviceHealth}from'./syncDeviceHealth.js'
 
 const StoreContext=createContext(null)
 const DEVICE_KEY='cannapa_device_id'
@@ -38,7 +39,7 @@ function reducer(prev,action){
  const changes=action.meta.sync===false?[]:collectionChanges(prev,candidate)
  let next=enqueueChanges(candidate,changes,{companyId,userId:actorUser?.remoteId||actorUser?.id||'',deviceId:deviceId()})
 
- const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k))
+ const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
  if(!shouldAudit)return next
 
  return{
@@ -48,9 +49,9 @@ function reducer(prev,action){
    createdAt:action.audit.createdAt,
    actor:actorUser?.name||'Usuario local',
    action:action.meta.action||'Actualización de datos',
-   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k)).join(', ')||'Sistema',
+   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k)).join(', ')||'Sistema',
    detail:action.meta.detail||'',
-   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k))
+   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
   }]
  }
 }
@@ -97,23 +98,37 @@ export function StoreProvider({children}){
   lockRef.current=true
   const started=Date.now()
   const attemptedAt=new Date(started).toISOString()
+  const companyId=current.currentContext?.companyId||''
+  const currentDeviceId=deviceId()
   setRuntime(value=>({...value,online:true,running:true,status:'syncing',reason,lastAttemptAt:attemptedAt,lastError:''}))
   coordinatorRef.current?.broadcast('sync-started',{reason})
   try{
    const result=await runIncrementalSync(current)
    const completedAt=new Date().toISOString()
    let next=result.state
-   if(!result.skipped)next=appendHealthEvent(next,{companyId:current.currentContext?.companyId||'',deviceId:deviceId(),status:'success',reason,durationMs:Date.now()-started,pushed:result.pushed||0,pulled:result.pulled||0})
-   if(!result.skipped)update(next,{sync:false,audit:false})
+   if(!result.skipped){
+    const healthPayload={companyId,deviceId:currentDeviceId,status:'success',reason,durationMs:Date.now()-started,pushed:result.pushed||0,pulled:result.pulled||0}
+    next=appendHealthEvent(next,healthPayload)
+    try{
+     await reportDeviceHealth(healthPayload)
+     next={...next,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
+    }catch{/* La sincronización operativa no falla por telemetría. */}
+    update(next,{sync:false,audit:false})
+   }
    setRuntime(value=>({...value,running:false,status:result.skipped?'idle':'success',lastSuccessAt:result.skipped?value.lastSuccessAt:completedAt,lastError:''}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents}})
+   coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
    return{...result,state:next}
   }catch(error){
    const message=error instanceof Error?error.message:'Error de sincronización'
-   const failed=appendHealthEvent(stateRef.current,{companyId:current.currentContext?.companyId||'',deviceId:deviceId(),status:'error',reason,durationMs:Date.now()-started,error:message})
+   const healthPayload={companyId,deviceId:currentDeviceId,status:'error',reason,durationMs:Date.now()-started,error:message}
+   let failed=appendHealthEvent(stateRef.current,healthPayload)
+   try{
+    await reportDeviceHealth(healthPayload)
+    failed={...failed,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
+   }catch{/* Conserva el error operativo original. */}
    update(failed,{sync:false,audit:false})
    setRuntime(value=>({...value,running:false,status:'error',lastError:message}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents}})
+   coordinatorRef.current?.broadcast('sync-result',{completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents,syncDeviceHealth:failed.syncDeviceHealth}})
    return{skipped:false,error}
   }finally{
    lockRef.current=false
