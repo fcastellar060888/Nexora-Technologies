@@ -1,32 +1,39 @@
+import{CURRENT_SCHEMA_VERSION}from'../services/stateMigration.js'
+
 function duplicateIds(items){const seen=new Set(),dup=[];for(const x of items||[]){if(!x?.id)continue;if(seen.has(x.id))dup.push(x.id);seen.add(x.id)}return dup}
+const close=(a,b)=>Math.abs(Number(a||0)-Number(b||0))<0.0001
+
 export function runDiagnostics(state){
  const checks=[]
  const add=(name,status,detail,level='info')=>checks.push({name,status,detail,level})
- const arrays=['motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','companies','sites','houses','beds','plantPositions','genetics','incidents','findings','products','inventoryLots','mirfeMonitoring','waterAnalyses','nutrientObjectives','formulations','productionFlows']
+ const arrays=['motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','companies','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','mirfeMonitoring','waterAnalyses','nutrientObjectives','formulations','tankPreparations','workOrders','irrigationApplications','productionFlows','costEntries']
  for(const key of arrays){const d=duplicateIds(state[key]);add(`IDs únicos: ${key}`,d.length===0,d.length?`${d.length} duplicados`:'Correcto',d.length?'error':'ok')}
- const missingSite=state.houses.filter(x=>!state.sites.some(s=>s.id===x.siteId))
- add('Naves con sede válida',missingSite.length===0,missingSite.length?`${missingSite.length} naves huérfanas`:'Correcto',missingSite.length?'error':'ok')
- const missingHouse=state.beds.filter(x=>!state.houses.some(h=>h.id===x.houseId))
- add('Camas con nave válida',missingHouse.length===0,missingHouse.length?`${missingHouse.length} camas huérfanas`:'Correcto',missingHouse.length?'error':'ok')
- const missingBed=state.plantPositions.filter(x=>!state.beds.some(b=>b.id===x.bedId))
- add('Plantas con cama válida',missingBed.length===0,missingBed.length?`${missingBed.length} posiciones huérfanas`:'Correcto',missingBed.length?'error':'ok')
- const missingMother=state.propagationBatches.filter(x=>!state.motherPlants.some(m=>m.id===x.motherPlantId))
- add('Lotes con madre válida',missingMother.length===0,missingMother.length?`${missingMother.length} lotes sin madre válida`:'Correcto',missingMother.length?'error':'ok')
- const missingBatch=state.propagationUnits.filter(x=>!state.propagationBatches.some(b=>b.id===x.batchId))
- add('Esquejes con lote válido',missingBatch.length===0,missingBatch.length?`${missingBatch.length} esquejes sin lote`:'Correcto',missingBatch.length?'error':'ok')
- const duplicatePlantAssignment=state.propagationUnits.filter((x,i,a)=>x.plantPositionId&&a.findIndex(y=>y.plantPositionId===x.plantPositionId)!==i)
- add('Una planta por esqueje',duplicatePlantAssignment.length===0,duplicatePlantAssignment.length?`${duplicatePlantAssignment.length} asignaciones duplicadas`:'Correcto',duplicatePlantAssignment.length?'error':'ok')
- const missingPlant=state.findings.filter(x=>!state.plantPositions.some(p=>p.id===x.plantPositionId))
- add('Hallazgos con planta válida',missingPlant.length===0,missingPlant.length?`${missingPlant.length} hallazgos huérfanos`:'Correcto',missingPlant.length?'error':'ok')
- const sitesWithoutWater=state.sites.filter(s=>!state.waterAnalyses.some(a=>a.siteId===s.id&&a.status==='Vigente'))
- add('Análisis de agua vigentes',sitesWithoutWater.length===0,sitesWithoutWater.length?`${sitesWithoutWater.length} sedes sin análisis vigente`:'Todas las sedes cubiertas',sitesWithoutWater.length?'warning':'ok')
- const approvedObjectives=state.nutrientObjectives.filter(x=>x.status==='Aprobada').length
- add('Objetivos nutricionales aprobados',approvedObjectives>0,approvedObjectives?`${approvedObjectives} aprobados`:'No hay objetivos aprobados',approvedObjectives?'ok':'warning')
- const formulasPending=state.formulations.filter(x=>x.status!=='Aprobada').length
- add('Fórmulas pendientes de aprobación',formulasPending===0,formulasPending?`${formulasPending} pendientes`:'Todas aprobadas',formulasPending?'warning':'ok')
- const negativeStock=state.inventoryLots.filter(x=>Number(x.quantity)<0)
- add('Inventario sin negativos',negativeStock.length===0,negativeStock.length?`${negativeStock.length} lotes negativos`:'Correcto',negativeStock.length?'error':'ok')
- const size=new Blob([JSON.stringify(state)]).size/1024/1024
- add('Tamaño almacenamiento local',size<4,`${size.toFixed(2)} MB`,size>=4?'warning':'ok')
+ add('Versión del esquema',Number(state.schemaVersion)===CURRENT_SCHEMA_VERSION,`Estado v${state.schemaVersion||1} · aplicación v${CURRENT_SCHEMA_VERSION}`,Number(state.schemaVersion)===CURRENT_SCHEMA_VERSION?'ok':'error')
+ const missingSite=state.houses.filter(x=>!state.sites.some(s=>s.id===x.siteId));add('Naves con sede válida',missingSite.length===0,missingSite.length?`${missingSite.length} naves huérfanas`:'Correcto',missingSite.length?'error':'ok')
+ const missingHouse=state.beds.filter(x=>!state.houses.some(h=>h.id===x.houseId));add('Camas con nave válida',missingHouse.length===0,missingHouse.length?`${missingHouse.length} camas huérfanas`:'Correcto',missingHouse.length?'error':'ok')
+ const missingBed=state.plantPositions.filter(x=>!state.beds.some(b=>b.id===x.bedId));add('Plantas con cama válida',missingBed.length===0,missingBed.length?`${missingBed.length} posiciones huérfanas`:'Correcto',missingBed.length?'error':'ok')
+ const orphanAreas=(state.operationalAreas||[]).filter(x=>!state.sites.some(s=>s.id===x.siteId));add('Áreas con sede válida',orphanAreas.length===0,orphanAreas.length?`${orphanAreas.length} áreas huérfanas`:'Correcto',orphanAreas.length?'error':'ok')
+ const orphanElements=(state.infrastructureElements||[]).filter(x=>!state.operationalAreas.some(a=>a.id===x.areaId)||(x.parentId&&!state.infrastructureElements.some(e=>e.id===x.parentId)));add('Infraestructura jerárquica válida',orphanElements.length===0,orphanElements.length?`${orphanElements.length} elementos huérfanos`:'Correcto',orphanElements.length?'error':'ok')
+ const orphanAssets=(state.infrastructureAssets||[]).filter(x=>!state.sites.some(s=>s.id===x.siteId)||!state.infrastructureElements.some(e=>e.id===x.elementId));add('Activos con ubicación válida',orphanAssets.length===0,orphanAssets.length?`${orphanAssets.length} activos sin ubicación válida`:'Correcto',orphanAssets.length?'error':'ok')
+ const orphanMaintenance=(state.assetMaintenances||[]).filter(x=>!state.infrastructureAssets.some(a=>a.id===x.assetId));add('Mantenimientos con activo válido',orphanMaintenance.length===0,orphanMaintenance.length?`${orphanMaintenance.length} mantenimientos huérfanos`:'Correcto',orphanMaintenance.length?'error':'ok')
+ const orphanReadings=(state.environmentalReadings||[]).filter(x=>!state.infrastructureElements.some(e=>e.id===x.elementId));add('Lecturas con ubicación válida',orphanReadings.length===0,orphanReadings.length?`${orphanReadings.length} lecturas huérfanas`:'Correcto',orphanReadings.length?'error':'ok')
+ const invalidRanges=(state.environmentalReadings||[]).filter(x=>(x.targetTempMin!=null&&x.targetTempMax!=null&&Number(x.targetTempMin)>Number(x.targetTempMax))||(x.targetHumidityMin!=null&&x.targetHumidityMax!=null&&Number(x.targetHumidityMin)>Number(x.targetHumidityMax)));add('Rangos ambientales coherentes',invalidRanges.length===0,invalidRanges.length?`${invalidRanges.length} lecturas con rangos invertidos`:'Correcto',invalidRanges.length?'error':'ok')
+ const overdue=(state.assetMaintenances||[]).filter(x=>x.status==='Programado'&&x.scheduledDate&&x.scheduledDate<new Date().toISOString().slice(0,10));add('Mantenimientos preventivos al día',overdue.length===0,overdue.length?`${overdue.length} mantenimientos vencidos`:'Sin vencimientos',overdue.length?'warning':'ok')
+ const missingMother=state.propagationBatches.filter(x=>x.motherPlantId&&!state.motherPlants.some(m=>m.id===x.motherPlantId));add('Lotes con madre válida',missingMother.length===0,missingMother.length?`${missingMother.length} lotes sin madre válida`:'Correcto',missingMother.length?'error':'ok')
+ const missingBatch=state.propagationUnits.filter(x=>!state.propagationBatches.some(b=>b.id===x.batchId));add('Esquejes con lote válido',missingBatch.length===0,missingBatch.length?`${missingBatch.length} esquejes sin lote`:'Correcto',missingBatch.length?'error':'ok')
+ const duplicatePlantAssignment=state.propagationUnits.filter((x,i,a)=>x.plantPositionId&&a.findIndex(y=>y.plantPositionId===x.plantPositionId)!==i);add('Una planta por esqueje',duplicatePlantAssignment.length===0,duplicatePlantAssignment.length?`${duplicatePlantAssignment.length} asignaciones duplicadas`:'Correcto',duplicatePlantAssignment.length?'error':'ok')
+ const missingPlant=state.findings.filter(x=>x.plantPositionId&&!state.plantPositions.some(p=>p.id===x.plantPositionId));add('Hallazgos con planta válida',missingPlant.length===0,missingPlant.length?`${missingPlant.length} hallazgos huérfanos`:'Correcto',missingPlant.length?'error':'ok')
+ const negativeStock=state.inventoryLots.filter(x=>Number(x.quantity)<0);add('Inventario sin negativos',negativeStock.length===0,negativeStock.length?`${negativeStock.length} lotes negativos`:'Correcto',negativeStock.length?'error':'ok')
+ const finishedMismatch=state.finishedGoods.filter(x=>!close(x.initialGrams,Number(x.availableGrams)+Number(x.reservedGrams)+Number(x.soldGrams)));add('Balance de producto terminado',finishedMismatch.length===0,finishedMismatch.length?`${finishedMismatch.length} existencias no cuadran`:'Inicial = disponible + reservado + vendido',finishedMismatch.length?'error':'ok')
+ const orphanSales=state.sales.filter(x=>x.stockId&&!state.finishedGoods.some(g=>g.id===x.stockId));add('Ventas con existencia válida',orphanSales.length===0,orphanSales.length?`${orphanSales.length} ventas huérfanas`:'Correcto',orphanSales.length?'error':'ok')
+ const invalidReservations=state.sales.filter(x=>x.status==='Reservada'&&Number(x.grams)<=0);add('Reservas válidas',invalidReservations.length===0,invalidReservations.length?`${invalidReservations.length} reservas inválidas`:'Correcto',invalidReservations.length?'error':'ok')
+ const orphanFinishedMoves=state.finishedGoodsMovements.filter(x=>x.finishedGoodId&&!state.finishedGoods.some(g=>g.id===x.finishedGoodId));add('Movimientos de producto terminado vinculados',orphanFinishedMoves.length===0,orphanFinishedMoves.length?`${orphanFinishedMoves.length} movimientos huérfanos`:'Correcto',orphanFinishedMoves.length?'error':'ok')
+ const productionOverages=state.propagationBatches.flatMap(l=>(l.productionLedger||[]).filter(e=>Number(e.outputGrams)>Number(e.inputGrams)).map(e=>({lot:l,event:e})));add('Balance de masa productivo',productionOverages.length===0,productionOverages.length?`${productionOverages.length} etapas aumentan peso`:'Sin aumentos artificiales',productionOverages.length?'error':'ok')
+ const unlinkedNutrients=state.nutrientProducts.filter(x=>!x.inventoryProductId);add('Productos nutricionales vinculados',unlinkedNutrients.length===0,unlinkedNutrients.length?`${unlinkedNutrients.length} productos sin vínculo de inventario`:'Todos vinculados',unlinkedNutrients.length?'warning':'ok')
+ const invalidPreparations=state.tankPreparations.filter(x=>['Preparada','Aplicada'].includes(x.status)&&(x.items||[]).some(i=>!i.lotId||Number(i.consumedQuantity)<=0));add('Preparaciones ejecutadas trazables',invalidPreparations.length===0,invalidPreparations.length?`${invalidPreparations.length} preparaciones sin consumo completo`:'Correcto',invalidPreparations.length?'error':'ok')
+ const sitesWithoutWater=state.sites.filter(s=>!state.waterAnalyses.some(a=>a.siteId===s.id&&a.status==='Vigente'));add('Análisis de agua vigentes',sitesWithoutWater.length===0,sitesWithoutWater.length?`${sitesWithoutWater.length} sedes sin análisis vigente`:'Todas las sedes cubiertas',sitesWithoutWater.length?'warning':'ok')
+ const approvedObjectives=state.nutrientObjectives.filter(x=>x.status==='Aprobada').length;add('Objetivos nutricionales aprobados',approvedObjectives>0,approvedObjectives?`${approvedObjectives} aprobados`:'No hay objetivos aprobados',approvedObjectives?'ok':'warning')
+ const formulasPending=state.formulations.filter(x=>x.status!=='Aprobada').length;add('Fórmulas pendientes de aprobación',formulasPending===0,formulasPending?`${formulasPending} pendientes`:'Todas aprobadas',formulasPending?'warning':'ok')
+ const size=typeof Blob==='function'?new Blob([JSON.stringify(state)]).size/1024/1024:JSON.stringify(state).length/1024/1024;add('Tamaño almacenamiento local',size<4,`${size.toFixed(2)} MB`,size>=4?'warning':'ok')
  return checks
 }
