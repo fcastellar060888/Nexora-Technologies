@@ -3,7 +3,7 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
-import{TimelineFeed}from'../core/timeline/index.js'
+import{TimelineFeed}from'../core/timeline/ui.js'
 import{useStore}from'../services/store'
 
 const roles=['Administrador','Gerente','Agrónomo','Supervisor','Encargado de riego','Encargado MIPE','Operario','Inventario']
