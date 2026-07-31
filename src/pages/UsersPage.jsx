@@ -2,6 +2,7 @@ import{useMemo,useState}from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
+import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{useStore}from'../services/store'
 
 const roles=['Administrador','Gerente','Agrónomo','Supervisor','Encargado de riego','Encargado MIPE','Operario','Inventario']
@@ -14,6 +15,7 @@ export default function UsersPage(){
  const[message,setMessage]=useState({type:'',text:''})
  const activeUser=useMemo(()=>state.users.find(user=>user.activeSession),[state.users])
  const activeCount=state.users.filter(user=>user.active!==false).length
+ const organizationForSite=siteId=>state.sites.find(site=>site.id===siteId)?.companyId||state.currentContext?.companyId||state.companies[0]?.id||'local-installation'
 
  function save(e){
   e.preventDefault()
@@ -27,7 +29,8 @@ export default function UsersPage(){
    setMessage({type:'error',text:'La sede seleccionada ya no está disponible.'});return
   }
   const user={id:crypto.randomUUID(),activeSession:state.users.length===0,name,email,role:form.role,siteId:form.siteId,active:form.active!==false}
-  update(s=>({...s,users:[...s.users,user]}),{module:'Usuarios',action:'Usuario creado',detail:`${name} · ${form.role}`})
+  update(s=>({...s,users:[...s.users,user]}),{audit:false})
+  void publishDomainEvent(state,{name:DomainEvents.USER_CREATED,aggregateType:'user',aggregateId:user.id,organizationId:organizationForSite(user.siteId),siteId:user.siteId||null,payload:{label:`${name} · ${form.role}`,user},metadata:{collections:['users']}})
   setForm(emptyForm(state.sites[0]?.id))
   setMessage({type:'success',text:`Usuario ${name} creado correctamente.`})
  }
@@ -35,7 +38,8 @@ export default function UsersPage(){
  function session(id){
   const selected=state.users.find(user=>user.id===id)
   if(!selected||selected.active===false){setMessage({type:'error',text:'Solo puedes iniciar una sesión local con un usuario activo.'});return}
-  update(s=>({...s,users:s.users.map(user=>({...user,activeSession:user.id===id}))}),{module:'Usuarios',action:'Sesión local cambiada',detail:selected.name})
+  update(s=>({...s,users:s.users.map(user=>({...user,activeSession:user.id===id}))}),{audit:false})
+  void publishDomainEvent(state,{name:DomainEvents.USER_SESSION_SELECTED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,userId:selected.id},metadata:{collections:['users']}})
   setMessage({type:'success',text:`Ahora estás usando el perfil local de ${selected.name}.`})
  }
 
@@ -44,7 +48,8 @@ export default function UsersPage(){
   if(!selected)return
   if(selected.activeSession&&selected.active!==false){setMessage({type:'error',text:'No puedes desactivar el usuario que tiene la sesión local activa.'});return}
   const nextActive=selected.active===false
-  update(s=>({...s,users:s.users.map(user=>user.id===id?{...user,active:nextActive}:user)}),{module:'Usuarios',action:nextActive?'Usuario activado':'Usuario desactivado',detail:selected.name})
+  update(s=>({...s,users:s.users.map(user=>user.id===id?{...user,active:nextActive}:user)}),{audit:false})
+  void publishDomainEvent(state,{name:nextActive?DomainEvents.USER_ACTIVATED:DomainEvents.USER_DEACTIVATED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,userId:selected.id,active:nextActive},metadata:{collections:['users']}})
   setMessage({type:'success',text:`Usuario ${nextActive?'activado':'desactivado'} correctamente.`})
  }
 
@@ -53,7 +58,8 @@ export default function UsersPage(){
   if(!selected)return
   if(selected.activeSession){setMessage({type:'error',text:'No puedes eliminar el usuario que tiene la sesión local activa.'});return}
   if(confirm(`¿Eliminar el usuario local ${selected.name}?`)){
-   update(s=>({...s,users:s.users.filter(user=>user.id!==id)}),{module:'Usuarios',action:'Usuario eliminado',detail:selected.name})
+   update(s=>({...s,users:s.users.filter(user=>user.id!==id)}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.USER_DELETED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,user:selected},metadata:{collections:['users']}})
    setMessage({type:'success',text:'Usuario eliminado correctamente.'})
   }
  }
