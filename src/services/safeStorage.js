@@ -1,12 +1,12 @@
 import { initialState, loadState as legacyLoadState, saveState as legacySaveState } from './storage'
+import { CURRENT_SCHEMA_VERSION, migrateState } from './stateMigration'
 
 const DATA_KEY = 'cannapa_erp_v1_foundation'
 const BACKUP_KEY = `${DATA_KEY}_backup`
 const CORRUPT_KEY = `${DATA_KEY}_corrupt`
-const SCHEMA_VERSION = 2
 
 function cloneInitialState() {
-  return structuredClone(initialState)
+  return migrateState(structuredClone(initialState))
 }
 
 function preserveRaw(key, raw, reason) {
@@ -33,27 +33,24 @@ export function loadState() {
   preserveRaw(BACKUP_KEY, raw, 'Copia previa a normalización/migración')
 
   try {
-    const state = legacyLoadState()
-    return {
-      ...state,
-      schemaVersion: SCHEMA_VERSION,
-    }
+    return migrateState(legacyLoadState())
   } catch (error) {
-    console.error('Falló la normalización del estado local. Se usará la copia original sin sobrescribirla.', error)
+    console.error('Falló la normalización del estado local. Se usará la copia original preservada.', error)
     const parsed = JSON.parse(raw)
-    return {
-      ...cloneInitialState(),
+    return migrateState({
+      ...structuredClone(initialState),
       ...parsed,
       schemaVersion: Number(parsed.schemaVersion || 1),
-    }
+    })
   }
 }
 
 export function saveState(state) {
   try {
+    const normalized=migrateState(state)
     legacySaveState({
-      ...state,
-      schemaVersion: SCHEMA_VERSION,
+      ...normalized,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       persistedAt: new Date().toISOString(),
     })
     return { ok: true }
