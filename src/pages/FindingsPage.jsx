@@ -3,6 +3,7 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
+import {FormActions,ValidationMessage} from'../components/FormKit'
 import {useStore} from'../services/store'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
 
@@ -22,11 +23,11 @@ export default function FindingsPage(){
 
  function save(e){
    e.preventDefault()
-   update(s=>({...s,findings:s.findings.map(f=>f.id===editing.id?{...editing,updatedAt:new Date().toISOString()}:f)}))
+   update(s=>({...s,findings:s.findings.map(f=>f.id===editing.id?{...editing,updatedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Editar hallazgo',detail:editing.id})
    setEditing(null)
  }
- function remove(id){if(confirm('¿Eliminar definitivamente este hallazgo?'))update(s=>({...s,findings:s.findings.filter(f=>f.id!==id)}))}
- function close(id){update(s=>({...s,findings:s.findings.map(f=>f.id===id?{...f,status:'Resuelto',closedAt:new Date().toISOString()}:f)}))}
+ function remove(id){if(confirm('¿Eliminar definitivamente este hallazgo?'))update(s=>({...s,findings:s.findings.filter(f=>f.id!==id)}),{module:'MIPE',action:'Eliminar hallazgo',detail:id})}
+ function close(id){update(s=>({...s,findings:s.findings.map(f=>f.id===id?{...f,status:'Resuelto',closedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Cerrar hallazgo',detail:id})}
 
  return <>
   <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución de cada caso."/>
@@ -51,15 +52,11 @@ export default function FindingsPage(){
     <table>
      <thead><tr><th>Fecha reporte</th><th>Próximo seguimiento</th><th>Ubicación</th><th>Genética</th><th>Incidencia</th><th>Severidad</th><th>Estado</th><th>Responsable</th><th>Acción/observación</th><th>Acciones</th></tr></thead>
      <tbody>{rows.map(f=>{const loc=findingLocation(state,f),inc=state.incidents.find(i=>i.id===f.incidentId),gen=state.genetics.find(g=>g.id===loc.plant?.geneticId);return <tr key={f.id} className={isFollowUpDue(f)?'row-overdue':''}>
-       <td>{formatDateTime(f.createdAt)}</td>
-       <td><span className={isFollowUpDue(f)?'tag danger-tag':'tag'}>{f.followUpDate||'Sin programar'}</span></td>
+       <td>{formatDateTime(f.createdAt)}</td><td><span className={isFollowUpDue(f)?'tag danger-tag':'tag'}>{f.followUpDate||'Sin programar'}</span></td>
        <td>{loc.site?.name} · {loc.house?.name} · {loc.bed?.name}<small>{loc.plant?plantCode(state,loc.plant):''}</small></td>
-       <td>{gen?.name||'Sin genética'}</td>
-       <td><span className="color-dot inline" style={{background:inc?.color}}/>{inc?.name||f.type||'Sin definir'}</td>
-       <td>{severityLabels[f.severity]||f.severity}</td>
-       <td><span className={`tag ${f.status==='Resuelto'?'success':''}`}>{f.status}</span></td>
-       <td>{f.responsible||'—'}</td>
-       <td><strong>{f.action||'—'}</strong><small>{f.notes||'Sin observación'}</small></td>
+       <td>{gen?.name||'Sin genética'}</td><td><span className="color-dot inline" style={{background:inc?.color}}/>{inc?.name||f.type||'Sin definir'}</td>
+       <td>{severityLabels[f.severity]||f.severity}</td><td><span className={`tag ${f.status==='Resuelto'?'success':''}`}>{f.status}</span></td>
+       <td>{f.responsible||'—'}</td><td><strong>{f.action||'—'}</strong><small>{f.notes||'Sin observación'}</small></td>
        <td className="row-actions"><button onClick={()=>setEditing({...f})}>Editar</button><button onClick={()=>close(f.id)}>Cerrar</button><button className="danger-link" onClick={()=>remove(f.id)}>Eliminar</button></td>
       </tr>})}</tbody>
     </table>
@@ -67,7 +64,8 @@ export default function FindingsPage(){
   </Card>
 
   <Modal open={Boolean(editing)} title="Editar hallazgo" onClose={()=>setEditing(null)}>
-   {editing&&<form className="form-grid modal-form" onSubmit={save}>
+   {editing&&<form id="mipe-finding-edit" data-module="Hallazgo MIPE" data-record-id={editing.id} className="form-grid modal-form" onSubmit={save}>
+    <ValidationMessage type="info">Los cambios se sincronizan automáticamente con los demás dispositivos de la empresa.</ValidationMessage>
     <Field label="Fecha y hora del reporte"><input type="datetime-local" value={(editing.createdAt||'').slice(0,16)} onChange={e=>setEditing({...editing,createdAt:e.target.value})}/></Field>
     <Field label="Incidencia"><select value={editing.incidentId||''} onChange={e=>setEditing({...editing,incidentId:e.target.value})}>{state.incidents.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></Field>
     <Field label="Severidad"><select value={editing.severity} onChange={e=>setEditing({...editing,severity:Number(e.target.value)})}>{Object.entries(severityLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field>
@@ -76,7 +74,7 @@ export default function FindingsPage(){
     <Field label="Fecha de seguimiento"><input type="date" value={editing.followUpDate||''} onChange={e=>setEditing({...editing,followUpDate:e.target.value})}/></Field>
     <Field label="Acción tomada"><input value={editing.action||''} onChange={e=>setEditing({...editing,action:e.target.value})}/></Field>
     <Field label="Observación técnica"><textarea value={editing.notes||''} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field>
-    <div className="form-actions"><button className="button primary">Guardar cambios</button></div>
+    <FormActions><button type="button" className="button secondary" onClick={()=>setEditing(null)}>Cancelar</button><button className="button primary">Guardar cambios</button></FormActions>
    </form>}
   </Modal>
  </>
