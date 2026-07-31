@@ -4,7 +4,7 @@ import{readFile}from'node:fs/promises'
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8')
 
-test('audited state changes emit the Canapa operational event',async()=>{
+test('audited state changes emit the legacy-compatible operational event',async()=>{
  const source=await read('src/services/safeStorage.js')
  assert.match(source,/canapa:operational-change/)
  assert.match(source,/auditId:audit\.id/)
@@ -20,8 +20,10 @@ test('Realtime listens for operational changes and form editing activity',async(
  assert.match(source,/focusout/)
 })
 
-test('visible product branding remains Canapa with one n',async()=>{
+test('visible product branding is Nexora One',async()=>{
  const shell=await read('src/components/AppShell.jsx')
- assert.match(shell,/Canapa ERP/)
+ assert.match(shell,/Nexora One/)
+ assert.match(shell,/Nexora Technologies/)
+ assert.doesNotMatch(shell,/Canapa ERP/i)
  assert.doesNotMatch(shell,/Cannapa ERP/i)
 })
