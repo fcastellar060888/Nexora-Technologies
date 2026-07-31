@@ -86,10 +86,15 @@ export async function getSession(){
   return{data:{session:await refreshSession(session)}}
 }
 
-async function requireSession(){
+export async function requireSession(){
   const{data}=await getSession()
   if(!data.session?.access_token||!data.session?.user?.id)throw new Error('Debes iniciar sesión')
   return data.session
+}
+
+export async function authenticatedRequest(path,options={}){
+  const session=await requireSession()
+  return request(path,{...options,token:session.access_token})
 }
 
 export async function loadRemoteIdentity(){
