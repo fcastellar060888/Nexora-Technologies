@@ -1,5 +1,5 @@
 import {createContext,useContext,useEffect,useMemo,useReducer} from'react'
-import{loadState,saveState}from'./storage'
+import{loadState,saveState}from'./safeStorage'
 
 const StoreContext=createContext(null)
 
