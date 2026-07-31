@@ -21,6 +21,8 @@ textarea{min-height:112px;resize:vertical;line-height:1.45}
 .modal-form>.validation-message,.form-grid>.validation-message{grid-column:1/-1;margin:0 0 2px}
 .modal-form .field:last-of-type{grid-column:auto}
 .modal-form .field.full,.field.full{grid-column:1/-1}
+.inline-operation-form{display:grid;min-width:240px;gap:9px;padding:10px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--input) 82%,#fff)}
+.inline-operation-form :is(input,select,.button){width:100%;min-width:0}
 fieldset{min-width:0;margin:0;padding:18px;border:1px solid var(--line);border-radius:12px}
 legend{padding:0 7px;color:var(--navy);font-size:13px;font-weight:800}
 input[type="checkbox"],input[type="radio"]{width:18px;min-height:18px;margin:0;padding:0;accent-color:var(--teal)}
@@ -32,5 +34,6 @@ input[type="checkbox"],input[type="radio"]{width:18px;min-height:18px;margin:0;p
  .form-section{padding:15px}
  .form-actions{align-items:stretch;justify-content:stretch;flex-direction:column-reverse;margin-top:6px;padding-top:14px}
  .form-actions .button{width:100%;min-width:0}
+ .inline-operation-form{min-width:210px}
  input,select,textarea{font-size:16px}
 }
