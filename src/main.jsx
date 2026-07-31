@@ -3,8 +3,10 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { StoreProvider } from './services/store'
+import { RealtimeProvider } from './services/realtimeContext.jsx'
 import './styles/app.css'
 import './styles/responsive-fixes.css'
 import './styles/auto-sync.css'
 import './styles/data-runtime.css'
-ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><App/></StoreProvider></BrowserRouter></React.StrictMode>)
+import './styles/realtime.css'
+ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><RealtimeProvider><App/></RealtimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
