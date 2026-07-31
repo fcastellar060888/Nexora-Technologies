@@ -1,6 +1,6 @@
-export const CURRENT_SCHEMA_VERSION=7
+export const CURRENT_SCHEMA_VERSION=8
 
-const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth']
+const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','timelineEntries','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth']
 
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
 const nullableNumber=value=>value===''||value==null?null:number(value)
@@ -39,6 +39,24 @@ function normalizeQueue(item){
  return{...item,baseVersion:Math.max(0,number(item.baseVersion)),attempts:Math.max(0,number(item.attempts)),status:item.status||'pending',error:item.error||''}
 }
 
+function normalizeTimelineEntry(item){
+ return{
+  ...item,
+  id:String(item.id||item.eventId||crypto.randomUUID()),
+  occurredAt:Number.isNaN(Date.parse(item.occurredAt))?new Date().toISOString():new Date(item.occurredAt).toISOString(),
+  title:String(item.title||item.eventName||'Actividad'),
+  summary:String(item.summary||''),
+  category:String(item.category||'Sistema'),
+  tone:String(item.tone||'neutral'),
+  actorId:String(item.actorId||'system'),
+  actorName:String(item.actorName||item.actorId||'Sistema'),
+  organizationId:String(item.organizationId||'local-installation'),
+  siteId:item.siteId?String(item.siteId):null,
+  aggregateType:String(item.aggregateType||'system'),
+  aggregateId:String(item.aggregateId||item.id||'unknown')
+ }
+}
+
 export function migrateState(input={}){
  const state={...input}
  for(const key of arrays)state[key]=list(state[key])
@@ -56,6 +74,7 @@ export function migrateState(input={}){
  state.roles=state.roles.map(x=>({...x,permissions:unique(x.permissions),active:x.active!==false}))
  state.memberships=state.memberships.map(normalizeMembership)
  state.userSessions=state.userSessions.map(x=>({...x,status:x.status||'active',lastSeenAt:x.lastSeenAt||x.createdAt||''}))
+ state.timelineEntries=state.timelineEntries.map(normalizeTimelineEntry).filter((entry,index,all)=>all.findIndex(item=>item.id===entry.id)===index).sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt)).slice(-2000)
  state.syncQueue=state.syncQueue.map(normalizeQueue)
  state.syncConflicts=state.syncConflicts.map(x=>({...x,status:x.status||'open',createdAt:x.createdAt||new Date().toISOString()}))
  state.syncHealthEvents=state.syncHealthEvents.map(x=>({...x,status:x.status||'success',createdAt:x.createdAt||new Date().toISOString(),durationMs:Math.max(0,number(x.durationMs))})).slice(-500)
