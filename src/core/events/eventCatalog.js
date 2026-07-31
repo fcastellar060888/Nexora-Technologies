@@ -1,0 +1,20 @@
+export const DomainEvents=Object.freeze({
+ COMPANY_CREATED:'organization.company.created',
+ COMPANY_UPDATED:'organization.company.updated',
+ COMPANY_DELETED:'organization.company.deleted',
+ SITE_CREATED:'organization.site.created',
+ SITE_UPDATED:'organization.site.updated',
+ SITE_DELETED:'organization.site.deleted',
+ USER_CREATED:'identity.user.created',
+ USER_ACTIVATED:'identity.user.activated',
+ USER_DEACTIVATED:'identity.user.deactivated',
+ USER_DELETED:'identity.user.deleted',
+ CROP_LOT_CREATED:'cultivation.lot.created',
+ CROP_PHASE_CHANGED:'cultivation.lot.phase_changed',
+ MIPE_FINDING_RECORDED:'mipe.finding.recorded',
+ MIRFE_APPLICATION_COMPLETED:'mirfe.application.completed',
+ INVENTORY_MOVEMENT_RECORDED:'inventory.movement.recorded',
+ PRODUCTION_STAGE_COMPLETED:'production.stage.completed'
+})
+
+export function isKnownDomainEvent(name){return Object.values(DomainEvents).includes(name)}
