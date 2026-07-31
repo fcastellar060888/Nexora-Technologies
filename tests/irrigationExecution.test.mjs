@@ -1,6 +1,12 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createTankPreparation,executeTankPreparation,registerIrrigationApplication}from'../src/domain/irrigationExecution.js'
+import{createTankPreparation,executeTankPreparation,gramsToInventoryUnit,registerIrrigationApplication}from'../src/domain/irrigationExecution.js'
+
+test('convierte gramos formulados a la unidad de inventario',()=>{
+ assert.equal(gramsToInventoryUnit(500,'g'),500)
+ assert.equal(gramsToInventoryUnit(500,'kg'),0.5)
+ assert.throws(()=>gramsToInventoryUnit(500,'L'),/g o kg/)
+})
 
 test('crea preparación solo desde fórmula aprobada',()=>{
  const state={formulations:[{id:'f1',status:'Aprobada',siteId:'s1',volumeL:1000,stage:'Vegetativo',items:[{productId:'n1',tank:'A',grams:500}]}],nutrientProducts:[{id:'n1',inventoryProductId:'p1'}],tankPreparations:[]}
@@ -10,24 +16,26 @@ test('crea preparación solo desde fórmula aprobada',()=>{
  assert.equal(next.tankPreparations[0].items[0].inventoryProductId,'p1')
 })
 
-test('ejecuta preparación, consume inventario, genera costo y orden',()=>{
+test('ejecuta preparación, convierte kg, genera costo y orden',()=>{
  const state={
   formulations:[{id:'f1',status:'Aprobada',siteId:'s1',volumeL:1000,stage:'Vegetativo',items:[{productId:'n1',tank:'A',grams:500}]}],
-  nutrientProducts:[{id:'n1',inventoryProductId:'p1',cost:2}],products:[{id:'p1',cost:3}],
-  inventoryLots:[{id:'l1',productId:'p1',siteId:'s1',quantity:800}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[]
+  nutrientProducts:[{id:'n1',inventoryProductId:'p1',cost:2}],products:[{id:'p1',unit:'kg',cost:3000}],
+  inventoryLots:[{id:'l1',productId:'p1',siteId:'s1',quantity:0.8}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[]
  }
  const created=createTankPreparation(state,{id:'prep1',formulationId:'f1',createdAt:'2026-07-30T12:00:00.000Z'})
  const executed=executeTankPreparation(created,{preparationId:'prep1',allocations:{'f1-0':'l1'},responsible:'Ana',executedAt:'2026-07-30T13:00:00.000Z',costEntryId:'c1',workOrderId:'w1'})
- assert.equal(executed.inventoryLots[0].quantity,300)
+ assert.equal(executed.inventoryLots[0].quantity,0.30000000000000004)
+ assert.equal(executed.inventoryMovements[0].signedQuantity,-0.5)
  assert.equal(executed.inventoryMovements[0].sourceType,'MirfePreparation')
  assert.equal(executed.tankPreparations[0].status,'Preparada')
+ assert.equal(executed.tankPreparations[0].items[0].consumedUnit,'kg')
  assert.equal(executed.tankPreparations[0].totalCost,1500)
  assert.equal(executed.costEntries[0].amount,1500)
  assert.equal(executed.workOrders[0].preparationId,'prep1')
 })
 
-test('bloquea lote de otra sede o inventario insuficiente',()=>{
- const state={formulations:[],nutrientProducts:[{id:'n1',inventoryProductId:'p1'}],products:[{id:'p1'}],inventoryLots:[{id:'l1',productId:'p1',siteId:'s2',quantity:10}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[{id:'prep1',siteId:'s1',status:'Pendiente',items:[{id:'i1',nutrientProductId:'n1',inventoryProductId:'p1',requiredQuantity:20,tank:'A'}]}]}
+test('bloquea lote de otra sede',()=>{
+ const state={formulations:[],nutrientProducts:[{id:'n1',inventoryProductId:'p1'}],products:[{id:'p1',unit:'g'}],inventoryLots:[{id:'l1',productId:'p1',siteId:'s2',quantity:10}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[{id:'prep1',siteId:'s1',status:'Pendiente',items:[{id:'i1',nutrientProductId:'n1',inventoryProductId:'p1',requiredQuantity:20,tank:'A'}]}]}
  assert.throws(()=>executeTankPreparation(state,{preparationId:'prep1',allocations:{i1:'l1'}}),/sede/)
 })
 
