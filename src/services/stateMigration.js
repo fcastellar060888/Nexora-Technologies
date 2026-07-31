@@ -1,6 +1,6 @@
-export const CURRENT_SCHEMA_VERSION=5
+export const CURRENT_SCHEMA_VERSION=6
 
-const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog']
+const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','syncQueue','syncConflicts']
 
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
 const nullableNumber=value=>value===''||value==null?null:number(value)
@@ -35,6 +35,10 @@ function normalizeMembership(item){
  return{...item,companyId:item.companyId||item.organizationId||'',siteIds:unique(item.siteIds),permissionOverrides:unique(item.permissionOverrides),deniedPermissions:unique(item.deniedPermissions),status:item.status||'active'}
 }
 
+function normalizeQueue(item){
+ return{...item,baseVersion:Math.max(0,number(item.baseVersion)),attempts:Math.max(0,number(item.attempts)),status:item.status||'pending',error:item.error||''}
+}
+
 export function migrateState(input={}){
  const state={...input}
  for(const key of arrays)state[key]=list(state[key])
@@ -52,6 +56,9 @@ export function migrateState(input={}){
  state.roles=state.roles.map(x=>({...x,permissions:unique(x.permissions),active:x.active!==false}))
  state.memberships=state.memberships.map(normalizeMembership)
  state.userSessions=state.userSessions.map(x=>({...x,status:x.status||'active',lastSeenAt:x.lastSeenAt||x.createdAt||''}))
+ state.syncQueue=state.syncQueue.map(normalizeQueue)
+ state.syncConflicts=state.syncConflicts.map(x=>({...x,status:x.status||'open',createdAt:x.createdAt||new Date().toISOString()}))
+ state.syncMeta={lastSyncedAt:'',cursorByCompany:{},...(state.syncMeta||{})}
  state.schemaVersion=CURRENT_SCHEMA_VERSION
  return state
 }
