@@ -2,7 +2,7 @@ import{useState}from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
-import{FormActions,ValidationMessage}from'../components/FormKit'
+import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
 import{useStore}from'../services/store'
 import{createInventoryLot}from'../domain/inventory'
 
