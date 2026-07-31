@@ -49,6 +49,7 @@ import InfrastructurePage from './pages/InfrastructurePage'
 import InfrastructureMapPage from './pages/InfrastructureMapPage'
 import InfrastructureOperationsPage from './pages/InfrastructureOperationsPage'
 import SyncCenterPage from './pages/SyncCenterPage'
+import InitialMigrationPage from './pages/InitialMigrationPage'
 
 function Guard({ permission, children }) {
   return <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
@@ -58,7 +59,6 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
@@ -70,12 +70,10 @@ export default function App() {
         <Route path="/site-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/house-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/plant/:plantId" element={<PlantProfilePage />} />
-
         <Route path="/companies" element={<Guard permission="manage_settings"><CompaniesPage /></Guard>} />
         <Route path="/sites" element={<Guard permission="manage_settings"><SitesPage /></Guard>} />
         <Route path="/houses" element={<Guard permission="manage_settings"><HousesPage /></Guard>} />
         <Route path="/infrastructure" element={<Guard permission="manage_settings"><InfrastructurePage /></Guard>} />
-
         <Route path="/propagation/grandmothers" element={<GrandmotherPlantsPage />} />
         <Route path="/propagation/mothers" element={<MotherPlantsPage />} />
         <Route path="/lots" element={<Navigate to="/propagation/batches" replace />} />
@@ -85,18 +83,15 @@ export default function App() {
         <Route path="/propagation/transitions" element={<PhaseTransitionsPage />} />
         <Route path="/propagation/lineage" element={<LineagePage />} />
         <Route path="/genetics" element={<GeneticsPage />} />
-
         <Route path="/mirfe/dashboard" element={<Guard permission="view_dashboards"><MirfeDashboardPage /></Guard>} />
         <Route path="/mirfe/monitoring" element={<Guard permission="manage_mirfe"><MirfeMonitoringPage /></Guard>} />
         <Route path="/mirfe/programs" element={<Guard permission="manage_mirfe"><MirfeProgramsPage /></Guard>} />
         <Route path="/mirfe/reinforcements" element={<Guard permission="manage_mirfe"><MirfeReinforcementsPage /></Guard>} />
         <Route path="/mirfe/history" element={<Guard permission="manage_mirfe"><MirfeHistoryPage /></Guard>} />
-
         <Route path="/mipe/dashboard" element={<Guard permission="view_dashboards"><MipeDashboardPage /></Guard>} />
         <Route path="/mipe/incidents" element={<Guard permission="manage_mipe"><IncidentsPage /></Guard>} />
         <Route path="/mipe/findings" element={<Guard permission="manage_mipe"><FindingsPage /></Guard>} />
         <Route path="/mipe/treatments" element={<Guard permission="manage_mipe"><TreatmentsPage /></Guard>} />
-
         <Route path="/irrigation/water" element={<Guard permission="manage_irrigation"><WaterAnalysisPage /></Guard>} />
         <Route path="/irrigation/products" element={<Guard permission="manage_irrigation"><NutrientProductsPage /></Guard>} />
         <Route path="/irrigation/objectives" element={<Guard permission="manage_irrigation"><NutrientObjectivesPage /></Guard>} />
@@ -105,7 +100,6 @@ export default function App() {
         <Route path="/irrigation/preparations" element={<Guard permission="manage_irrigation"><PreparationsPage /></Guard>} />
         <Route path="/irrigation/orders" element={<Guard permission="execute_orders"><WorkOrdersPage /></Guard>} />
         <Route path="/irrigation/workflow" element={<Guard permission="record_irrigation"><IrrigationWorkflowPage /></Guard>} />
-
         <Route path="/production/harvest" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/drying" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/trimming" element={<Navigate to="/propagation/batches" replace />} />
@@ -118,15 +112,14 @@ export default function App() {
         <Route path="/costs" element={<Guard permission="view_costs"><CostsPage /></Guard>} />
         <Route path="/inventory/movements" element={<Guard permission="view_inventory"><InventoryMovementsPage /></Guard>} />
         <Route path="/inventory" element={<Guard permission="view_inventory"><InventoryPage /></Guard>} />
-
         <Route path="/sync" element={<Guard permission="manage_settings"><SyncCenterPage /></Guard>} />
+        <Route path="/migration" element={<Guard permission="manage_settings"><InitialMigrationPage /></Guard>} />
         <Route path="/audit" element={<Guard permission="view_audit"><AuditLogPage /></Guard>} />
         <Route path="/insights" element={<Guard permission="view_dashboards"><InsightsPage /></Guard>} />
         <Route path="/diagnostics" element={<Guard permission="manage_settings"><SystemDiagnosticsPage /></Guard>} />
         <Route path="/users" element={<Guard permission="manage_users"><UsersPage /></Guard>} />
         <Route path="/settings" element={<Guard permission="manage_settings"><SettingsPage /></Guard>} />
       </Route>
-
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
