@@ -1,31 +1,36 @@
 /* Sistema transversal de formularios de Canapa ERP */
 form,.stacked-form,.modal-form{min-width:0}
-.form-grid{align-items:start;column-gap:18px;row-gap:16px}
-.form-section{padding:18px}
-.field{min-width:0;gap:7px}
+.form-grid{align-items:start;column-gap:20px;row-gap:20px}
+.form-grid>*{min-width:0}
+.form-grid.one{grid-template-columns:minmax(0,1fr)}
+.form-section{padding:20px}
+.form-section+.form-section{margin-top:4px}
+.field{display:flex;min-width:0;flex-direction:column;gap:8px}
 .field>span,.field>label{display:block;line-height:1.35;color:var(--muted);font-size:12px;font-weight:700}
 .field :is(input,select,textarea){display:block;width:100%;max-width:100%;font:inherit;color:#172033}
-input,select,textarea{min-height:46px;padding:11px 13px;border:1px solid #bdcbd6;border-radius:10px;background:var(--input);transition:border-color .15s,box-shadow .15s,background .15s}
+input,select,textarea{box-sizing:border-box;min-height:46px;padding:11px 13px;border:1px solid #bdcbd6;border-radius:10px;background:var(--input);transition:border-color .15s,box-shadow .15s,background .15s}
 textarea{min-height:112px;resize:vertical;line-height:1.45}
 :is(input,select,textarea):focus{outline:0;border-color:var(--teal);background:#fff;box-shadow:0 0 0 3px rgba(17,122,115,.14)}
 :is(input,select,textarea):disabled{cursor:not-allowed;opacity:.68;background:#eef2f5}
 :is(input,select,textarea)[aria-invalid="true"],.field.invalid :is(input,select,textarea){border-color:var(--red);box-shadow:0 0 0 3px rgba(180,35,24,.1)}
 .field-help,.field small{display:block;margin:0;color:var(--muted);font-size:11px;line-height:1.4}
 .field-error{display:block;color:var(--red);font-size:11px;font-weight:700;line-height:1.4}
-.form-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:2px;padding-top:4px}
+.form-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:8px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent)}
 .form-actions .button{min-width:112px}
-.modal-form{row-gap:17px}
+.modal-form{row-gap:20px}
+.modal-form>.validation-message,.form-grid>.validation-message{grid-column:1/-1;margin:0 0 2px}
 .modal-form .field:last-of-type{grid-column:auto}
 .modal-form .field.full,.field.full{grid-column:1/-1}
-fieldset{min-width:0;margin:0;padding:16px;border:1px solid var(--line);border-radius:12px}
+fieldset{min-width:0;margin:0;padding:18px;border:1px solid var(--line);border-radius:12px}
 legend{padding:0 7px;color:var(--navy);font-size:13px;font-weight:800}
 input[type="checkbox"],input[type="radio"]{width:18px;min-height:18px;margin:0;padding:0;accent-color:var(--teal)}
 .checkbox-field,.radio-field{display:flex;align-items:flex-start;gap:9px;min-height:44px;padding:10px 0}
 .checkbox-field label,.radio-field label{line-height:1.4}
+@media(max-width:900px){.form-grid{column-gap:16px;row-gap:18px}}
 @media(max-width:760px){
- .form-grid{row-gap:14px}
- .form-section{padding:14px}
- .form-actions{align-items:stretch;justify-content:stretch;flex-direction:column-reverse}
+ .form-grid{grid-template-columns:1fr!important;row-gap:16px}
+ .form-section{padding:15px}
+ .form-actions{align-items:stretch;justify-content:stretch;flex-direction:column-reverse;margin-top:6px;padding-top:14px}
  .form-actions .button{width:100%;min-width:0}
  input,select,textarea{font-size:16px}
 }
