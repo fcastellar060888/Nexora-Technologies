@@ -3,7 +3,9 @@ const url = env.VITE_SUPABASE_URL
 const anonKey = env.VITE_SUPABASE_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anonKey)
-const TOKEN_KEY = 'cannapa_supabase_session'
+export const supabaseConfig={url:url||'',anonKey:anonKey||''}
+const TOKEN_KEY = 'canapa_supabase_session'
+const LEGACY_TOKEN_KEY='cannapa_supabase_session'
 const EXPIRY_MARGIN_SECONDS = 60
 
 function headers(token='') {
@@ -15,17 +17,21 @@ function headers(token='') {
 }
 
 function persistSession(session) {
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
   if (!session) localStorage.removeItem(TOKEN_KEY)
   else localStorage.setItem(TOKEN_KEY, JSON.stringify(session))
 }
 
 function loadSession() {
   try {
-    const session = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null')
+    const raw=localStorage.getItem(TOKEN_KEY)||localStorage.getItem(LEGACY_TOKEN_KEY)
+    const session = JSON.parse(raw || 'null')
     if (!session || typeof session !== 'object') return null
+    if(!localStorage.getItem(TOKEN_KEY))persistSession(session)
     return session
   } catch {
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(LEGACY_TOKEN_KEY)
     return null
   }
 }
