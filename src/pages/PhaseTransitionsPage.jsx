@@ -4,14 +4,23 @@ import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{useStore}from'../services/store'
 import{cultivationPhases,tracePlant}from'../domain/propagation'
+import{activePlantRestrictions}from'../domain/mipe'
 
 export default function PhaseTransitionsPage(){
  const{state,update}=useStore();const c=state.currentContext
  const[form,setForm]=useState({plantId:c.plantId||'',fromPhase:'Propagación',toPhase:'Vegetativo',date:new Date().toISOString().slice(0,10),siteId:c.siteId||'',houseId:c.houseId||'',bedId:c.bedId||'',responsible:'',notes:''})
- function save(e){e.preventDefault();if(!form.plantId)return alert('Selecciona una planta.');update(s=>({...s,phaseTransitions:[...s.phaseTransitions,{id:crypto.randomUUID(),entityType:'plant',entityId:form.plantId,createdAt:new Date().toISOString(),...form}],plantPositions:s.plantPositions.map(p=>p.id===form.plantId?{...p,currentPhase:form.toPhase,phaseStartDate:form.date}:p)}),{module:'Cultivo',action:`Cambio ${form.fromPhase} → ${form.toPhase}`,detail:form.plantId})}
+ function save(e){
+  e.preventDefault()
+  if(!form.plantId)return alert('Selecciona una planta.')
+  if(form.toPhase==='Cosecha'){
+   const restriction=activePlantRestrictions(state,form.plantId,`${form.date}T12:00:00`)
+   if(restriction.harvestBlocked)return alert(`No se puede cosechar esta planta. El periodo de carencia MIPE termina el ${new Date(restriction.harvestRestrictedUntil).toLocaleString('es-CO')}.`)
+  }
+  update(s=>({...s,phaseTransitions:[...s.phaseTransitions,{id:crypto.randomUUID(),entityType:'plant',entityId:form.plantId,createdAt:new Date().toISOString(),...form}],plantPositions:s.plantPositions.map(p=>p.id===form.plantId?{...p,currentPhase:form.toPhase,phaseStartDate:form.date}:p)}),{module:'Cultivo',action:`Cambio ${form.fromPhase} → ${form.toPhase}`,detail:form.plantId})
+ }
  return <><PageHeader title="Cambios de fase" subtitle="Conserva la fecha y ubicación de cada paso desde propagación hasta floración y cosecha."/>
  <Card title="Registrar cambio"><form className="form-grid" onSubmit={save}>
-  <Field label="Planta"><select value={form.plantId} onChange={e=>setForm({...form,plantId:e.target.value})}><option value="">Seleccionar</option>{state.plantPositions.map(p=><option key={p.id} value={p.id}>{state.beds.find(b=>b.id===p.bedId)?.name} · F{p.row} P{p.position}</option>)}</select></Field>
+  <Field label="Planta"><select value={form.plantId} onChange={e=>setForm({...form,plantId:e.target.value})}><option value="">Seleccionar</option>{state.plantPositions.map(p=>{const r=activePlantRestrictions(state,p.id);return <option key={p.id} value={p.id}>{state.beds.find(b=>b.id===p.bedId)?.name} · F{p.row} P{p.position}{r.harvestBlocked?' · CAR​​ENCIA ACTIVA':''}</option>})}</select></Field>
   <Field label="Fase anterior"><select value={form.fromPhase} onChange={e=>setForm({...form,fromPhase:e.target.value})}>{cultivationPhases.map(x=><option key={x}>{x}</option>)}</select></Field>
   <Field label="Nueva fase"><select value={form.toPhase} onChange={e=>setForm({...form,toPhase:e.target.value})}>{cultivationPhases.map(x=><option key={x}>{x}</option>)}</select></Field>
   <Field label="Fecha"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></Field>
