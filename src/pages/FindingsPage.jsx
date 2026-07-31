@@ -3,7 +3,7 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
-import {FormActions,ValidationMessage} from'../components/FormKit'
+import {FormActions,ValidationMessage} from'../components/forms/FormKit.jsx'
 import {useStore} from'../services/store'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
 
