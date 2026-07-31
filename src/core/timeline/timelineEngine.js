@@ -14,14 +14,21 @@ export function createTimelineEngine({maxEntries=2000}={}){
   return()=>listeners.delete(listener)
  }
 
- function record(entry){
+ function record(entry,{silent=false}={}){
   if(!entry?.id)throw new Error('La entrada del timeline requiere identificador')
   if(entries.some(item=>item.id===entry.id))return entry
   entries.push(Object.freeze({...entry}))
   entries.sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt))
   if(entries.length>maxEntries)entries.splice(0,entries.length-maxEntries)
-  notify()
+  if(!silent)notify()
   return entry
+ }
+
+ function hydrate(persisted=[]){
+  entries.length=0
+  for(const entry of Array.isArray(persisted)?persisted:[])record(entry,{silent:true})
+  notify()
+  return entries.length
  }
 
  function recordEvent(event){return record(domainEventToTimelineEntry(event))}
@@ -73,7 +80,7 @@ export function createTimelineEngine({maxEntries=2000}={}){
  function clear(){if(entries.length){entries.length=0;notify()}}
  function size(){return entries.length}
 
- return Object.freeze({record,recordEvent,query,connect,disconnect,clear,size,subscribe})
+ return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,subscribe})
 }
 
 export const timelineEngine=createTimelineEngine()
