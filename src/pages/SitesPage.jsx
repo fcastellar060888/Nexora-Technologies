@@ -3,6 +3,7 @@ import Card from'../components/Card'
 import CrudActions from'../components/CrudActions'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
+import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{useStore}from'../services/store'
 
 const normalize=value=>value.trim().replace(/\s+/g,' ')
@@ -30,10 +31,15 @@ export default function SitesPage(){
   if(duplicate){setMessage({tone:'error',text:`Ya existe una sede llamada ${name} dentro de ${company.name}.`});return}
   const payload={companyId:form.companyId,name,location,manager}
   if(editingId){
-   update(store=>({...store,sites:store.sites.map(site=>site.id===editingId?{...site,...payload}:site)}),{action:'Actualizar sede',module:'Configuración',detail:`${company.name} · ${name}`})
+   const previous=state.sites.find(site=>site.id===editingId)
+   update(store=>({...store,sites:store.sites.map(site=>site.id===editingId?{...site,...payload}:site)}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.SITE_UPDATED,aggregateType:'site',aggregateId:editingId,organizationId:form.companyId,siteId:editingId,payload:{label:`${company.name} · ${name}`,before:previous,after:{...previous,...payload}},metadata:{collections:['sites']}})
    setMessage({tone:'success',text:'Sede actualizada correctamente.'})
   }else{
-   update(store=>({...store,sites:[...store.sites,{id:crypto.randomUUID(),...payload}]}),{action:'Crear sede',module:'Configuración',detail:`${company.name} · ${name}`})
+   const id=crypto.randomUUID()
+   const site={id,...payload}
+   update(store=>({...store,sites:[...store.sites,site]}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.SITE_CREATED,aggregateType:'site',aggregateId:id,organizationId:form.companyId,siteId:id,payload:{label:`${company.name} · ${name}`,site},metadata:{collections:['sites']}})
    setMessage({tone:'success',text:'Sede creada correctamente.'})
   }
   setEditingId(null)
@@ -51,7 +57,8 @@ export default function SitesPage(){
   const houseCount=houseCountBySite[site.id]||0
   if(houseCount){setMessage({tone:'error',text:`No se puede eliminar ${site.name}: tiene ${houseCount} nave${houseCount===1?'':'s'} asociada${houseCount===1?'':'s'}.`});return}
   if(confirm(`¿Eliminar la sede ${site.name}? Esta acción no se puede deshacer.`)){
-   update(store=>({...store,sites:store.sites.filter(item=>item.id!==site.id)}),{action:'Eliminar sede',module:'Configuración',detail:site.name})
+   update(store=>({...store,sites:store.sites.filter(item=>item.id!==site.id)}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.SITE_DELETED,aggregateType:'site',aggregateId:site.id,organizationId:site.companyId,siteId:site.id,payload:{label:site.name,site},metadata:{collections:['sites']}})
    if(editingId===site.id)resetForm()
    setMessage({tone:'success',text:'Sede eliminada.'})
   }
