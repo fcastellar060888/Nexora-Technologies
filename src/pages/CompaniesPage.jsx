@@ -3,6 +3,7 @@ import Card from'../components/Card'
 import CrudActions from'../components/CrudActions'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
+import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{useStore}from'../services/store'
 
 const empty={name:'',taxId:''}
@@ -29,10 +30,15 @@ export default function CompaniesPage(){
   if(duplicateTaxId){setMessage({tone:'error',text:'Ya existe una empresa registrada con ese NIT.'});return}
   const payload={name,taxId}
   if(editingId){
-   update(store=>({...store,companies:store.companies.map(company=>company.id===editingId?{...company,...payload}:company)}),{action:'Actualizar empresa',module:'Configuración',detail:name})
+   const previous=state.companies.find(company=>company.id===editingId)
+   update(store=>({...store,companies:store.companies.map(company=>company.id===editingId?{...company,...payload}:company)}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.COMPANY_UPDATED,aggregateType:'company',aggregateId:editingId,organizationId:editingId,payload:{label:name,before:previous,after:{...previous,...payload}},metadata:{collections:['companies']}})
    setMessage({tone:'success',text:'Empresa actualizada correctamente.'})
   }else{
-   update(store=>({...store,companies:[...store.companies,{id:crypto.randomUUID(),active:true,...payload}]}),{action:'Crear empresa',module:'Configuración',detail:name})
+   const id=crypto.randomUUID()
+   const company={id,active:true,...payload}
+   update(store=>({...store,companies:[...store.companies,company]}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.COMPANY_CREATED,aggregateType:'company',aggregateId:id,organizationId:id,payload:{label:name,company},metadata:{collections:['companies']}})
    setMessage({tone:'success',text:'Empresa creada correctamente.'})
   }
   setEditingId(null)
@@ -50,7 +56,8 @@ export default function CompaniesPage(){
   const siteCount=siteCountByCompany[company.id]||0
   if(siteCount){setMessage({tone:'error',text:`No se puede eliminar ${company.name}: tiene ${siteCount} sede${siteCount===1?'':'s'} asociada${siteCount===1?'':'s'}.`});return}
   if(confirm(`¿Eliminar la empresa ${company.name}? Esta acción no se puede deshacer.`)){
-   update(store=>({...store,companies:store.companies.filter(item=>item.id!==company.id)}),{action:'Eliminar empresa',module:'Configuración',detail:company.name})
+   update(store=>({...store,companies:store.companies.filter(item=>item.id!==company.id)}),{audit:false})
+   void publishDomainEvent(state,{name:DomainEvents.COMPANY_DELETED,aggregateType:'company',aggregateId:company.id,organizationId:company.id,payload:{label:company.name,company},metadata:{collections:['companies']}})
    if(editingId===company.id)resetForm()
    setMessage({tone:'success',text:'Empresa eliminada.'})
   }
