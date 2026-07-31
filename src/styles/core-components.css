@@ -1,0 +1,57 @@
+/* Componentes transversales certificados de Nexora One */
+.button,.icon-button,.nav-group-toggle,.global-search button,.search-results button{font:inherit}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:var(--nx-space-2);min-height:var(--nx-control-height);padding:0 var(--nx-space-4);border:1px solid transparent;border-radius:var(--nx-radius-md);font-weight:750;line-height:1;cursor:pointer;transition:transform .12s,box-shadow .15s,background .15s,border-color .15s,color .15s}
+.button:hover:not(:disabled){transform:translateY(-1px)}
+.button:active:not(:disabled){transform:translateY(0)}
+.button:focus-visible,.icon-button:focus-visible,.nav-group-toggle:focus-visible,.global-search button:focus-visible,.search-results button:focus-visible{outline:0;box-shadow:var(--nx-focus-ring)}
+.button:disabled,.icon-button:disabled{cursor:not-allowed;opacity:.58}
+.button.primary{color:#fff;background:var(--nx-color-accent-600);box-shadow:0 6px 16px rgba(17,122,115,.18)}
+.button.primary:hover:not(:disabled){background:var(--nx-color-accent-700)}
+.button.secondary{color:var(--nx-color-brand-800);background:var(--nx-color-surface);border-color:var(--nx-color-border-strong)}
+.button.secondary:hover:not(:disabled){background:var(--nx-color-surface-muted)}
+.button.danger{color:#fff;background:var(--nx-color-danger)}
+.button.warning{color:#6b4b00;background:#ffd980}
+.button.compact{min-height:36px;padding-inline:var(--nx-space-3);font-size:12px}
+.button.loading{pointer-events:none}
+
+.card{overflow:hidden;padding:var(--nx-space-5);border-color:var(--nx-color-border);border-radius:var(--nx-radius-lg);background:var(--nx-color-surface);box-shadow:var(--nx-shadow-sm)}
+.card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--nx-space-4);margin-bottom:var(--nx-space-4)}
+.card-heading-copy{min-width:0}
+.card-heading h3{color:var(--nx-color-brand-800);line-height:1.25}
+.card-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--nx-space-2);flex-wrap:wrap}
+.card.flush{padding:0}
+.card.flush>.card-heading{padding:var(--nx-space-5);margin:0;border-bottom:1px solid var(--nx-color-border)}
+.card.flush>.card-body{padding:var(--nx-space-5)}
+
+.page-header{align-items:flex-start;margin-bottom:var(--nx-space-5)}
+.page-header-copy{min-width:0}
+.page-header-eyebrow{display:block;margin-bottom:var(--nx-space-1);color:var(--nx-color-accent-700);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.page-header h2{color:var(--nx-color-brand-800);line-height:1.15;letter-spacing:-.02em}
+.page-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--nx-space-2);flex-wrap:wrap}
+
+.topbar{min-height:68px}
+.topbar-brand{min-width:max-content}
+.global-search{min-width:220px;max-width:520px;flex:1}
+.global-search input{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.24);color:#fff}
+.global-search input::placeholder{color:rgba(255,255,255,.68)}
+.global-search input:focus{background:#fff;color:var(--nx-color-text)}
+.icon-button{border-radius:var(--nx-radius-md);cursor:pointer}
+.nav-group-toggle{border-radius:var(--nx-radius-md)}
+.main-content{width:100%;max-width:1680px;margin-inline:auto}
+
+@media(max-width:1050px){
+ .topbar{gap:var(--nx-space-2);padding-inline:var(--nx-space-4)}
+ .topbar-brand p{display:none}
+ .global-search{min-width:180px}
+ .realtime-status span,.data-source-status span,.sync-status span{display:none}
+}
+@media(max-width:760px){
+ .topbar{padding-inline:var(--nx-space-3)}
+ .topbar-brand h1{font-size:17px}
+ .global-search{order:3;flex-basis:100%;max-width:none}
+ .version-badge{display:none}
+ .card{padding:var(--nx-space-4)}
+ .card-heading,.page-header{flex-direction:column}
+ .card-heading-actions,.page-header-actions{width:100%;justify-content:flex-start}
+ .page-header-actions>.button,.card-heading-actions>.button{flex:1}
+}
