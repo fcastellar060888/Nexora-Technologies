@@ -1,20 +1,10 @@
 import test from'node:test'
 import assert from'node:assert/strict'
+import{readFile}from'node:fs/promises'
 import{createDomainEvent,createEventBus,DomainEvents}from'../src/core/events/index.js'
 import{connectLedgerToEventBus,createLedgerEntry,createMemoryLedgerRepository,isLedgerEntry}from'../src/core/ledger/index.js'
 
-const event=(overrides={})=>createDomainEvent({
- name:DomainEvents.COMPANY_CREATED,
- aggregateType:'company',
- aggregateId:'company-1',
- organizationId:'company-1',
- actorId:'user-1',
- occurredAt:'2026-07-31T22:00:00.000Z',
- eventId:'event-1',
- payload:{label:'Canapa'},
- metadata:{actorName:'Fer'},
- ...overrides
-})
+const event=(overrides={})=>createDomainEvent({name:DomainEvents.COMPANY_CREATED,aggregateType:'company',aggregateId:'company-1',organizationId:'company-1',actorId:'user-1',occurredAt:'2026-07-31T22:00:00.000Z',eventId:'event-1',payload:{label:'Canapa'},metadata:{actorName:'Fer'},...overrides})
 
 test('crea una entrada inmutable y trazable del Operational Ledger',()=>{
  const entry=createLedgerEntry(event(),{sequence:1,recordedAt:'2026-07-31T22:00:01.000Z'})
@@ -59,4 +49,14 @@ test('reporta salud del repositorio',()=>{
  const ledger=createMemoryLedgerRepository()
  ledger.append(event())
  assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2})
+})
+
+test('el bridge hidrata, persiste y limita el registro canónico',async()=>{
+ const source=await readFile(new URL('../src/core/ledger/OperationalLedgerBridge.jsx',import.meta.url),'utf8')
+ assert.match(source,/appendMany\(state\.operationalLedgerEntries/)
+ assert.match(source,/operationalLedger\.subscribe/)
+ assert.match(source,/connectLedgerToEventBus/)
+ assert.match(source,/operationalLedgerEntries:/)
+ assert.match(source,/slice\(-10000\)/)
+ assert.match(source,/sync:false,audit:false/)
 })
