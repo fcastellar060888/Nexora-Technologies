@@ -1,11 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/AppShell'
+import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
 import CompaniesPage from './pages/CompaniesPage'
 import SitesPage from './pages/SitesPage'
-import SiteMapPage from './pages/SiteMapPage'
 import HousesPage from './pages/HousesPage'
-import HouseMapPage from './pages/HouseMapPage'
 import GeneticsPage from './pages/GeneticsPage'
 import IncidentsPage from './pages/IncidentsPage'
 import FindingsPage from './pages/FindingsPage'
@@ -21,18 +20,11 @@ import OperationsCenterPage from './pages/OperationsCenterPage'
 import FormulationPage from './pages/FormulationPage'
 import PreparationsPage from './pages/PreparationsPage'
 import WorkOrdersPage from './pages/WorkOrdersPage'
-import ProductionPage from './pages/ProductionPage'
-import DryingPage from './pages/DryingPage'
-import TrimmingPage from './pages/TrimmingPage'
-import SelectionPage from './pages/SelectionPage'
-import PackingPage from './pages/PackingPage'
 import CostsPage from './pages/CostsPage'
 import UsersPage from './pages/UsersPage'
 import LoginPage from './pages/LoginPage'
-import OperationalMapPage from './pages/OperationalMapPage'
 import PlantProfilePage from './pages/PlantProfilePage'
 import InventoryMovementsPage from './pages/InventoryMovementsPage'
-import ProductionFlowPage from './pages/ProductionFlowPage'
 import IrrigationWorkflowPage from './pages/IrrigationWorkflowPage'
 import AuditLogPage from './pages/AuditLogPage'
 import InsightsPage from './pages/InsightsPage'
@@ -56,10 +48,16 @@ import CurrenciesPage from './pages/CurrenciesPage'
 import InfrastructurePage from './pages/InfrastructurePage'
 import InfrastructureMapPage from './pages/InfrastructureMapPage'
 
+function Guard({ permission, children }) {
+  return <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/operations" element={<OperationsCenterPage />} />
@@ -70,11 +68,11 @@ export default function App() {
         <Route path="/house-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/plant/:plantId" element={<PlantProfilePage />} />
 
-        <Route path="/companies" element={<CompaniesPage />} />
-        <Route path="/sites" element={<SitesPage />} />
-        
-        <Route path="/houses" element={<HousesPage />} />
-        <Route path="/infrastructure" element={<InfrastructurePage />} />
+        <Route path="/companies" element={<Guard permission="manage_settings"><CompaniesPage /></Guard>} />
+        <Route path="/sites" element={<Guard permission="manage_settings"><SitesPage /></Guard>} />
+        <Route path="/houses" element={<Guard permission="manage_settings"><HousesPage /></Guard>} />
+        <Route path="/infrastructure" element={<Guard permission="manage_settings"><InfrastructurePage /></Guard>} />
+
         <Route path="/propagation/grandmothers" element={<GrandmotherPlantsPage />} />
         <Route path="/propagation/mothers" element={<MotherPlantsPage />} />
         <Route path="/lots" element={<Navigate to="/propagation/batches" replace />} />
@@ -84,46 +82,48 @@ export default function App() {
         <Route path="/propagation/transitions" element={<PhaseTransitionsPage />} />
         <Route path="/propagation/lineage" element={<LineagePage />} />
         <Route path="/genetics" element={<GeneticsPage />} />
-        
 
-        <Route path="/mirfe/dashboard" element={<MirfeDashboardPage />} />
-        <Route path="/mirfe/monitoring" element={<MirfeMonitoringPage />} />
-        <Route path="/mirfe/programs" element={<MirfeProgramsPage />} />
-        <Route path="/mirfe/reinforcements" element={<MirfeReinforcementsPage />} />
-        <Route path="/mirfe/history" element={<MirfeHistoryPage />} />
+        <Route path="/mirfe/dashboard" element={<Guard permission="view_dashboards"><MirfeDashboardPage /></Guard>} />
+        <Route path="/mirfe/monitoring" element={<Guard permission="manage_mirfe"><MirfeMonitoringPage /></Guard>} />
+        <Route path="/mirfe/programs" element={<Guard permission="manage_mirfe"><MirfeProgramsPage /></Guard>} />
+        <Route path="/mirfe/reinforcements" element={<Guard permission="manage_mirfe"><MirfeReinforcementsPage /></Guard>} />
+        <Route path="/mirfe/history" element={<Guard permission="manage_mirfe"><MirfeHistoryPage /></Guard>} />
 
-        <Route path="/mipe/dashboard" element={<MipeDashboardPage />} />
-        <Route path="/mipe/incidents" element={<IncidentsPage />} />
-        <Route path="/mipe/findings" element={<FindingsPage />} />
-        <Route path="/mipe/treatments" element={<TreatmentsPage />} />
+        <Route path="/mipe/dashboard" element={<Guard permission="view_dashboards"><MipeDashboardPage /></Guard>} />
+        <Route path="/mipe/incidents" element={<Guard permission="manage_mipe"><IncidentsPage /></Guard>} />
+        <Route path="/mipe/findings" element={<Guard permission="manage_mipe"><FindingsPage /></Guard>} />
+        <Route path="/mipe/treatments" element={<Guard permission="manage_mipe"><TreatmentsPage /></Guard>} />
 
-        <Route path="/irrigation/water" element={<WaterAnalysisPage />} />
-        <Route path="/irrigation/products" element={<NutrientProductsPage />} />
-        <Route path="/irrigation/objectives" element={<NutrientObjectivesPage />} />
-        <Route path="/irrigation/plan" element={<IrrigationPlanPage />} />
-        <Route path="/irrigation/formulation" element={<FormulationPage />} />
-        <Route path="/irrigation/preparations" element={<PreparationsPage />} />
-        <Route path="/irrigation/orders" element={<WorkOrdersPage />} />
-        <Route path="/irrigation/workflow" element={<IrrigationWorkflowPage />} />
+        <Route path="/irrigation/water" element={<Guard permission="manage_irrigation"><WaterAnalysisPage /></Guard>} />
+        <Route path="/irrigation/products" element={<Guard permission="manage_irrigation"><NutrientProductsPage /></Guard>} />
+        <Route path="/irrigation/objectives" element={<Guard permission="manage_irrigation"><NutrientObjectivesPage /></Guard>} />
+        <Route path="/irrigation/plan" element={<Guard permission="manage_irrigation"><IrrigationPlanPage /></Guard>} />
+        <Route path="/irrigation/formulation" element={<Guard permission="manage_irrigation"><FormulationPage /></Guard>} />
+        <Route path="/irrigation/preparations" element={<Guard permission="manage_irrigation"><PreparationsPage /></Guard>} />
+        <Route path="/irrigation/orders" element={<Guard permission="execute_orders"><WorkOrdersPage /></Guard>} />
+        <Route path="/irrigation/workflow" element={<Guard permission="record_irrigation"><IrrigationWorkflowPage /></Guard>} />
+
         <Route path="/production/harvest" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/drying" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/trimming" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/selection" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/packing" element={<Navigate to="/propagation/batches" replace />} />
         <Route path="/production/flow" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/finished-goods" element={<FinishedGoodsPage />} />
-        <Route path="/sales" element={<SalesPage />} />
-        <Route path="/currencies" element={<CurrenciesPage />} />
-        <Route path="/costs" element={<CostsPage />} />
-        <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
-        <Route path="/audit" element={<AuditLogPage />} />
-        <Route path="/insights" element={<InsightsPage />} />
-        <Route path="/diagnostics" element={<SystemDiagnosticsPage />} />
-        <Route path="/users" element={<UsersPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/finished-goods" element={<Guard permission="view_production"><FinishedGoodsPage /></Guard>} />
+        <Route path="/sales" element={<Guard permission="manage_inventory"><SalesPage /></Guard>} />
+        <Route path="/currencies" element={<Guard permission="manage_settings"><CurrenciesPage /></Guard>} />
+        <Route path="/costs" element={<Guard permission="view_costs"><CostsPage /></Guard>} />
+        <Route path="/inventory/movements" element={<Guard permission="view_inventory"><InventoryMovementsPage /></Guard>} />
+        <Route path="/inventory" element={<Guard permission="view_inventory"><InventoryPage /></Guard>} />
+
+        <Route path="/audit" element={<Guard permission="view_audit"><AuditLogPage /></Guard>} />
+        <Route path="/insights" element={<Guard permission="view_dashboards"><InsightsPage /></Guard>} />
+        <Route path="/diagnostics" element={<Guard permission="manage_settings"><SystemDiagnosticsPage /></Guard>} />
+        <Route path="/users" element={<Guard permission="manage_users"><UsersPage /></Guard>} />
+        <Route path="/settings" element={<Guard permission="manage_settings"><SettingsPage /></Guard>} />
       </Route>
+
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
 }
