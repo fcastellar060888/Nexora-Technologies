@@ -48,6 +48,7 @@ import CurrenciesPage from './pages/CurrenciesPage'
 import InfrastructurePage from './pages/InfrastructurePage'
 import InfrastructureMapPage from './pages/InfrastructureMapPage'
 import InfrastructureOperationsPage from './pages/InfrastructureOperationsPage'
+import SyncCenterPage from './pages/SyncCenterPage'
 
 function Guard({ permission, children }) {
   return <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
@@ -118,6 +119,7 @@ export default function App() {
         <Route path="/inventory/movements" element={<Guard permission="view_inventory"><InventoryMovementsPage /></Guard>} />
         <Route path="/inventory" element={<Guard permission="view_inventory"><InventoryPage /></Guard>} />
 
+        <Route path="/sync" element={<Guard permission="manage_settings"><SyncCenterPage /></Guard>} />
         <Route path="/audit" element={<Guard permission="view_audit"><AuditLogPage /></Guard>} />
         <Route path="/insights" element={<Guard permission="view_dashboards"><InsightsPage /></Guard>} />
         <Route path="/diagnostics" element={<Guard permission="manage_settings"><SystemDiagnosticsPage /></Guard>} />
