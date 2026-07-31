@@ -1,6 +1,6 @@
-export const CURRENT_SCHEMA_VERSION=8
+export const CURRENT_SCHEMA_VERSION=9
 
-const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','timelineEntries','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth']
+const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','timelineEntries','operationalLedgerEntries','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth']
 
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
 const nullableNumber=value=>value===''||value==null?null:number(value)
@@ -31,29 +31,23 @@ function flattenPreparationItems(preparation,formulations,nutrientProducts){
  return source.map((item,index)=>({id:item.id||`${preparation.id}-${index}`,nutrientProductId:item.nutrientProductId||item.productId,tank:item.tank||'A',requiredQuantity:number(item.requiredQuantity??item.grams),requiredUnit:'g',inventoryProductId:item.inventoryProductId||nutrientProducts.find(x=>x.id===(item.nutrientProductId||item.productId))?.inventoryProductId||'',lotId:item.lotId||'',consumedQuantity:number(item.consumedQuantity),cost:number(item.cost)}))
 }
 
-function normalizeMembership(item){
- return{...item,companyId:item.companyId||item.organizationId||'',siteIds:unique(item.siteIds),permissionOverrides:unique(item.permissionOverrides),deniedPermissions:unique(item.deniedPermissions),status:item.status||'active'}
-}
-
-function normalizeQueue(item){
- return{...item,baseVersion:Math.max(0,number(item.baseVersion)),attempts:Math.max(0,number(item.attempts)),status:item.status||'pending',error:item.error||''}
-}
+function normalizeMembership(item){return{...item,companyId:item.companyId||item.organizationId||'',siteIds:unique(item.siteIds),permissionOverrides:unique(item.permissionOverrides),deniedPermissions:unique(item.deniedPermissions),status:item.status||'active'}}
+function normalizeQueue(item){return{...item,baseVersion:Math.max(0,number(item.baseVersion)),attempts:Math.max(0,number(item.attempts)),status:item.status||'pending',error:item.error||''}}
 
 function normalizeTimelineEntry(item){
+ return{...item,id:String(item.id||item.eventId||crypto.randomUUID()),occurredAt:Number.isNaN(Date.parse(item.occurredAt))?new Date().toISOString():new Date(item.occurredAt).toISOString(),title:String(item.title||item.eventName||'Actividad'),summary:String(item.summary||''),category:String(item.category||'Sistema'),tone:String(item.tone||'neutral'),actorId:String(item.actorId||'system'),actorName:String(item.actorName||item.actorId||'Sistema'),organizationId:String(item.organizationId||'local-installation'),siteId:item.siteId?String(item.siteId):null,aggregateType:String(item.aggregateType||'system'),aggregateId:String(item.aggregateId||item.id||'unknown')}
+}
+
+function normalizeLedgerEntry(item,index){
+ const event=item?.event
+ if(!event?.eventId||!event?.name||!event?.aggregate?.type||!event?.aggregate?.id||!event?.context?.organizationId)return null
+ const occurredAt=Number.isNaN(Date.parse(event.occurredAt))?new Date().toISOString():new Date(event.occurredAt).toISOString()
+ const recordedAt=Number.isNaN(Date.parse(item.recordedAt))?occurredAt:new Date(item.recordedAt).toISOString()
  return{
-  ...item,
-  id:String(item.id||item.eventId||crypto.randomUUID()),
-  occurredAt:Number.isNaN(Date.parse(item.occurredAt))?new Date().toISOString():new Date(item.occurredAt).toISOString(),
-  title:String(item.title||item.eventName||'Actividad'),
-  summary:String(item.summary||''),
-  category:String(item.category||'Sistema'),
-  tone:String(item.tone||'neutral'),
-  actorId:String(item.actorId||'system'),
-  actorName:String(item.actorName||item.actorId||'Sistema'),
-  organizationId:String(item.organizationId||'local-installation'),
-  siteId:item.siteId?String(item.siteId):null,
-  aggregateType:String(item.aggregateType||'system'),
-  aggregateId:String(item.aggregateId||item.id||'unknown')
+  id:String(event.eventId),
+  sequence:Math.max(1,Math.trunc(number(item.sequence,index+1))),
+  recordedAt,
+  event:{...event,eventId:String(event.eventId),name:String(event.name),version:Math.max(1,Math.trunc(number(event.version,1))),aggregate:{type:String(event.aggregate.type),id:String(event.aggregate.id)},context:{organizationId:String(event.context.organizationId),siteId:event.context.siteId?String(event.context.siteId):null,actorId:String(event.context.actorId||'system')},occurredAt,correlationId:event.correlationId?String(event.correlationId):null,causationId:event.causationId?String(event.causationId):null,payload:event.payload&&typeof event.payload==='object'&&!Array.isArray(event.payload)?event.payload:{},metadata:event.metadata&&typeof event.metadata==='object'&&!Array.isArray(event.metadata)?event.metadata:{}}
  }
 }
 
@@ -75,6 +69,7 @@ export function migrateState(input={}){
  state.memberships=state.memberships.map(normalizeMembership)
  state.userSessions=state.userSessions.map(x=>({...x,status:x.status||'active',lastSeenAt:x.lastSeenAt||x.createdAt||''}))
  state.timelineEntries=state.timelineEntries.map(normalizeTimelineEntry).filter((entry,index,all)=>all.findIndex(item=>item.id===entry.id)===index).sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt)).slice(-2000)
+ state.operationalLedgerEntries=state.operationalLedgerEntries.map(normalizeLedgerEntry).filter(Boolean).filter((entry,index,all)=>all.findIndex(item=>item.id===entry.id)===index).sort((a,b)=>a.sequence-b.sequence).slice(-10000)
  state.syncQueue=state.syncQueue.map(normalizeQueue)
  state.syncConflicts=state.syncConflicts.map(x=>({...x,status:x.status||'open',createdAt:x.createdAt||new Date().toISOString()}))
  state.syncHealthEvents=state.syncHealthEvents.map(x=>({...x,status:x.status||'success',createdAt:x.createdAt||new Date().toISOString(),durationMs:Math.max(0,number(x.durationMs))})).slice(-500)
