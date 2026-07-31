@@ -12,4 +12,5 @@ import './styles/data-runtime.css'
 import './styles/realtime.css'
 import './styles/form-system.css'
 import './styles/form-kit.css'
+import './styles/core-components.css'
 ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><RealtimeProvider><App/></RealtimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
