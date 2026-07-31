@@ -6,4 +6,5 @@ import { StoreProvider } from './services/store'
 import './styles/app.css'
 import './styles/responsive-fixes.css'
 import './styles/auto-sync.css'
+import './styles/data-runtime.css'
 ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><App/></StoreProvider></BrowserRouter></React.StrictMode>)
