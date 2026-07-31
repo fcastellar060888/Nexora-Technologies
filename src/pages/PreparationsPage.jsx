@@ -1,17 +1,14 @@
-import Card from '../components/Card'
-import PageHeader from '../components/PageHeader'
-import { useStore } from '../services/store'
+import{useState}from'react'
+import Card from'../components/Card'
+import Field from'../components/Field'
+import PageHeader from'../components/PageHeader'
+import{useStore}from'../services/store'
+import{createTankPreparation,executeTankPreparation}from'../domain/irrigationExecution'
 
 export default function PreparationsPage(){
- const {state,update}=useStore()
- function create(f){
-  const tankGroups=Object.groupBy ? Object.groupBy(f.items,x=>x.tank) : f.items.reduce((a,x)=>((a[x.tank]=a[x.tank]||[]).push(x),a),{})
-  const prep={id:crypto.randomUUID(),formulationId:f.id,date:new Date().toISOString().slice(0,10),siteId:f.siteId,volumeL:f.volumeL,tanks:tankGroups,status:'Pendiente'}
-  update(s=>({...s,tankPreparations:[...s.tankPreparations,prep]}))
- }
- return <>
-  <PageHeader title="Preparaciones por tanque" subtitle="Convierte una formulación en cargas y listas separadas para Tanque A, B o C."/>
-  <Card title="Formulaciones disponibles">{state.formulations.map(f=><div className="house-list-card" key={f.id}><div><strong>{state.sites.find(s=>s.id===f.siteId)?.name} · {f.stage}</strong><small>{f.volumeL} L · {f.status}</small></div><button className="button primary" onClick={()=>create(f)}>Crear preparación</button></div>)}</Card>
-  <Card title="Preparaciones">{state.tankPreparations.map(p=><div className="preparation-card" key={p.id}><h4>{state.sites.find(s=>s.id===p.siteId)?.name} · {p.volumeL} L</h4>{Object.entries(p.tanks||{}).map(([tank,items])=><div key={tank}><strong>Tanque {tank}</strong><ul>{items.map(i=><li key={i.productId}>{state.nutrientProducts.find(x=>x.id===i.productId)?.name}: {i.grams} g</li>)}</ul></div>)}</div>)}</Card>
- </>
+ const{state,update}=useStore();const[allocations,setAllocations]=useState({});const[responsible,setResponsible]=useState('')
+ function create(formulation){try{update(s=>createTankPreparation(s,{formulationId:formulation.id,responsible}),{module:'Fertirriego',action:'Preparación creada',detail:formulation.id})}catch(error){alert(error.message)}}
+ function execute(preparation){try{update(s=>executeTankPreparation(s,{preparationId:preparation.id,allocations,responsible}),{module:'Fertirriego',action:'Preparación ejecutada',detail:preparation.id})}catch(error){alert(error.message)}}
+ const available=state.formulations.filter(f=>f.status==='Aprobada'&&!state.tankPreparations.some(p=>p.formulationId===f.id&&!['Cancelada','Aplicada'].includes(p.status)))
+ return <><PageHeader title="Preparaciones por tanque" subtitle="Convierte fórmulas aprobadas en consumos reales de inventario, costos y órdenes de aplicación."/><Card title="Responsable"><Field label="Responsable de preparación"><input value={responsible} onChange={e=>setResponsible(e.target.value)}/></Field></Card><Card title="Formulaciones aprobadas disponibles">{available.length?available.map(f=><div className="house-list-card" key={f.id}><div><strong>{state.sites.find(s=>s.id===f.siteId)?.name} · {f.stage}</strong><small>{f.volumeL} L · {f.status}</small></div><button className="button primary" onClick={()=>create(f)}>Crear preparación</button></div>):<p>No hay fórmulas aprobadas pendientes de preparación.</p>}</Card><Card title="Preparaciones">{state.tankPreparations.map(p=><div className="preparation-card" key={p.id}><h4>{state.sites.find(s=>s.id===p.siteId)?.name} · {p.volumeL} L · {p.status}</h4>{Object.entries((p.items||[]).reduce((a,x)=>((a[x.tank]=a[x.tank]||[]).push(x),a),{})).map(([tank,items])=><div key={tank}><strong>Tanque {tank}</strong><ul>{items.map(i=>{const nutrient=state.nutrientProducts.find(x=>x.id===i.nutrientProductId);const lots=state.inventoryLots.filter(l=>l.productId===i.inventoryProductId&&l.siteId===p.siteId&&Number(l.quantity)>0);return <li key={i.id}><span>{nutrient?.name}: {i.requiredQuantity} {i.requiredUnit}</span>{p.status==='Pendiente'?<select value={allocations[i.id]||''} onChange={e=>setAllocations({...allocations,[i.id]:e.target.value})}><option value="">Seleccionar lote</option>{lots.map(l=><option key={l.id} value={l.id}>{l.lotNumber} · {l.quantity}</option>)}</select>:<small>Lote {state.inventoryLots.find(l=>l.id===i.lotId)?.lotNumber||'—'} · costo ${Number(i.cost||0).toLocaleString('es-US')}</small>}</li>})}</ul></div>)}{p.status==='Pendiente'&&<button className="button warning" onClick={()=>execute(p)}>Ejecutar y descontar inventario</button>}{p.status!=='Pendiente'&&<p><strong>Costo total:</strong> ${Number(p.totalCost||0).toLocaleString('es-US')}</p>}</div>)}</Card></>
 }
