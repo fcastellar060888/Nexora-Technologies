@@ -58,11 +58,14 @@ export function StoreProvider({children}){
  const stateRef=useRef(state)
  const lockRef=useRef(false)
  const[runtime,setRuntime]=useState(()=>runtimeState())
+ const runtimeRef=useRef(runtime)
 
  useEffect(()=>{
   stateRef.current=state
   saveState(state)
  },[state])
+
+ useEffect(()=>{runtimeRef.current=runtime},[runtime])
 
  const update=useCallback((recipe,meta={})=>{
   dispatch({type:'UPDATE',recipe,meta,audit:{id:crypto.randomUUID(),createdAt:new Date().toISOString()}})
@@ -73,7 +76,7 @@ export function StoreProvider({children}){
   const current=stateRef.current
   const online=typeof navigator==='undefined'||navigator.onLine!==false
   const visible=typeof document==='undefined'||document.visibilityState==='visible'
-  if(!force&&!shouldAutoSync({state:current,online,visible,running:false,lastAttemptAt:runtime.lastAttemptAt}))return{skipped:true,reason:'not-eligible'}
+  if(!force&&!shouldAutoSync({state:current,online,visible,running:false,lastAttemptAt:runtimeRef.current.lastAttemptAt}))return{skipped:true,reason:'not-eligible'}
   if(!online){setRuntime(value=>({...value,online:false,status:'offline',reason,lastError:''}));return{skipped:true,reason:'offline'}}
 
   lockRef.current=true
@@ -92,7 +95,7 @@ export function StoreProvider({children}){
   }finally{
    lockRef.current=false
   }
- },[runtime.lastAttemptAt,update])
+ },[update])
 
  useEffect(()=>{
   const online=()=>{setRuntime(value=>({...value,online:true,lastError:''}));synchronize('connection-restored')}
