@@ -23,17 +23,28 @@ textarea{min-height:112px;resize:vertical;line-height:1.45}
 .modal-form .field.full,.field.full{grid-column:1/-1}
 .inline-operation-form{display:grid;min-width:240px;gap:9px;padding:10px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--input) 82%,#fff)}
 .inline-operation-form :is(input,select,.button){width:100%;min-width:0}
+.preparation-card{display:grid;gap:18px;margin-bottom:18px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.preparation-card>header{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.preparation-card h4,.preparation-card h5{margin:0}
+.preparation-tank{display:grid;gap:12px;padding:15px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--input) 74%,#fff)}
+.preparation-items{display:grid;gap:12px}
+.preparation-item{display:grid;grid-template-columns:minmax(180px,1fr) minmax(240px,1.2fr);align-items:end;gap:16px;padding:12px;border-radius:10px;background:#fff}
+.preparation-item>div:first-child{display:grid;gap:4px}
 fieldset{min-width:0;margin:0;padding:18px;border:1px solid var(--line);border-radius:12px}
 legend{padding:0 7px;color:var(--navy);font-size:13px;font-weight:800}
 input[type="checkbox"],input[type="radio"]{width:18px;min-height:18px;margin:0;padding:0;accent-color:var(--teal)}
 .checkbox-field,.radio-field{display:flex;align-items:flex-start;gap:9px;min-height:44px;padding:10px 0}
 .checkbox-field label,.radio-field label{line-height:1.4}
-@media(max-width:900px){.form-grid{column-gap:16px;row-gap:18px}}
+@media(max-width:900px){.form-grid{column-gap:16px;row-gap:18px}.preparation-item{grid-template-columns:1fr}}
 @media(max-width:760px){
  .form-grid{grid-template-columns:1fr!important;row-gap:16px}
  .form-section{padding:15px}
  .form-actions{align-items:stretch;justify-content:stretch;flex-direction:column-reverse;margin-top:6px;padding-top:14px}
  .form-actions .button{width:100%;min-width:0}
  .inline-operation-form{min-width:210px}
+ .preparation-card{padding:14px}
+ .preparation-card>header{align-items:flex-start;flex-direction:column}
+ .preparation-tank{padding:12px}
+ .preparation-item{padding:10px}
  input,select,textarea{font-size:16px}
 }
