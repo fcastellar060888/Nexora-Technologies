@@ -1,0 +1,109 @@
+/* Global responsive hardening for dense ERP forms. */
+
+/* Grid and flex children must be allowed to shrink inside their tracks. */
+.card,
+.content-grid > *,
+.form-grid > *,
+.field,
+.form-actions,
+.calculated-field,
+.detail-grid > *,
+.summary-strip > *,
+.context-bar > * {
+  min-width: 0;
+}
+
+/* Native date/time controls and selects otherwise impose intrinsic widths on Safari/iPadOS. */
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+  min-width: 0;
+}
+
+input[type='date'],
+input[type='datetime-local'],
+input[type='time'],
+input[type='month'] {
+  width: 100%;
+  min-width: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+/* Keep labels readable without forcing their grid track wider. */
+.field > span {
+  overflow-wrap: anywhere;
+}
+
+/* Dense paired cards need more room than ordinary dashboard cards. */
+@media (max-width: 1280px) {
+  .content-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid,
+  .form-grid.compact-three,
+  .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-grid.four,
+  .summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nutrient-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Tablet portrait and narrow split-screen mode. */
+@media (max-width: 900px) {
+  .form-grid,
+  .form-grid.compact-three,
+  .form-grid.four,
+  .detail-grid,
+  .summary-strip,
+  .nutrient-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .card {
+    padding: 16px;
+  }
+}
+
+/* Phone-sized screens: avoid controls and actions spilling horizontally. */
+@media (max-width: 560px) {
+  .main-content {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 13px;
+  }
+
+  .form-actions,
+  .actions,
+  .row-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .form-actions .button,
+  .actions .button,
+  .row-actions button {
+    width: 100%;
+  }
+}
