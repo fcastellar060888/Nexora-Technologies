@@ -6,6 +6,7 @@ import{AUTO_SYNC_INTERVAL_MS,runtimeState,shouldAutoSync}from'./autoSyncRuntime.
 import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
 import{appendHealthEvent}from'./syncHealth.js'
 import{loadOrganizationDeviceHealth,normalizeRemoteDeviceHealth,reportDeviceHealth}from'./syncDeviceHealth.js'
+import{bootstrapOrganization}from'./remoteBootstrap.js'
 
 const StoreContext=createContext(null)
 const DEVICE_KEY='cannapa_device_id'
@@ -29,6 +30,7 @@ function changedCollections(prev,next){
 }
 
 function reducer(prev,action){
+ if(action.type==='HYDRATE')return action.state
  if(action.type!=='UPDATE')return prev
  const candidate=typeof action.recipe==='function'?action.recipe(prev):action.recipe
  if(!candidate||typeof candidate!=='object')throw new Error('La actualización del store debe devolver un estado válido')
@@ -60,8 +62,11 @@ export function StoreProvider({children}){
  const[state,dispatch]=useReducer(reducer,undefined,loadState)
  const stateRef=useRef(state)
  const lockRef=useRef(false)
+ const bootstrapLockRef=useRef(false)
+ const hydratedCompanyRef=useRef('')
  const coordinatorRef=useRef(null)
  const[runtime,setRuntime]=useState(()=>runtimeState())
+ const[dataRuntime,setDataRuntime]=useState(()=>({status:'cache',source:'local-cache',companyId:'',loadedAt:'',recordCount:0,lastError:''}))
  const runtimeRef=useRef(runtime)
 
  useEffect(()=>{
@@ -72,6 +77,39 @@ export function StoreProvider({children}){
 
  const update=useCallback((recipe,meta={})=>{
   dispatch({type:'UPDATE',recipe,meta,audit:{id:crypto.randomUUID(),createdAt:new Date().toISOString()}})
+ },[])
+
+ const hydrateFromPostgres=useCallback(async(companyId=stateRef.current.currentContext?.companyId,{force=false}={})=>{
+  if(!companyId)return{skipped:true,reason:'missing-company'}
+  if(bootstrapLockRef.current)return{skipped:true,reason:'already-loading'}
+  if(!force&&hydratedCompanyRef.current===companyId)return{skipped:true,reason:'already-hydrated'}
+  if(typeof navigator!=='undefined'&&navigator.onLine===false){
+   setDataRuntime(value=>({...value,status:'offline',source:'local-cache',companyId,lastError:''}))
+   return{skipped:true,reason:'offline'}
+  }
+  const hasRemoteIdentity=(stateRef.current.users||[]).some(user=>user.activeSession&&(user.remoteId||user.authUserId))
+  if(!hasRemoteIdentity)return{skipped:true,reason:'missing-remote-session'}
+
+  bootstrapLockRef.current=true
+  setDataRuntime(value=>({...value,status:'loading',companyId,lastError:''}))
+  try{
+   const result=await bootstrapOrganization(stateRef.current,companyId)
+   if(result.skipped){
+    setDataRuntime(value=>({...value,status:'cache',source:'local-cache',companyId}))
+    return result
+   }
+   hydratedCompanyRef.current=companyId
+   stateRef.current=result.state
+   dispatch({type:'HYDRATE',state:result.state})
+   setDataRuntime({status:'ready',source:'postgres',companyId,loadedAt:new Date().toISOString(),recordCount:result.count,lastError:''})
+   return result
+  }catch(error){
+   const message=error instanceof Error?error.message:'No fue posible cargar PostgreSQL'
+   setDataRuntime(value=>({...value,status:'error',source:'local-cache',companyId,lastError:message}))
+   return{skipped:false,error}
+  }finally{
+   bootstrapLockRef.current=false
+  }
  },[])
 
  useEffect(()=>{
@@ -136,9 +174,23 @@ export function StoreProvider({children}){
   }
  },[update])
 
+ const selectedCompanyId=state.currentContext?.companyId||''
  useEffect(()=>{
-  const online=()=>{setRuntime(value=>({...value,online:true,lastError:''}));synchronize('connection-restored')}
-  const offline=()=>setRuntime(value=>({...value,online:false,status:'offline',running:false}))
+  if(!selectedCompanyId)return
+  const timer=window.setTimeout(()=>hydrateFromPostgres(selectedCompanyId),350)
+  return()=>window.clearTimeout(timer)
+ },[selectedCompanyId,hydrateFromPostgres])
+
+ useEffect(()=>{
+  const online=async()=>{
+   setRuntime(value=>({...value,online:true,lastError:''}))
+   await hydrateFromPostgres(stateRef.current.currentContext?.companyId,{force:true})
+   synchronize('connection-restored')
+  }
+  const offline=()=>{
+   setRuntime(value=>({...value,online:false,status:'offline',running:false}))
+   setDataRuntime(value=>({...value,status:'offline',source:'local-cache'}))
+  }
   const visibility=()=>{if(document.visibilityState==='visible')synchronize('app-visible')}
   window.addEventListener('online',online)
   window.addEventListener('offline',offline)
@@ -152,9 +204,9 @@ export function StoreProvider({children}){
    window.clearInterval(timer)
    window.clearTimeout(initial)
   }
- },[synchronize])
+ },[synchronize,hydrateFromPostgres])
 
- const value=useMemo(()=>({state,update,synchronize,syncRuntime:runtime}),[state,update,synchronize,runtime])
+ const value=useMemo(()=>({state,update,synchronize,syncRuntime:runtime,dataRuntime,hydrateFromPostgres}),[state,update,synchronize,runtime,dataRuntime,hydrateFromPostgres])
  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }
 
