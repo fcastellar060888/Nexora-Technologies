@@ -9,6 +9,7 @@ export const DomainEvents=Object.freeze({
  USER_ACTIVATED:'identity.user.activated',
  USER_DEACTIVATED:'identity.user.deactivated',
  USER_DELETED:'identity.user.deleted',
+ USER_SESSION_SELECTED:'identity.user.session_selected',
  CROP_LOT_CREATED:'cultivation.lot.created',
  CROP_PHASE_CHANGED:'cultivation.lot.phase_changed',
  MIPE_FINDING_RECORDED:'mipe.finding.recorded',
