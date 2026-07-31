@@ -47,6 +47,7 @@ import SalesPage from './pages/SalesPage'
 import CurrenciesPage from './pages/CurrenciesPage'
 import InfrastructurePage from './pages/InfrastructurePage'
 import InfrastructureMapPage from './pages/InfrastructureMapPage'
+import InfrastructureOperationsPage from './pages/InfrastructureOperationsPage'
 
 function Guard({ permission, children }) {
   return <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/operations" element={<OperationsCenterPage />} />
         <Route path="/cultivation-map" element={<CultivationMapPage />} />
         <Route path="/infrastructure-map" element={<InfrastructureMapPage />} />
+        <Route path="/infrastructure/operations" element={<Guard permission="manage_settings"><InfrastructureOperationsPage /></Guard>} />
         <Route path="/operational-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/site-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/house-map" element={<Navigate to="/cultivation-map" replace />} />
