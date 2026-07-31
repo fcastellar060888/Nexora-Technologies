@@ -19,4 +19,5 @@ import './styles/core-components.css'
 import './styles/core-certification.css'
 import './styles/management.css'
 import './styles/timeline.css'
+import './styles/unified-cultivation-map.css'
 ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><OperationalLedgerBridge/><DomainEventAuditBridge/><DomainEventTimelineBridge/><RealtimeProvider><App/></RealtimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
