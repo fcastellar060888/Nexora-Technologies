@@ -3,6 +3,8 @@ import{loadState,saveState}from'./safeStorage'
 import{collectionChanges,enqueueChanges}from'./syncEngine'
 import{runIncrementalSync}from'./syncTransport.js'
 import{AUTO_SYNC_INTERVAL_MS,runtimeState,shouldAutoSync}from'./autoSyncRuntime.js'
+import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
+import{appendHealthEvent}from'./syncHealth.js'
 
 const StoreContext=createContext(null)
 const DEVICE_KEY='cannapa_device_id'
@@ -36,7 +38,7 @@ function reducer(prev,action){
  const changes=action.meta.sync===false?[]:collectionChanges(prev,candidate)
  let next=enqueueChanges(candidate,changes,{companyId,userId:actorUser?.remoteId||actorUser?.id||'',deviceId:deviceId()})
 
- const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts'].includes(k))
+ const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k))
  if(!shouldAudit)return next
 
  return{
@@ -46,9 +48,9 @@ function reducer(prev,action){
    createdAt:action.audit.createdAt,
    actor:actorUser?.name||'Usuario local',
    action:action.meta.action||'Actualización de datos',
-   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts'].includes(k)).join(', ')||'Sistema',
+   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k)).join(', ')||'Sistema',
    detail:action.meta.detail||'',
-   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts'].includes(k))
+   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents'].includes(k))
   }]
  }
 }
@@ -57,6 +59,7 @@ export function StoreProvider({children}){
  const[state,dispatch]=useReducer(reducer,undefined,loadState)
  const stateRef=useRef(state)
  const lockRef=useRef(false)
+ const coordinatorRef=useRef(null)
  const[runtime,setRuntime]=useState(()=>runtimeState())
  const runtimeRef=useRef(runtime)
 
@@ -64,12 +67,23 @@ export function StoreProvider({children}){
   stateRef.current=state
   saveState(state)
  },[state])
-
  useEffect(()=>{runtimeRef.current=runtime},[runtime])
 
  const update=useCallback((recipe,meta={})=>{
   dispatch({type:'UPDATE',recipe,meta,audit:{id:crypto.randomUUID(),createdAt:new Date().toISOString()}})
  },[])
+
+ useEffect(()=>{
+  const coordinator=createTabSyncCoordinator({onMessage:message=>{
+   if(message.type==='sync-started')setRuntime(value=>({...value,running:true,status:'syncing',reason:'other-tab'}))
+   if(message.type==='sync-result'){
+    setRuntime(value=>({...value,running:false,status:message.error?'error':'success',lastSuccessAt:message.error?value.lastSuccessAt:message.completedAt,lastError:message.error||''}))
+    if(message.shared)update(prev=>({...prev,...message.shared}),{sync:false,audit:false})
+   }
+  }})
+  coordinatorRef.current=coordinator
+  return()=>{coordinator.destroy();coordinatorRef.current=null}
+ },[update])
 
  const synchronize=useCallback(async(reason='manual',{force=false}={})=>{
   if(lockRef.current)return{skipped:true,reason:'already-running'}
@@ -78,22 +92,32 @@ export function StoreProvider({children}){
   const visible=typeof document==='undefined'||document.visibilityState==='visible'
   if(!force&&!shouldAutoSync({state:current,online,visible,running:false,lastAttemptAt:runtimeRef.current.lastAttemptAt}))return{skipped:true,reason:'not-eligible'}
   if(!online){setRuntime(value=>({...value,online:false,status:'offline',reason,lastError:''}));return{skipped:true,reason:'offline'}}
+  if(coordinatorRef.current&&!coordinatorRef.current.acquire())return{skipped:true,reason:'other-tab-leader'}
 
   lockRef.current=true
-  const attemptedAt=new Date().toISOString()
+  const started=Date.now()
+  const attemptedAt=new Date(started).toISOString()
   setRuntime(value=>({...value,online:true,running:true,status:'syncing',reason,lastAttemptAt:attemptedAt,lastError:''}))
+  coordinatorRef.current?.broadcast('sync-started',{reason})
   try{
    const result=await runIncrementalSync(current)
-   if(!result.skipped)update(result.state,{sync:false,audit:false})
    const completedAt=new Date().toISOString()
+   let next=result.state
+   if(!result.skipped)next=appendHealthEvent(next,{companyId:current.currentContext?.companyId||'',deviceId:deviceId(),status:'success',reason,durationMs:Date.now()-started,pushed:result.pushed||0,pulled:result.pulled||0})
+   if(!result.skipped)update(next,{sync:false,audit:false})
    setRuntime(value=>({...value,running:false,status:result.skipped?'idle':'success',lastSuccessAt:result.skipped?value.lastSuccessAt:completedAt,lastError:''}))
-   return result
+   coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents}})
+   return{...result,state:next}
   }catch(error){
    const message=error instanceof Error?error.message:'Error de sincronización'
+   const failed=appendHealthEvent(stateRef.current,{companyId:current.currentContext?.companyId||'',deviceId:deviceId(),status:'error',reason,durationMs:Date.now()-started,error:message})
+   update(failed,{sync:false,audit:false})
    setRuntime(value=>({...value,running:false,status:'error',lastError:message}))
+   coordinatorRef.current?.broadcast('sync-result',{completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents}})
    return{skipped:false,error}
   }finally{
    lockRef.current=false
+   coordinatorRef.current?.release()
   }
  },[update])
 
