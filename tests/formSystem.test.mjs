@@ -2,20 +2,25 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 
-test('Canapa form system defines consistent spacing and focus states',async()=>{
+test('Nexora form system uses shared tokens and accessible states',async()=>{
  const css=await readFile(new URL('../src/styles/form-system.css',import.meta.url),'utf8')
- assert.match(css,/\.form-grid\{[^}]*row-gap:16px/)
- assert.match(css,/min-height:46px/)
- assert.match(css,/:focus\{outline:0;border-color:var\(--teal\)/)
+ const tokens=await readFile(new URL('../src/styles/tokens.css',import.meta.url),'utf8')
+ assert.match(css,/\.form-grid\{[^}]*row-gap:var\(--nx-space-5\)/)
+ assert.match(css,/min-height:var\(--nx-control-height\)/)
+ assert.match(css,/:focus\{[^}]*box-shadow:var\(--nx-focus-ring\)/)
+ assert.match(css,/\[aria-invalid="true"\]/)
  assert.match(css,/@media\(max-width:760px\)/)
  assert.match(css,/font-size:16px/)
+ assert.match(tokens,/--nx-space-5:/)
+ assert.match(tokens,/--nx-control-height:/)
+ assert.match(tokens,/--nx-focus-ring:/)
 })
 
-test('visible product branding uses Canapa with one n',async()=>{
+test('visible product branding is Nexora One',async()=>{
  const files=['../index.html','../src/components/AppShell.jsx','../package.json']
  for(const path of files){
   const content=await readFile(new URL(path,import.meta.url),'utf8')
-  assert.doesNotMatch(content,/Cannapa ERP|cannapa-erp/)
+  assert.doesNotMatch(content,/Cannapa ERP|cannapa-erp|Canapa ERP/)
  }
 })
 
