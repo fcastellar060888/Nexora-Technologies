@@ -8,10 +8,16 @@ export const ROLE_PERMISSIONS={
  'Operario':['execute_orders','record_observations','manage_production'],
  'Inventario':['manage_inventory','view_costs']
 }
-export function activeUser(state){return state.users.find(x=>x.activeSession)||null}
+
+export function activeUser(state){
+ return(state.users||[]).find(x=>x.activeSession)||null
+}
+
 export function hasPermission(state,permission){
+ const users=state.users||[]
+ if(users.length===0)return true // modo de instalación inicial hasta crear el primer usuario
  const user=activeUser(state)
- if(!user)return true // piloto local: permite uso mientras Supabase no esté configurado
+ if(!user||user.active===false)return false
  const list=ROLE_PERMISSIONS[user.role]||[]
  return list.includes('*')||list.includes(permission)
 }
