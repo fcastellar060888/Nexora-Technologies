@@ -10,14 +10,14 @@ export const ROLE_PERMISSIONS={
 }
 
 export function activeUser(state){
- return(state.users||[]).find(x=>x.activeSession)||null
+ return(state.users||[]).find(x=>x.activeSession&&x.active!==false)||null
 }
 
 export function hasPermission(state,permission){
  const users=state.users||[]
  if(users.length===0)return true // modo de instalación inicial hasta crear el primer usuario
  const user=activeUser(state)
- if(!user||user.active===false)return false
+ if(!user)return false
  const list=ROLE_PERMISSIONS[user.role]||[]
  return list.includes('*')||list.includes(permission)
 }
