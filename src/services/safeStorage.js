@@ -3,6 +3,8 @@ import { CURRENT_SCHEMA_VERSION, migrateState } from './stateMigration'
 import { getPersistenceDriver } from './persistenceDriver'
 import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
 
+let lastObservedAuditId=''
+
 function cloneInitialState(){
  return migrateState(structuredClone(initialState))
 }
@@ -24,6 +26,24 @@ function readLegacyState(){
  }
 }
 
+function emitOperationalChange(state){
+ if(typeof window==='undefined')return
+ const audit=(state.auditLog||[]).at(-1)
+ if(!audit?.id)return
+ if(!lastObservedAuditId){lastObservedAuditId=audit.id;return}
+ if(audit.id===lastObservedAuditId)return
+ lastObservedAuditId=audit.id
+ window.dispatchEvent(new CustomEvent('canapa:operational-change',{detail:{
+  auditId:audit.id,
+  action:audit.action||'Actualización de datos',
+  module:audit.module||'Sistema',
+  detail:audit.detail||'',
+  collections:Array.isArray(audit.collections)?audit.collections:[],
+  organizationId:state.currentContext?.companyId||'',
+  createdAt:audit.createdAt||new Date().toISOString()
+ }}))
+}
+
 export function loadState(){
  try{
   cleanupLightweightCache()
@@ -42,6 +62,7 @@ export function saveState(state){
  try{
   const normalized=migrateState(state)
   const result=writeLightweightCache({...normalized,schemaVersion:CURRENT_SCHEMA_VERSION,persistedAt:new Date().toISOString()})
+  emitOperationalChange(normalized)
   return{ok:true,...result}
  }catch(error){
   console.error('No fue posible guardar la caché offline.',error)
