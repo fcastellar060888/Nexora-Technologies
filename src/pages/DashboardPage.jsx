@@ -1,2 +1,51 @@
-import{useNavigate}from'react-router-dom';import Card from'../components/Card';import PageHeader from'../components/PageHeader';import{useStore}from'../services/store';import{lotTiming,renewalTiming}from'../domain/lifecycle'
-export default function DashboardPage(){const{state}=useStore(),nav=useNavigate(),lots=state.propagationBatches,grandDue=state.grandmotherPlants.filter(x=>renewalTiming(x).remaining<=Number(x.alertDays||30)),motherDue=state.motherPlants.filter(x=>renewalTiming(x).remaining<=Number(x.alertDays||30)),phaseDue=lots.filter(x=>lotTiming(state,x).remaining<=7&&x.phase!=='Finalizado'),inventory=state.finishedGoods.reduce((s,x)=>s+Number(x.availableGrams||0),0),value=state.finishedGoods.reduce((s,x)=>s+Number(x.availableGrams||0)*Number(x.targetPricePerGram||0)*Number(x.exchangeRate||1),0),phases=['Propagación','Vegetativo','Floración','Cosecha','Secado','Manicura','Selección','Empaque'];return <><PageHeader title="Centro de Operaciones V6" subtitle="Material vegetal, lotes por fase, inventario, alertas y valor comercial."/><div className="kpi-grid dashboard-kpis">{[['Lotes abuelas',state.grandmotherPlants.filter(x=>x.status==='Activa').length],['Lotes madres',state.motherPlants.filter(x=>x.status==='Activa').length],['Lotes productivos',lots.filter(x=>x.phase!=='Finalizado').length],['Renovaciones',grandDue.length+motherDue.length],['Cambios de fase',phaseDue.length],['Inventario',`${inventory.toLocaleString('es-US')} g`],['Valor potencial',`$${Math.round(value).toLocaleString('es-US')}`],['Ventas',`$${Math.round(state.sales.reduce((s,x)=>s+Number(x.totalBase||0),0)).toLocaleString('es-US')}`]].map(([l,v])=><Card className="kpi-card" key={l}><span>{l}</span><strong>{v}</strong></Card>)}</div><div className="content-grid two"><Card title="Renovaciones">{[...grandDue.map(x=>({type:'Abuelas',code:x.lotCode,t:renewalTiming(x)})),...motherDue.map(x=>({type:'Madres',code:x.lotCode,t:renewalTiming(x)}))].sort((a,b)=>a.t.remaining-b.t.remaining).map(x=><div className={`priority ${x.t.remaining<0?'danger':'warning'}`} key={`${x.type}-${x.code}`}><b>{x.type} · {x.code}</b><span>{x.t.remaining<0?`Vencido ${Math.abs(x.t.remaining)} días`:`Faltan ${x.t.remaining} días`} · Semana {x.t.week}</span></div>)}{!grandDue.length&&!motherDue.length&&<p>Sin renovaciones próximas.</p>}</Card><Card title="Próximos cambios de fase">{phaseDue.sort((a,b)=>lotTiming(state,a).remaining-lotTiming(state,b).remaining).map(x=>{const t=lotTiming(state,x);return <button className={`lot-alert ${t.remaining<0?'danger':''}`} key={x.id} onClick={()=>nav(`/lots/${x.id}`)}><strong>{x.code}</strong><span>{x.phase} · Semana {t.week}</span><b>{t.remaining<0?`${Math.abs(t.remaining)} días vencido`:`${t.remaining} días restantes`}</b></button>})}{!phaseDue.length&&<p>Sin cambios próximos.</p>}</Card></div><Card title="Lotes por fase"><div className="phase-board">{phases.map(p=>{const rows=lots.filter(x=>x.phase===p);return <div className="phase-column" key={p}><h4>{p}</h4><strong>{rows.length} lotes</strong>{rows.slice(0,6).map(x=>{const t=lotTiming(state,x);return <button key={x.id} onClick={()=>nav(`/lots/${x.id}`)}><span>{x.code}</span><small>Semana {t.week} · {t.remaining} días</small></button>})}</div>})}</div></Card></>}
+import{useNavigate}from'react-router-dom'
+import Card from'../components/Card'
+import PageHeader from'../components/PageHeader'
+import{useStore}from'../services/store'
+import{lotTiming,renewalTiming}from'../domain/lifecycle'
+
+export default function DashboardPage(){
+ const{state}=useStore()
+ const nav=useNavigate()
+ const lots=state.propagationBatches
+ const grandDue=state.grandmotherPlants.filter(x=>renewalTiming(x).remaining<=Number(x.alertDays||30))
+ const motherDue=state.motherPlants.filter(x=>renewalTiming(x).remaining<=Number(x.alertDays||30))
+ const phaseDue=lots.filter(x=>lotTiming(state,x).remaining<=7&&x.phase!=='Finalizado')
+ const overdueRenewals=[...grandDue,...motherDue].filter(x=>renewalTiming(x).remaining<0).length
+ const overduePhases=phaseDue.filter(x=>lotTiming(state,x).remaining<0).length
+ const attentionCount=grandDue.length+motherDue.length+phaseDue.length
+ const criticalCount=overdueRenewals+overduePhases
+ const operationScore=Math.max(0,100-(criticalCount*12)-((attentionCount-criticalCount)*3))
+ const inventory=state.finishedGoods.reduce((sum,item)=>sum+Number(item.availableGrams||0),0)
+ const value=state.finishedGoods.reduce((sum,item)=>sum+Number(item.availableGrams||0)*Number(item.targetPricePerGram||0)*Number(item.exchangeRate||1),0)
+ const sales=state.sales.reduce((sum,item)=>sum+Number(item.totalBase||0),0)
+ const phases=['Propagación','Vegetativo','Floración','Cosecha','Secado','Manicura','Selección','Empaque']
+ const headline=criticalCount?`${criticalCount} asuntos vencidos requieren intervención`:(attentionCount?`${attentionCount} asuntos próximos requieren seguimiento`:'La operación no presenta vencimientos inmediatos')
+ const guidance=criticalCount?'Prioriza las renovaciones y los cambios de fase vencidos antes de ejecutar nuevas actividades.':attentionCount?'Revisa las próximas renovaciones y movimientos de fase para asegurar capacidad, personal e insumos.':'Puedes concentrarte en rendimiento, mejora continua y preparación de los siguientes ciclos.'
+ const renewalRows=[...grandDue.map(x=>({type:'Abuelas',code:x.lotCode,t:renewalTiming(x)})),...motherDue.map(x=>({type:'Madres',code:x.lotCode,t:renewalTiming(x)}))].sort((a,b)=>a.t.remaining-b.t.remaining)
+ const phaseRows=[...phaseDue].sort((a,b)=>lotTiming(state,a).remaining-lotTiming(state,b).remaining)
+
+ return <>
+  <PageHeader title="Centro de Operaciones" subtitle="Prioridades, ciclos, inventario y valor comercial de la empresa."/>
+  <section className="decision-summary" aria-label="Resumen para la toma de decisiones">
+   <div className="decision-hero"><span>Prioridad operativa</span><h3>{headline}</h3><p>{guidance}</p></div>
+   <div className="decision-score" aria-label={`Puntaje operativo ${operationScore} de 100`}><strong>{operationScore}</strong><span>Puntaje operativo</span></div>
+  </section>
+  <div className="kpi-grid dashboard-kpis">
+   {[['Lotes abuelas',state.grandmotherPlants.filter(x=>x.status==='Activa').length],['Lotes madres',state.motherPlants.filter(x=>x.status==='Activa').length],['Lotes productivos',lots.filter(x=>x.phase!=='Finalizado').length],['Renovaciones próximas',grandDue.length+motherDue.length],['Cambios de fase',phaseDue.length],['Inventario',`${inventory.toLocaleString('es-CO')} g`],['Valor potencial',`$${Math.round(value).toLocaleString('es-CO')}`],['Ventas',`$${Math.round(sales).toLocaleString('es-CO')}`]].map(([label,metric])=><Card className="kpi-card" key={label}><span>{label}</span><strong>{metric}</strong></Card>)}
+  </div>
+  <div className="content-grid two">
+   <Card title="Renovaciones" subtitle="Material vegetal próximo a su fecha objetivo.">
+    {renewalRows.map(row=><div className={`priority ${row.t.remaining<0?'danger':'warning'}`} key={`${row.type}-${row.code}`}><b>{row.type} · {row.code}</b><span>{row.t.remaining<0?`Vencido hace ${Math.abs(row.t.remaining)} días`:`Faltan ${row.t.remaining} días`} · Semana {row.t.week}</span></div>)}
+    {!renewalRows.length&&<div className="empty-state">No hay renovaciones próximas. La programación está al día.</div>}
+   </Card>
+   <Card title="Próximos cambios de fase" subtitle="Lotes que requieren transición durante los próximos siete días.">
+    {phaseRows.map(lot=>{const timing=lotTiming(state,lot);return <button className={`lot-alert ${timing.remaining<0?'danger':''}`} key={lot.id} onClick={()=>nav(`/lots/${lot.id}`)}><strong>{lot.code}</strong><span>{lot.phase} · Semana {timing.week}</span><b>{timing.remaining<0?`${Math.abs(timing.remaining)} días vencido`:`${timing.remaining} días restantes`}</b></button>})}
+    {!phaseRows.length&&<div className="empty-state">No hay cambios de fase próximos. Los ciclos están dentro de lo programado.</div>}
+   </Card>
+  </div>
+  <Card title="Lotes por fase" subtitle="Distribución actual del flujo productivo.">
+   <div className="phase-board">{phases.map(phase=>{const rows=lots.filter(x=>x.phase===phase);return <div className="phase-column" key={phase}><h4>{phase}</h4><strong>{rows.length} lotes</strong>{rows.slice(0,6).map(lot=>{const timing=lotTiming(state,lot);return <button key={lot.id} onClick={()=>nav(`/lots/${lot.id}`)} aria-label={`Abrir lote ${lot.code}, ${phase}, semana ${timing.week}`}><span>{lot.code}</span><small>Semana {timing.week} · {timing.remaining} días</small></button>})}{!rows.length&&<small className="muted">Sin lotes</small>}</div>})}</div>
+  </Card>
+ </>
+}
