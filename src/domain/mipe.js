@@ -60,6 +60,21 @@ function addDays(value,days){
  return date.toISOString()
 }
 
+export function activePlantRestrictions(state,plantId,at=new Date().toISOString()){
+ const now=new Date(at).getTime()
+ const findingIds=new Set((state.findings||[]).filter(x=>x.plantPositionId===plantId).map(x=>x.id))
+ const treatments=(state.treatments||[]).filter(x=>x.status==='Ejecutado'&&findingIds.has(x.findingId))
+ const reentry=treatments.filter(x=>new Date(x.reentryUntil||0).getTime()>now)
+ const harvest=treatments.filter(x=>new Date(x.harvestRestrictedUntil||0).getTime()>now)
+ return{
+  reentryBlocked:reentry.length>0,
+  harvestBlocked:harvest.length>0,
+  reentryUntil:reentry.map(x=>x.reentryUntil).sort().at(-1)||'',
+  harvestRestrictedUntil:harvest.map(x=>x.harvestRestrictedUntil).sort().at(-1)||'',
+  treatmentIds:[...new Set([...reentry,...harvest].map(x=>x.id))]
+ }
+}
+
 export function scheduleTreatment(state,input){
  const finding=(state.findings||[]).find(x=>x.id===input.findingId)
  if(!finding)throw new Error('Selecciona un hallazgo válido.')
@@ -74,26 +89,8 @@ export function scheduleTreatment(state,input){
  if(Number(product.doseMax||0)>0&&dose>Number(product.doseMax))throw new Error('La dosis supera la dosis máxima registrada.')
 
  const createdAt=input.createdAt||new Date().toISOString()
- const treatment={
-  id:input.id||crypto.randomUUID(),
-  findingId:finding.id,
-  productId:product.id,
-  dose,
-  doseUnit:input.doseUnit,
-  mixVolume:Number(input.mixVolume),
-  totalQuantity,
-  inventoryUnit:expectedUnit,
-  date:input.date||createdAt.slice(0,10),
-  responsible:input.responsible||'',
-  notes:input.notes||'',
-  status:'Programado',
-  createdAt
- }
- return{
-  ...state,
-  treatments:[...(state.treatments||[]),treatment],
-  findings:(state.findings||[]).map(x=>x.id===finding.id?{...x,status:'Tratamiento aprobado',updatedAt:createdAt}:x)
- }
+ const treatment={id:input.id||crypto.randomUUID(),findingId:finding.id,productId:product.id,dose,doseUnit:input.doseUnit,mixVolume:Number(input.mixVolume),totalQuantity,inventoryUnit:expectedUnit,date:input.date||createdAt.slice(0,10),responsible:input.responsible||'',notes:input.notes||'',status:'Programado',createdAt}
+ return{...state,treatments:[...(state.treatments||[]),treatment],findings:(state.findings||[]).map(x=>x.id===finding.id?{...x,status:'Tratamiento aprobado',updatedAt:createdAt}:x)}
 }
 
 export function executeTreatment(state,input){
@@ -109,43 +106,11 @@ export function executeTreatment(state,input){
  if(!finding)throw new Error('El hallazgo asociado ya no existe.')
  const executedAt=input.executedAt||new Date().toISOString()
  const quantity=Number(treatment.totalQuantity)
- let next=transactInventory(state,{
-  lotId:lot.id,
-  type:'Consumo',
-  quantity,
-  date:executedAt.slice(0,10),
-  createdAt:executedAt,
-  sourceType:'MipeTreatment',
-  sourceId:treatment.id,
-  reference:`Tratamiento ${treatment.id}`,
-  responsible:input.responsible||treatment.responsible,
-  notes:input.notes||treatment.notes
- })
+ let next=transactInventory(state,{lotId:lot.id,type:'Consumo',quantity,date:executedAt.slice(0,10),createdAt:executedAt,sourceType:'MipeTreatment',sourceId:treatment.id,reference:`Tratamiento ${treatment.id}`,responsible:input.responsible||treatment.responsible,notes:input.notes||treatment.notes})
  const cost=quantity*Number(product.cost||0)
  const reentryUntil=addHours(executedAt,product.reentryHours||0)
  const harvestRestrictedUntil=addDays(executedAt,product.withdrawalDays||0)
- next={
-  ...next,
-  treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),
-  findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),
-  costEntries:[...(next.costEntries||[]),{
-   id:input.costEntryId||crypto.randomUUID(),
-   date:executedAt.slice(0,10),
-   createdAt:executedAt,
-   module:'MIPE',
-   category:'Tratamiento',
-   amount:cost,
-   quantity,
-   unit:product.unit,
-   productId:product.id,
-   inventoryLotId:lot.id,
-   findingId:finding.id,
-   treatmentId:treatment.id,
-   siteId:lot.siteId,
-   responsible:input.responsible||treatment.responsible,
-   notes:input.notes||''
-  }]
- }
+ next={...next,treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),costEntries:[...(next.costEntries||[]),{id:input.costEntryId||crypto.randomUUID(),date:executedAt.slice(0,10),createdAt:executedAt,module:'MIPE',category:'Tratamiento',amount:cost,quantity,unit:product.unit,productId:product.id,inventoryLotId:lot.id,findingId:finding.id,treatmentId:treatment.id,siteId:lot.siteId,responsible:input.responsible||treatment.responsible,notes:input.notes||''}]}
  return next
 }
 
