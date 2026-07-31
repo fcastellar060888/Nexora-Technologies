@@ -1,10 +1,11 @@
-export const CURRENT_SCHEMA_VERSION=4
+export const CURRENT_SCHEMA_VERSION=5
 
-const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','auditLog']
+const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog']
 
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
 const nullableNumber=value=>value===''||value==null?null:number(value)
 const list=value=>Array.isArray(value)?value:[]
+const unique=value=>[...new Set(list(value).filter(Boolean))]
 
 function normalizeFinishedGood(item){
  const available=Math.max(0,number(item.availableGrams))
@@ -30,6 +31,10 @@ function flattenPreparationItems(preparation,formulations,nutrientProducts){
  return source.map((item,index)=>({id:item.id||`${preparation.id}-${index}`,nutrientProductId:item.nutrientProductId||item.productId,tank:item.tank||'A',requiredQuantity:number(item.requiredQuantity??item.grams),requiredUnit:'g',inventoryProductId:item.inventoryProductId||nutrientProducts.find(x=>x.id===(item.nutrientProductId||item.productId))?.inventoryProductId||'',lotId:item.lotId||'',consumedQuantity:number(item.consumedQuantity),cost:number(item.cost)}))
 }
 
+function normalizeMembership(item){
+ return{...item,companyId:item.companyId||item.organizationId||'',siteIds:unique(item.siteIds),permissionOverrides:unique(item.permissionOverrides),deniedPermissions:unique(item.deniedPermissions),status:item.status||'active'}
+}
+
 export function migrateState(input={}){
  const state={...input}
  for(const key of arrays)state[key]=list(state[key])
@@ -44,6 +49,9 @@ export function migrateState(input={}){
  state.infrastructureAssets=state.infrastructureAssets.map(x=>({...x,status:x.status||'Operativo',cost:nullableNumber(x.cost),usefulLifeYears:nullableNumber(x.usefulLifeYears)}))
  state.assetMaintenances=state.assetMaintenances.map(x=>({...x,status:x.status||'Programado',type:x.type||'Preventivo',cost:Math.max(0,number(x.cost)),hours:nullableNumber(x.hours)}))
  state.environmentalReadings=state.environmentalReadings.map(x=>({...x,temperature:number(x.temperature),humidity:number(x.humidity),co2:nullableNumber(x.co2),targetTempMin:nullableNumber(x.targetTempMin),targetTempMax:nullableNumber(x.targetTempMax),targetHumidityMin:nullableNumber(x.targetHumidityMin),targetHumidityMax:nullableNumber(x.targetHumidityMax)}))
+ state.roles=state.roles.map(x=>({...x,permissions:unique(x.permissions),active:x.active!==false}))
+ state.memberships=state.memberships.map(normalizeMembership)
+ state.userSessions=state.userSessions.map(x=>({...x,status:x.status||'active',lastSeenAt:x.lastSeenAt||x.createdAt||''}))
  state.schemaVersion=CURRENT_SCHEMA_VERSION
  return state
 }
