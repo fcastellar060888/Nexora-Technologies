@@ -1,8 +1,9 @@
-export const CURRENT_SCHEMA_VERSION=3
+export const CURRENT_SCHEMA_VERSION=4
 
-const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','auditLog']
+const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','auditLog']
 
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
+const nullableNumber=value=>value===''||value==null?null:number(value)
 const list=value=>Array.isArray(value)?value:[]
 
 function normalizeFinishedGood(item){
@@ -40,6 +41,9 @@ export function migrateState(input={}){
  state.treatments=state.treatments.map(x=>({...x,status:x.status||'Programado',executedAt:x.executedAt||'',inventoryLotId:x.inventoryLotId||'',totalCost:number(x.totalCost),reentryUntil:x.reentryUntil||'',harvestRestrictedUntil:x.harvestRestrictedUntil||''}))
  state.tankPreparations=state.tankPreparations.map(x=>({...x,status:x.status||'Pendiente',items:flattenPreparationItems(x,state.formulations,state.nutrientProducts),totalCost:number(x.totalCost)}))
  state.inventoryLots=state.inventoryLots.map(x=>({...x,quantity:Math.max(0,number(x.quantity))}))
+ state.infrastructureAssets=state.infrastructureAssets.map(x=>({...x,status:x.status||'Operativo',cost:nullableNumber(x.cost),usefulLifeYears:nullableNumber(x.usefulLifeYears)}))
+ state.assetMaintenances=state.assetMaintenances.map(x=>({...x,status:x.status||'Programado',type:x.type||'Preventivo',cost:Math.max(0,number(x.cost)),hours:nullableNumber(x.hours)}))
+ state.environmentalReadings=state.environmentalReadings.map(x=>({...x,temperature:number(x.temperature),humidity:number(x.humidity),co2:nullableNumber(x.co2),targetTempMin:nullableNumber(x.targetTempMin),targetTempMax:nullableNumber(x.targetTempMax),targetHumidityMin:nullableNumber(x.targetHumidityMin),targetHumidityMax:nullableNumber(x.targetHumidityMax)}))
  state.schemaVersion=CURRENT_SCHEMA_VERSION
  return state
 }
