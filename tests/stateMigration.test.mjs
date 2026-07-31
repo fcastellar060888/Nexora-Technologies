@@ -6,6 +6,9 @@ test('normaliza colecciones ausentes y contexto',()=>{
  const state=migrateState({})
  assert.equal(state.schemaVersion,CURRENT_SCHEMA_VERSION)
  assert.deepEqual(state.sales,[])
+ assert.deepEqual(state.infrastructureAssets,[])
+ assert.deepEqual(state.assetMaintenances,[])
+ assert.deepEqual(state.environmentalReadings,[])
  assert.equal(state.currentContext.week,1)
 })
 
@@ -41,4 +44,19 @@ test('normaliza campos de ejecución MIPE',()=>{
  assert.equal(state.treatments[0].status,'Programado')
  assert.equal(state.treatments[0].totalCost,0)
  assert.equal(state.treatments[0].harvestRestrictedUntil,'')
+})
+
+test('normaliza activos, mantenimientos y lecturas ambientales',()=>{
+ const state=migrateState({
+  infrastructureAssets:[{id:'a1',cost:'1500',usefulLifeYears:'5'}],
+  assetMaintenances:[{id:'m1',assetId:'a1',cost:'120',hours:'300'}],
+  environmentalReadings:[{id:'r1',temperature:'21.5',humidity:'58',co2:'700',targetTempMin:'18',targetTempMax:'24'}]
+ })
+ assert.equal(state.infrastructureAssets[0].status,'Operativo')
+ assert.equal(state.infrastructureAssets[0].cost,1500)
+ assert.equal(state.assetMaintenances[0].status,'Programado')
+ assert.equal(state.assetMaintenances[0].cost,120)
+ assert.equal(state.environmentalReadings[0].temperature,21.5)
+ assert.equal(state.environmentalReadings[0].humidity,58)
+ assert.equal(state.environmentalReadings[0].co2,700)
 })
