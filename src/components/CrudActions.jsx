@@ -1,0 +1,1 @@
+export default function CrudActions({onEdit,onDelete}){return <div className="row-actions"><button type="button" onClick={onEdit}>Editar</button><button type="button" className="danger-link" onClick={onDelete}>Eliminar</button></div>}

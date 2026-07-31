@@ -1,0 +1,1 @@
+export function generatePlantPositions(bedId,rows,plantsPerRow,activePlants,geneticId=''){const result=[];let n=0;for(let row=1;row<=rows;row++)for(let position=1;position<=plantsPerRow;position++){n++;result.push({id:crypto.randomUUID(),bedId,row,position,active:n<=activePlants,geneticId,status:n<=activePlants?'Activa':'Vacía'})}return result}
