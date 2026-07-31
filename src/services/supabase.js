@@ -1,5 +1,6 @@
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const env=import.meta.env||{}
+const url = env.VITE_SUPABASE_URL
+const anonKey = env.VITE_SUPABASE_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anonKey)
 const TOKEN_KEY = 'cannapa_supabase_session'
@@ -86,10 +87,15 @@ export async function getSession(){
   return{data:{session:await refreshSession(session)}}
 }
 
-async function requireSession(){
+export async function requireSession(){
   const{data}=await getSession()
   if(!data.session?.access_token||!data.session?.user?.id)throw new Error('Debes iniciar sesión')
   return data.session
+}
+
+export async function authenticatedRequest(path,options={}){
+  const session=await requireSession()
+  return request(path,{...options,token:session.access_token})
 }
 
 export async function loadRemoteIdentity(){

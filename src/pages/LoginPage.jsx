@@ -4,7 +4,9 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{chooseInitialContext,mergeRemoteIdentity}from'../domain/authBootstrap'
-import{loadRemoteIdentity,requestPasswordReset,signIn,signOut,supabaseEnabled,syncSnapshot}from'../services/supabase'
+import{loadRemoteIdentity,requestPasswordReset,signIn,signOut,supabaseEnabled}from'../services/supabase'
+import{runIncrementalSync}from'../services/syncTransport'
+import{syncStatus}from'../services/syncEngine'
 import{useStore}from'../services/store'
 
 export default function LoginPage(){
@@ -14,6 +16,7 @@ export default function LoginPage(){
  const[form,setForm]=useState({email:'',password:''})
  const[msg,setMsg]=useState('')
  const[busy,setBusy]=useState(false)
+ const status=syncStatus(state)
 
  async function login(e){
   e.preventDefault();setBusy(true);setMsg('')
@@ -26,7 +29,7 @@ export default function LoginPage(){
     const merged=mergeRemoteIdentity(prev,identity)
     const context=chooseInitialContext({memberships:merged.memberships,companies:merged.companies,sites:merged.sites,preferredCompanyId:prev.currentContext?.companyId,preferredSiteId:prev.currentContext?.siteId})
     return{...merged,currentContext:{...merged.currentContext,...context}}
-   },{action:'Inicio de sesión remoto',module:'Seguridad',detail:`Usuario ${identity.user.email}`})
+   },{action:'Inicio de sesión remoto',module:'Seguridad',detail:`Usuario ${identity.user.email}`,sync:false})
    setMsg('Sesión iniciada')
    navigate(location.state?.from||'/dashboard',{replace:true})
   }catch(error){setMsg(error instanceof Error?error.message:'No fue posible iniciar sesión')}
@@ -42,8 +45,17 @@ export default function LoginPage(){
   finally{setBusy(false)}
  }
 
- async function sync(){setBusy(true);try{await syncSnapshot(state);setMsg('Sincronización completada')}catch(error){setMsg(error instanceof Error?error.message:'No fue posible sincronizar')}finally{setBusy(false)}}
- async function logout(){setBusy(true);try{await signOut();update(prev=>({...prev,users:(prev.users||[]).map(user=>({...user,activeSession:false}))}),{action:'Cierre de sesión',module:'Seguridad'});setMsg('Sesión cerrada')}finally{setBusy(false)}}
+ async function sync(){
+  setBusy(true)
+  try{
+   const result=await runIncrementalSync(state)
+   update(result.state,{action:'Sincronización incremental',module:'Sistema',detail:`${result.pushed} enviados, ${result.pulled} recibidos`,sync:false})
+   setMsg(`Sincronización completada: ${result.pushed} enviados y ${result.pulled} recibidos.`)
+  }catch(error){setMsg(error instanceof Error?error.message:'No fue posible sincronizar')}
+  finally{setBusy(false)}
+ }
 
- return <><PageHeader title="Acceso empresarial" subtitle="Autenticación, membresías y sincronización central por empresa y sede."/><Card title={supabaseEnabled?'Supabase configurado':'Falta configurar variables de entorno'}><form className="form-grid" onSubmit={login}><Field label="Correo"><input type="email" required autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></Field><Field label="Contraseña"><input type="password" required autoComplete="current-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></Field><div className="form-actions"><button className="button primary" disabled={busy||!supabaseEnabled}>{busy?'Procesando...':'Iniciar sesión'}</button><button type="button" className="button secondary" disabled={busy||!supabaseEnabled} onClick={resetPassword}>Recuperar contraseña</button><button type="button" className="button secondary" disabled={busy||!supabaseEnabled} onClick={sync}>Sincronizar ahora</button><button type="button" className="button secondary" disabled={busy} onClick={logout}>Cerrar sesión</button></div></form>{msg&&<p role="status">{msg}</p>}</Card></>
+ async function logout(){setBusy(true);try{await signOut();update(prev=>({...prev,users:(prev.users||[]).map(user=>({...user,activeSession:false}))}),{action:'Cierre de sesión',module:'Seguridad',sync:false});setMsg('Sesión cerrada')}finally{setBusy(false)}}
+
+ return <><PageHeader title="Acceso empresarial" subtitle="Autenticación, membresías y sincronización central por empresa y sede."/><Card title={supabaseEnabled?'Supabase configurado':'Falta configurar variables de entorno'}><form className="form-grid" onSubmit={login}><Field label="Correo"><input type="email" required autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></Field><Field label="Contraseña"><input type="password" required autoComplete="current-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></Field><div className="form-actions"><button className="button primary" disabled={busy||!supabaseEnabled}>{busy?'Procesando...':'Iniciar sesión'}</button><button type="button" className="button secondary" disabled={busy||!supabaseEnabled} onClick={resetPassword}>Recuperar contraseña</button><button type="button" className="button secondary" disabled={busy||!supabaseEnabled} onClick={sync}>Sincronizar ahora</button><button type="button" className="button secondary" disabled={busy} onClick={logout}>Cerrar sesión</button></div></form><p className="muted">Pendientes: {status.pending} · Fallidos: {status.failed} · Conflictos: {status.conflicts}{status.lastSyncedAt?` · Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString()}`:''}</p>{msg&&<p role="status">{msg}</p>}</Card></>
 }
