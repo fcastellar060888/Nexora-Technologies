@@ -1,5 +1,5 @@
-import{authenticatedRequest,supabaseEnabled}from'./supabase'
-import{applyRemoteRecords,compactQueue}from'./syncEngine'
+import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
+import{applyRemoteRecords,compactQueue}from'./syncEngine.js'
 
 const MAX_ATTEMPTS=6
 const now=()=>new Date().toISOString()
