@@ -7,9 +7,13 @@ export function hasPendingWork(state){
  return list(state?.syncQueue).some(item=>item.status==='pending'||item.status==='failed')
 }
 
+export function hasRemoteSessionIdentity(state){
+ return list(state?.users).some(user=>user.activeSession&&(user.remoteId||user.authUserId))
+}
+
 export function shouldAutoSync({state,online=true,visible=true,running=false,lastAttemptAt='',now=Date.now()}={}){
  if(!online||!visible||running)return false
- if(!state?.currentContext?.companyId)return false
+ if(!state?.currentContext?.companyId||!hasRemoteSessionIdentity(state))return false
  if(!hasPendingWork(state)&&state?.syncMeta?.lastSyncedAt)return false
  const previous=Date.parse(lastAttemptAt||0)||0
  return now-previous>=MIN_SYNC_GAP_MS
