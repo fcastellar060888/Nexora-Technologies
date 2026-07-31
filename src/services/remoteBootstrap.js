@@ -3,7 +3,7 @@ import{migrateState}from'./stateMigration.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
- 'users','roles','memberships'
+ 'companies','users','roles','memberships'
 ])
 
 const list=value=>Array.isArray(value)?value:[]
@@ -63,7 +63,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   syncConflicts:list(localState.syncConflicts),
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
-  users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
+  companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
   auditLog:list(localState.auditLog),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId||localState.currentContext?.companyId||''}
  })
