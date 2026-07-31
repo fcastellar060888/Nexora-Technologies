@@ -1,0 +1,67 @@
+import{useMemo,useRef,useState}from'react'
+import{useNavigate}from'react-router-dom'
+import{X,Leaf,AlertTriangle,MapPin}from'lucide-react'
+import Card from'../components/Card'
+import Field from'../components/Field'
+import PageHeader from'../components/PageHeader'
+import{useStore}from'../services/store'
+import{lotTiming}from'../domain/lifecycle'
+import{bankCapacity}from'../domain/spatialMetrics.js'
+
+const objectKey=(type,id)=>`${type}:${id}`
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,Number(value)||0))
+const plantLabel=plant=>plant.code||plant.plantCode||`F${plant.row||1}-P${plant.position||1}`
+
+export default function UnifiedCultivationMapPage(){
+ const{state,update}=useStore(),navigate=useNavigate()
+ const[siteId,setSiteId]=useState(state.currentContext?.siteId||state.sites[0]?.id||'')
+ const[selectedObject,setSelectedObject]=useState(null)
+ const[selectedPlant,setSelectedPlant]=useState(null)
+ const[edit,setEdit]=useState(false)
+ const[layer,setLayer]=useState('Estado')
+ const drag=useRef(null)
+ const houses=state.houses.filter(item=>item.siteId===siteId)
+ const banks=state.propagationBanks.filter(item=>item.siteId===siteId&&item.active!==false)
+ const objects=[...houses.map(item=>({type:'house',id:item.id,name:item.name})),...banks.map(item=>({type:'bank',id:item.id,name:item.name}))]
+
+ function layout(item,index){return state.mapElements.find(entry=>entry.siteId===siteId&&entry.entityType===item.type&&entry.entityId===item.id)||{x:24+(index%2)*540,y:24+Math.floor(index/2)*390,width:510,height:355,rotation:0}}
+ function persist(item,patch,index){const current=layout(item,index);update(store=>{const found=store.mapElements.find(entry=>entry.siteId===siteId&&entry.entityType===item.type&&entry.entityId===item.id);return{...store,mapElements:found?store.mapElements.map(entry=>entry.id===found.id?{...entry,...patch}:entry):[...store.mapElements,{id:crypto.randomUUID(),siteId,entityType:item.type,entityId:item.id,...current,...patch}] }},{audit:false})}
+ function startMove(event,item,index){if(!edit)return;const current=layout(item,index);drag.current={item,index,startX:event.clientX,startY:event.clientY,x:current.x,y:current.y};event.currentTarget.setPointerCapture?.(event.pointerId)}
+ function move(event){if(!drag.current)return;const current=drag.current;persist(current.item,{x:Math.max(0,current.x+event.clientX-current.startX),y:Math.max(0,current.y+event.clientY-current.startY)},current.index)}
+ function stopMove(){drag.current=null}
+ function selectPlant(data){setSelectedPlant(data);setSelectedObject(null)}
+
+ return <>
+  <PageHeader title="Mapa unificado del cultivo" subtitle="Naves, camas, bancos, bandejas y plantas visibles y operables dentro de un único plano."/>
+  <Card><div className="form-grid unified-map-toolbar">
+   <Field label="Sede"><select value={siteId} onChange={event=>{setSiteId(event.target.value);setSelectedObject(null);setSelectedPlant(null)}}>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
+   <Field label="Capa visual"><select value={layer} onChange={event=>setLayer(event.target.value)}>{['Estado','Fase','Genética','MIPE'].map(value=><option key={value}>{value}</option>)}</select></Field>
+   <div className="field"><span>Distribución</span><button className={`button ${edit?'warning':'secondary'}`} onClick={()=>setEdit(value=>!value)}>{edit?'Finalizar movimientos':'Mover naves y bancos'}</button></div>
+   <div className="unified-map-help"><strong>Un solo plano</strong><span>Selecciona cualquier planta para revisar su información y hallazgos.</span></div>
+  </div></Card>
+  <Card title="Plano operativo completo" subtitle="Las camas y bandejas viven dentro de su nave o banco. Usa desplazamiento interno cuando un elemento tenga muchas plantas.">
+   <div className="map-legend"><span><i className="legend-house"/>Nave</span><span><i className="legend-bank"/>Banco</span><span><i className="legend-risk"/>Hallazgo abierto</span></div>
+   <div className={`unified-cultivation-canvas ${edit?'editing':''}`} onPointerMove={move} onPointerUp={stopMove} onPointerCancel={stopMove}>
+    {objects.map((item,index)=>{const current=layout(item,index);return <section key={objectKey(item.type,item.id)} className={`unified-map-object ${item.type} ${selectedObject?.type===item.type&&selectedObject?.id===item.id?'selected':''}`} style={{left:current.x,top:current.y,width:current.width,height:current.height,transform:`rotate(${current.rotation||0}deg)`}} onPointerDown={event=>startMove(event,item,index)}>
+     <header className="unified-object-header" onClick={()=>{if(!edit)setSelectedObject(item)}}><div><span>{item.type==='house'?'Nave':'Banco de propagación'}</span><strong>{item.name}</strong></div><ObjectMetrics state={state} item={item}/></header>
+     <div className="unified-object-body">{item.type==='house'?<HouseContents state={state} houseId={item.id} layer={layer} selectPlant={selectPlant}/>:<BankContents state={state} bankId={item.id} layer={layer} selectPlant={selectPlant}/>}</div>
+    </section>})}
+    {!objects.length&&<div className="empty-canvas"><strong>No hay elementos en esta sede</strong><span>Crea naves y bancos desde sus pantallas de administración para ubicarlos aquí.</span></div>}
+   </div>
+  </Card>
+  {selectedPlant&&<PlantDrawer state={state} selection={selectedPlant} onClose={()=>setSelectedPlant(null)} onOpen={()=>selectedPlant.kind==='plant'&&navigate(`/plant/${selectedPlant.plant.id}`)}/>} 
+  {selectedObject&&<ObjectDrawer state={state} item={selectedObject} elements={objects} layout={layout} persist={persist} onClose={()=>setSelectedObject(null)}/>} 
+ </>
+}
+
+function ObjectMetrics({state,item}){if(item.type==='house'){const beds=state.beds.filter(bed=>bed.houseId===item.id),plants=state.plantPositions.filter(plant=>beds.some(bed=>bed.id===plant.bedId)&&plant.active);return <small>{beds.length} camas · {plants.length} plantas</small>}const bank=state.propagationBanks.find(value=>value.id===item.id),trays=bank?.trays||[],capacity=bankCapacity(trays),units=state.propagationUnits.filter(unit=>unit.bankId===item.id&&!['Muerto','Descartado'].includes(unit.status));return <small>{trays.reduce((sum,tray)=>sum+Number(tray.quantity||0),0)} bandejas · {units.length}/{capacity} esquejes</small>}
+
+function HouseContents({state,houseId,layer,selectPlant}){const beds=state.beds.filter(bed=>bed.houseId===houseId).sort((a,b)=>(a.order||0)-(b.order||0));return <div className="unified-bed-list">{beds.map(bed=>{const plants=state.plantPositions.filter(plant=>plant.bedId===bed.id).sort((a,b)=>(a.row||0)-(b.row||0)||(a.position||0)-(b.position||0)),lot=state.propagationBatches.find(value=>value.id===bed.lotId);return <article className="unified-bed" key={bed.id}><header><div><strong>{bed.name}</strong><span>{plants.filter(plant=>plant.active).length} activas</span></div>{lot&&<small>{lot.code} · {layer==='Fase'?`${lot.phase} S${lotTiming(state,lot).week}`:layer==='Genética'?state.genetics.find(genetic=>genetic.id===lot.geneticId)?.name||'Sin genética':lot.phase}</small>}</header><div className="unified-plant-grid" style={{gridTemplateColumns:`repeat(${Math.max(1,Number(bed.plantsPerRow)||1)},minmax(18px,1fr))`}}>{plants.map(plant=><PlantCell key={plant.id} state={state} plant={plant} bed={bed} lot={lot} layer={layer} onClick={()=>selectPlant({kind:'plant',plant,bed,lot})}/>)}</div></article>})}{!beds.length&&<div className="inline-empty">Sin camas configuradas</div>}</div>}
+
+function PlantCell({state,plant,bed,lot,layer,onClick}){const findings=state.findings.filter(item=>item.plantPositionId===plant.id&&!['Resuelto','Falso positivo'].includes(item.status)),genetic=state.genetics.find(item=>item.id===(plant.geneticId||bed.geneticId||lot?.geneticId));let label=plantLabel(plant);if(layer==='Genética')label=genetic?.name?.slice(0,3)||'—';if(layer==='Fase')label=lot?.phase?.slice(0,3)||'—';return <button type="button" className={`unified-plant-cell ${plant.active?'active':'empty'} ${findings.length?'risk':''}`} title={`${plantLabel(plant)} · ${findings.length} hallazgos abiertos`} onClick={event=>{event.stopPropagation();onClick()}}><span>{label}</span>{findings.length>0&&<b>{findings.length}</b>}</button>}
+
+function BankContents({state,bankId,layer,selectPlant}){const bank=state.propagationBanks.find(value=>value.id===bankId);if(!bank)return null;const trays=bank.trays||[];let ordinal=0;return <div className="unified-tray-list">{trays.flatMap(tray=>Array.from({length:Number(tray.quantity)||0},(_,index)=>{ordinal+=1;const trayKey=tray.id||`${bank.id}-${ordinal}`,units=state.propagationUnits.filter(unit=>unit.bankId===bank.id&&(unit.trayId===trayKey||unit.trayId===tray.id&&Number(unit.trayIndex||1)===index+1));return <article className="unified-tray" key={`${trayKey}-${index}`}><header><strong>{tray.label||`Bandeja ${ordinal}`}</strong><span>{units.length}/{Number(tray.cells)||0}</span></header><div className="unified-tray-grid">{Array.from({length:Number(tray.cells)||0},(_,slot)=>{const unit=units.find(value=>Number(value.traySlot)===slot+1)||units[slot],batch=unit&&state.propagationBatches.find(value=>value.id===unit.batchId);return <button key={slot} type="button" className={`unified-cutting-cell ${unit?'occupied':'empty'} ${unit&&['Muerto','Descartado'].includes(unit.status)?'inactive':''}`} title={unit?`${unit.code} · ${unit.status}`:`Posición ${slot+1} libre`} onClick={event=>{event.stopPropagation();if(unit)selectPlant({kind:'cutting',unit,batch,bank,tray:{...tray,index:index+1,key:trayKey},slot:slot+1})}}>{unit?(layer==='Genética'?state.genetics.find(genetic=>genetic.id===batch?.geneticId)?.name?.slice(0,2)||'E':layer==='Fase'?batch?.phase?.slice(0,2)||'E':slot+1):''}</button>})}</div></article>})})}{!trays.length&&<div className="inline-empty">Sin bandejas configuradas</div>}</div>}
+
+function PlantDrawer({state,selection,onClose,onOpen}){const isPlant=selection.kind==='plant',plant=isPlant?selection.plant:selection.unit,lot=isPlant?selection.lot:selection.batch,genetic=state.genetics.find(value=>value.id===(plant.geneticId||lot?.geneticId||selection.bed?.geneticId)),findings=isPlant?state.findings.filter(item=>item.plantPositionId===plant.id):state.findings.filter(item=>item.propagationUnitId===plant.id),open=findings.filter(item=>!['Resuelto','Falso positivo'].includes(item.status));return <aside className="unified-map-drawer" aria-label="Información de la planta"><button className="map-side-close" onClick={onClose}><X size={18}/> Cerrar</button><div className="plant-drawer-hero"><Leaf size={24}/><div><span>{isPlant?'Planta':'Esqueje'}</span><h3>{plant.code||plantLabel(plant)}</h3></div></div><div className="detail-grid"><div><span>Estado</span><strong>{plant.status||plant.active!==false?'Activo':'Inactivo'}</strong></div><div><span>Genética</span><strong>{genetic?.name||'Sin asignar'}</strong></div><div><span>Lote</span><strong>{lot?.code||'Sin lote'}</strong></div><div><span>Fase</span><strong>{lot?.phase||'—'}</strong></div><div><span>Ubicación</span><strong>{isPlant?`${selection.bed?.name||'Cama'} · F${plant.row} P${plant.position}`:`${selection.bank.name} · ${selection.tray.label||'Bandeja'} · P${selection.slot}`}</strong></div><div><span>Hallazgos abiertos</span><strong className={open.length?'text-danger':''}>{open.length}</strong></div></div><section className="drawer-findings"><h4><AlertTriangle size={17}/> Hallazgos</h4>{findings.length?findings.map(item=><article key={item.id}><strong>{item.type||item.pest||'Hallazgo MIPE'}</strong><span>{item.status||'Abierto'} · Severidad {item.severity||'—'}</span><p>{item.notes||item.observation||'Sin observaciones'}</p></article>):<p className="inline-empty">No hay hallazgos asociados.</p>}</section>{isPlant&&<button className="button primary full-width" onClick={onOpen}>Abrir perfil completo</button>}</aside>}
+
+function ObjectDrawer({state,item,elements,layout,persist,onClose}){const index=elements.findIndex(value=>value.type===item.type&&value.id===item.id),current=layout(item,index),entity=item.type==='house'?state.houses.find(value=>value.id===item.id):state.propagationBanks.find(value=>value.id===item.id);return <aside className="unified-map-drawer"><button className="map-side-close" onClick={onClose}><X size={18}/> Cerrar</button><div className="plant-drawer-hero"><MapPin size={24}/><div><span>{item.type==='house'?'Nave':'Banco'}</span><h3>{entity?.name}</h3></div></div><Card title="Posición en el plano"><div className="form-grid compact-five"><Field label="X"><input type="number" value={Math.round(current.x)} onChange={event=>persist(item,{x:clamp(event.target.value,0,4000)},index)}/></Field><Field label="Y"><input type="number" value={Math.round(current.y)} onChange={event=>persist(item,{y:clamp(event.target.value,0,4000)},index)}/></Field><Field label="Ancho"><input type="number" min="320" value={Math.round(current.width)} onChange={event=>persist(item,{width:clamp(event.target.value,320,1200)},index)}/></Field><Field label="Alto"><input type="number" min="240" value={Math.round(current.height)} onChange={event=>persist(item,{height:clamp(event.target.value,240,900)},index)}/></Field><Field label="Rotación"><select value={current.rotation||0} onChange={event=>persist(item,{rotation:Number(event.target.value)},index)}>{[0,90,180,270].map(value=><option key={value} value={value}>{value}°</option>)}</select></Field></div></Card></aside>}
