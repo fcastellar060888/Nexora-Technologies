@@ -1,5 +1,6 @@
 import{createIntelligentObject}from'./passportContract.js'
 import{createPassportBuilder}from'./passportBuilder.js'
+import{createProjectionPlugin}from'./passportProjectionPlugin.js'
 import{composePassportTimeline}from'./passportTimeline.js'
 
 const text=(value,fallback='')=>{const normalized=String(value??'').trim();return normalized||fallback}
@@ -8,10 +9,7 @@ const validDate=value=>!Number.isNaN(Date.parse(value))
 const date=value=>validDate(value)?new Date(value).toISOString():null
 const openFinding=finding=>!['Resuelto','Falso positivo'].includes(finding?.status)
 
-const cultivationPlantPassportBuilder=createPassportBuilder({plugins:[{
- id:'cultivation.plant.projection',
- project:({context})=>context.projection
-}]})
+const cultivationPlantPassportBuilder=createPassportBuilder({plugins:[createProjectionPlugin({id:'cultivation.plant.projection'})]})
 
 function locationFor(state,plant){
  const bed=list(state?.beds).find(item=>item.id===plant?.bedId)||null
