@@ -18,3 +18,12 @@ test('el panel conserva uso individual sin confirmación adicional',async()=>{
  assert.match(source,/Registrar hallazgo MIPE/)
  assert.match(source,/Severidad MIPE/)
 })
+
+test('el explorador conecta MIPE individual y masivo a la selección existente',async()=>{
+ const source=await readFile(new URL('../src/components/MaterialPlantUnitExplorer.jsx',import.meta.url),'utf8')
+ assert.match(source,/import MaterialPlantMipePanel/)
+ assert.match(source,/plants=\{selectedUnits\}/)
+ assert.match(source,/plants=\{\[active\]\}/)
+ assert.match(source,/onComplete=\{\(\)=>setSelection\(current=>clearSelection\(current\)\)\}/)
+ assert.match(source,/MIPE abiertos/)
+})
