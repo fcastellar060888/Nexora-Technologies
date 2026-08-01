@@ -27,6 +27,6 @@ export default function PlantPassportDrawer({state,plantId,onClose,onOpen}){
   </div>
   <section className="drawer-findings"><h4><AlertTriangle size={17}/> Riesgos MIPE</h4>{passport.risks.length?passport.risks.map(item=><article key={item.id}><strong>{item.label}</strong><span>{item.status||'Abierto'} · Severidad {item.severity??'—'}</span></article>):<p className="inline-empty">No hay hallazgos asociados.</p>}</section>
   <section className="drawer-findings"><h4><FileText size={17}/> Genealogía y documentos</h4><p><strong>Madre:</strong> {mother?.label||'Sin registrar'}</p><p><strong>Abuela:</strong> {grandmother?.label||'Sin registrar'}</p><p><strong>Adjuntos:</strong> {passport.documents.length}</p><p><strong>Eventos:</strong> {passport.timeline.length}</p></section>
-  <button className="button primary full-width" onClick={onOpen}>Abrir ficha universal</button>
+  <button className="button primary full-width" onClick={onOpen}>Abrir perfil completo</button>
  </aside>
 }
