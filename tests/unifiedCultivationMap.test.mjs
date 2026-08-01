@@ -13,11 +13,13 @@ test('el mapa usa una sola vista para naves, bancos, camas y bandejas',async()=>
 
 test('cada planta y esqueje abre información contextual',async()=>{
  const source=await readFile(new URL('../src/pages/UnifiedCultivationMapPage.jsx',import.meta.url),'utf8')
+ const passportDrawer=await readFile(new URL('../src/components/PlantPassportDrawer.jsx',import.meta.url),'utf8')
+ assert.match(source,/PlantPassportDrawer/)
  assert.match(source,/PlantDrawer/)
  assert.match(source,/plantPositionId/)
  assert.match(source,/propagationUnitId/)
- assert.match(source,/Abrir perfil completo/)
- assert.match(source,/Hallazgos abiertos/)
+ assert.match(passportDrawer,/Abrir perfil completo/)
+ assert.match(source+passportDrawer,/Hallazgos abiertos/)
 })
 
 test('la ruta histórica del mapa delega a la vista unificada',async()=>{
