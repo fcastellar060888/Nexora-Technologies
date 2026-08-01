@@ -36,6 +36,30 @@ export function applyMaterialPlantUnitPatch(state,plants,patch={}){
  return{...state,materialPlantUnits}
 }
 
+export function appendMaterialPlantObservation(state,plants,{title,detail='',type='Observación',createdAt=new Date().toISOString()}={}){
+ const targets=list(plants)
+ const normalizedTitle=text(title)
+ if(!targets.length)throw new Error('Selecciona al menos una planta.')
+ if(!normalizedTitle)throw new Error('El título de la observación es obligatorio.')
+ if(Number.isNaN(Date.parse(createdAt)))throw new Error('La fecha de la observación no es válida.')
+ const plantEvents=[...list(state?.plantEvents)]
+ for(const plant of targets){
+  if(!plant?.id)throw new Error('La planta individual no tiene identidad completa.')
+  plantEvents.push({
+   id:crypto.randomUUID(),
+   plantId:plant.id,
+   entityId:plant.id,
+   type:text(type)||'Observación',
+   title:normalizedTitle,
+   detail:text(detail),
+   date:new Date(createdAt).toISOString(),
+   createdAt:new Date(createdAt).toISOString(),
+   source:'material-plant-bulk-action'
+  })
+ }
+ return{...state,plantEvents}
+}
+
 export function materialPlantActionDetail(plants,patch={}){
  const targets=list(plants)
  const fields=[]
