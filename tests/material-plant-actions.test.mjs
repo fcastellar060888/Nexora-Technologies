@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{applyMaterialPlantUnitPatch,upsertMaterialPlantUnit}from'../src/domain/materialPlantActions.js'
+import{appendMaterialPlantObservation,applyMaterialPlantUnitPatch,upsertMaterialPlantUnit}from'../src/domain/materialPlantActions.js'
 
 const plant={id:'lot-1:MOTHER:1',lotId:'lot-1',plantType:'MOTHER',unitIndex:0,code:'LM-001-M001',siteId:'site-1',geneticId:'gen-1',status:'Activa',healthStatus:'Sana'}
 
@@ -25,4 +25,27 @@ test('aplica una acción masiva a cada planta seleccionada',()=>{
  const state=applyMaterialPlantUnitPatch({materialPlantUnits:[]},[plant,second],{healthStatus:'No apta'})
  assert.equal(state.materialPlantUnits.length,2)
  assert.ok(state.materialPlantUnits.every(item=>item.healthStatus==='No apta'))
+})
+
+test('registra una observación individual sin sobrescribir la ficha',()=>{
+ const initial={materialPlantUnits:[{...plant,notes:'Nota histórica'}],plantEvents:[]}
+ const next=appendMaterialPlantObservation(initial,[plant],{title:'Revisión sanitaria',detail:'Sin novedades',createdAt:'2026-08-01T08:00:00Z'})
+ assert.equal(next.materialPlantUnits[0].notes,'Nota histórica')
+ assert.equal(next.plantEvents.length,1)
+ assert.equal(next.plantEvents[0].plantId,plant.id)
+ assert.equal(next.plantEvents[0].title,'Revisión sanitaria')
+ assert.equal(next.plantEvents[0].source,'material-plant-bulk-action')
+})
+
+test('registra una observación masiva como eventos independientes y trazables',()=>{
+ const second={...plant,id:'lot-1:MOTHER:2',unitIndex:1,code:'LM-001-M002'}
+ const next=appendMaterialPlantObservation({plantEvents:[]},[plant,second],{title:'Seguimiento semanal',detail:'Revisar vigor'})
+ assert.equal(next.plantEvents.length,2)
+ assert.deepEqual(next.plantEvents.map(item=>item.plantId),[plant.id,second.id])
+ assert.equal(new Set(next.plantEvents.map(item=>item.id)).size,2)
+})
+
+test('bloquea observaciones sin objetivos o sin título',()=>{
+ assert.throws(()=>appendMaterialPlantObservation({},[],{title:'Revisión'}),/Selecciona al menos una planta/)
+ assert.throws(()=>appendMaterialPlantObservation({},[plant],{title:' '}),/título de la observación es obligatorio/)
 })
