@@ -1,0 +1,1 @@
+export{createIntelligentObject,createPassport,isIntelligentObject,passportObjectRef}from'./passportContract.js'
