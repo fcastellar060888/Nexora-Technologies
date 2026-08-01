@@ -6,6 +6,20 @@ function requiredString(value,label){
  return normalized
 }
 
+function immutableCopy(value,label){
+ try{
+  const copy=structuredClone(value)
+  const freeze=current=>{
+   if(!current||typeof current!=='object'||Object.isFrozen(current))return current
+   Object.values(current).forEach(freeze)
+   return Object.freeze(current)
+  }
+  return freeze(copy)
+ }catch{
+  throw new Error(`${label} debe contener datos serializables`)
+ }
+}
+
 export function createDomainEvent({
  name,
  aggregateType,
@@ -32,39 +46,45 @@ export function createDomainEvent({
   eventId:requiredString(eventId,'El identificador del evento'),
   name:normalizedName,
   version,
-  aggregate:{
+  aggregate:Object.freeze({
    type:requiredString(aggregateType,'El tipo de objeto'),
    id:requiredString(aggregateId,'El identificador del objeto')
-  },
-  context:{
+  }),
+  context:Object.freeze({
    organizationId:requiredString(organizationId,'La empresa'),
    siteId:siteId?String(siteId):null,
    actorId:requiredString(actorId,'El actor')
-  },
+  }),
   occurredAt:new Date(occurredAt).toISOString(),
   correlationId:correlationId?String(correlationId):null,
   causationId:causationId?String(causationId):null,
-  payload:Object.freeze({...payload}),
-  metadata:Object.freeze({...metadata})
+  payload:immutableCopy(payload,'El payload del evento'),
+  metadata:immutableCopy(metadata,'La metadata del evento')
  })
 }
 
 export function isDomainEvent(value){
+ if(!value||typeof value!=='object')return false
+ const requiredOwnFields=['eventId','name','version','aggregate','context','occurredAt','payload','metadata']
+ if(requiredOwnFields.some(field=>!Object.hasOwn(value,field)))return false
+ if(!value.aggregate||typeof value.aggregate!=='object'||!Object.hasOwn(value.aggregate,'type')||!Object.hasOwn(value.aggregate,'id'))return false
+ if(!value.context||typeof value.context!=='object'||!Object.hasOwn(value.context,'organizationId')||!Object.hasOwn(value.context,'actorId'))return false
  try{
-  return Boolean(createDomainEvent({
-   name:value?.name,
-   aggregateType:value?.aggregate?.type,
-   aggregateId:value?.aggregate?.id,
-   organizationId:value?.context?.organizationId,
-   siteId:value?.context?.siteId,
-   actorId:value?.context?.actorId,
-   occurredAt:value?.occurredAt,
-   payload:value?.payload,
-   metadata:value?.metadata,
-   eventId:value?.eventId,
-   version:value?.version,
-   correlationId:value?.correlationId,
-   causationId:value?.causationId
-  }))
+  createDomainEvent({
+   name:value.name,
+   aggregateType:value.aggregate.type,
+   aggregateId:value.aggregate.id,
+   organizationId:value.context.organizationId,
+   siteId:value.context.siteId,
+   actorId:value.context.actorId,
+   occurredAt:value.occurredAt,
+   payload:value.payload,
+   metadata:value.metadata,
+   eventId:value.eventId,
+   version:value.version,
+   correlationId:value.correlationId,
+   causationId:value.causationId
+  })
+  return true
  }catch{return false}
 }
