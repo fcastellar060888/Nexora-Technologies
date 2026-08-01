@@ -25,7 +25,7 @@ export default function InitialMigrationPage(){
   const value=createMigrationBackup(state,manifest)
   const hash=await hashBackup(value)
   setBackupHash(hash)
-  downloadJson(value,`cannapa-backup-${manifest.migrationId}.json`)
+  downloadJson(value,`nexora-one-backup-${manifest.migrationId}.json`)
   setMsg(`Respaldo creado. SHA-256: ${hash}`)
  }
  async function simulate(){setBusy(true);setMsg('');try{setPreview(await previewInitialMigration(manifest));setMsg('Simulación completada. Revisa el resultado antes de continuar.')}catch(error){setMsg(error.message)}finally{setBusy(false)}}
