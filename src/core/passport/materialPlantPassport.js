@@ -1,5 +1,6 @@
 import{createIntelligentObject}from'./passportContract.js'
 import{createPassportBuilder}from'./passportBuilder.js'
+import{createProjectionPlugin}from'./passportProjectionPlugin.js'
 import{composePassportTimeline}from'./passportTimeline.js'
 import{materialPlantUnitById,MATERIAL_PLANT_TYPES}from'../../domain/materialPlantIdentity.js'
 
@@ -7,6 +8,7 @@ const list=value=>Array.isArray(value)?value:[]
 const iso=value=>Number.isNaN(Date.parse(value))?null:new Date(value).toISOString()
 const typeName=type=>type===MATERIAL_PLANT_TYPES.GRANDMOTHER?'Abuela':'Madre'
 const isOpenFinding=item=>!['Resuelto','Falso positivo'].includes(item.status)
+const materialPlantPassportBuilder=createPassportBuilder({plugins:[createProjectionPlugin({id:'cultivation.materialplant.projection'})]})
 
 function documentsFor(state,unit){const legacyType=unit.plantType===MATERIAL_PLANT_TYPES.GRANDMOTHER?'grandmotherLot':'motherLot';return list(state.attachments).filter(item=>(item.entityType==='materialPlant'&&item.entityId===unit.id)||(item.entityType===legacyType&&item.entityId===unit.lotId)).map(item=>({id:item.id,name:item.name||'Adjunto',type:item.type||'application/octet-stream',size:Number(item.size)||0,dataUrl:item.dataUrl||'',createdAt:iso(item.createdAt)}))}
 function findingsFor(state,unit){return list(state.findings).filter(item=>item.materialPlantId===unit.id||(item.entityType==='materialPlant'&&item.entityId===unit.id)||(item.plantId===unit.id&&item.plantPositionId==null)).map(item=>({id:item.id,type:item.type||item.pest||'Hallazgo MIPE',status:item.status||'Abierto',severity:item.severity||'—',notes:item.notes||item.observation||'',reportedAt:iso(item.reportedAt||item.reportDate||item.createdAt)}))}
@@ -25,6 +27,6 @@ export function createMaterialPlantPassportFromState(state,{unitId,actions=[],de
  if(unit.healthStatus&&unit.healthStatus!=='Sana')risks.push({id:`health:${unit.id}`,type:'health.status',severity:unit.healthStatus==='No apta'?'high':'medium',status:unit.healthStatus,label:`Sanidad: ${unit.healthStatus}`})
  if(['En cuarentena','Bloqueada por MIPE','No disponible'].includes(availability))risks.push({id:`availability:${unit.id}`,type:'operational.availability',severity:availability==='Bloqueada por MIPE'?'high':'medium',status:availability,label:`Disponibilidad: ${availability}`})
  if(['Retirada','Descartada','Fallecida'].includes(unit.status))risks.push({id:`status:${unit.id}`,type:'lifecycle.status',severity:'high',status:unit.status,label:`Estado: ${unit.status}`})
- const builder=createPassportBuilder({plugins:[{id:'cultivation.materialplant.projection',project:()=>({relationships:relationshipsFor(state,unit),documents,indicators:[{key:'descendants',value:descendants,unit:'plants'},{key:'documents',value:documents.length,unit:'files'},{key:'timeline_events',value:timeline.length,unit:'events'},{key:'open_mipe_findings',value:findings.filter(isOpenFinding).length,unit:'findings'},{key:'mipe_findings_total',value:findings.length,unit:'findings'},{key:'available_for_cutting',value:availability==='Disponible para corte'?1:0,unit:'boolean'}],risks,actions,timeline,decisionContext})}]})
- return builder.build({object,state,context:{unitId}})
+ const projection={relationships:relationshipsFor(state,unit),documents,indicators:[{key:'descendants',value:descendants,unit:'plants'},{key:'documents',value:documents.length,unit:'files'},{key:'timeline_events',value:timeline.length,unit:'events'},{key:'open_mipe_findings',value:findings.filter(isOpenFinding).length,unit:'findings'},{key:'mipe_findings_total',value:findings.length,unit:'findings'},{key:'available_for_cutting',value:availability==='Disponible para corte'?1:0,unit:'boolean'}],risks,actions,timeline,decisionContext}
+ return materialPlantPassportBuilder.build({object,state,context:{projection}})
 }
