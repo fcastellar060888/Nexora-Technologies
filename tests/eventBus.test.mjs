@@ -1,6 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{createDomainEvent,createEventBus,DomainEvents,isKnownDomainEvent}from'../src/core/events/index.js'
+import{isDomainEvent}from'../src/core/events/eventContract.js'
 
 const base={
  name:DomainEvents.COMPANY_CREATED,
@@ -9,21 +10,34 @@ const base={
  organizationId:'company-1',
  actorId:'user-1',
  occurredAt:'2026-07-31T20:00:00.000Z',
- payload:{name:'Canapa'}
+ payload:{name:'Canapa',details:{source:'manual'}}
 }
 
-test('crea un evento de dominio inmutable y trazable',()=>{
+test('crea un evento de dominio profundamente inmutable y trazable',()=>{
  const event=createDomainEvent(base)
  assert.equal(event.name,'organization.company.created')
  assert.equal(event.aggregate.id,'company-1')
  assert.equal(event.context.organizationId,'company-1')
  assert.equal(event.occurredAt,'2026-07-31T20:00:00.000Z')
  assert.ok(Object.isFrozen(event))
+ assert.ok(Object.isFrozen(event.aggregate))
+ assert.ok(Object.isFrozen(event.context))
  assert.ok(Object.isFrozen(event.payload))
+ assert.ok(Object.isFrozen(event.payload.details))
+ assert.throws(()=>{event.payload.details.source='altered'},TypeError)
 })
 
 test('rechaza eventos sin formato dominio.entidad.accion',()=>{
  assert.throws(()=>createDomainEvent({...base,name:'companyCreated'}),/formato dominio\.entidad\.accion/)
+})
+
+test('la validación no completa silenciosamente identidad ni versión faltantes',()=>{
+ const valid=createDomainEvent({...base,eventId:'event-1',version:2})
+ const{eventId,...withoutId}=valid
+ const{version,...withoutVersion}=valid
+ assert.equal(isDomainEvent(valid),true)
+ assert.equal(isDomainEvent(withoutId),false)
+ assert.equal(isDomainEvent(withoutVersion),false)
 })
 
 test('publica a suscriptores específicos y universales',async()=>{
