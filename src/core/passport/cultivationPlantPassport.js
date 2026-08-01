@@ -1,6 +1,6 @@
 import{createIntelligentObject,createPassport}from'./passportContract.js'
 
-const text=value=>String(value??'').trim()
+const text=(value,fallback='')=>{const normalized=String(value??'').trim();return normalized||fallback}
 const list=value=>Array.isArray(value)?value:[]
 const validDate=value=>!Number.isNaN(Date.parse(value))
 const date=value=>validDate(value)?new Date(value).toISOString():null
