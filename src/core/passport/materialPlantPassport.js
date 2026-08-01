@@ -1,4 +1,5 @@
-import{createIntelligentObject,createPassport}from'./passportContract.js'
+import{createIntelligentObject}from'./passportContract.js'
+import{createPassportBuilder}from'./passportBuilder.js'
 import{composePassportTimeline}from'./passportTimeline.js'
 import{materialPlantUnitById,MATERIAL_PLANT_TYPES}from'../../domain/materialPlantIdentity.js'
 
@@ -24,5 +25,6 @@ export function createMaterialPlantPassportFromState(state,{unitId,actions=[],de
  if(unit.healthStatus&&unit.healthStatus!=='Sana')risks.push({id:`health:${unit.id}`,type:'health.status',severity:unit.healthStatus==='No apta'?'high':'medium',status:unit.healthStatus,label:`Sanidad: ${unit.healthStatus}`})
  if(['En cuarentena','Bloqueada por MIPE','No disponible'].includes(availability))risks.push({id:`availability:${unit.id}`,type:'operational.availability',severity:availability==='Bloqueada por MIPE'?'high':'medium',status:availability,label:`Disponibilidad: ${availability}`})
  if(['Retirada','Descartada','Fallecida'].includes(unit.status))risks.push({id:`status:${unit.id}`,type:'lifecycle.status',severity:'high',status:unit.status,label:`Estado: ${unit.status}`})
- return createPassport({object,relationships:relationshipsFor(state,unit),documents,indicators:[{key:'descendants',value:descendants,unit:'plants'},{key:'documents',value:documents.length,unit:'files'},{key:'timeline_events',value:timeline.length,unit:'events'},{key:'open_mipe_findings',value:findings.filter(isOpenFinding).length,unit:'findings'},{key:'mipe_findings_total',value:findings.length,unit:'findings'},{key:'available_for_cutting',value:availability==='Disponible para corte'?1:0,unit:'boolean'}],risks,actions,timeline,decisionContext})
+ const builder=createPassportBuilder({plugins:[{id:'cultivation.materialplant.projection',project:()=>({relationships:relationshipsFor(state,unit),documents,indicators:[{key:'descendants',value:descendants,unit:'plants'},{key:'documents',value:documents.length,unit:'files'},{key:'timeline_events',value:timeline.length,unit:'events'},{key:'open_mipe_findings',value:findings.filter(isOpenFinding).length,unit:'findings'},{key:'mipe_findings_total',value:findings.length,unit:'findings'},{key:'available_for_cutting',value:availability==='Disponible para corte'?1:0,unit:'boolean'}],risks,actions,timeline,decisionContext})}]})
+ return builder.build({object,state,context:{unitId}})
 }
