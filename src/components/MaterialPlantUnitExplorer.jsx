@@ -1,12 +1,14 @@
 import{useMemo,useState}from'react'
-import{CheckSquare,Leaf,Square,X}from'lucide-react'
+import{AlertTriangle,CheckSquare,FileText,History,Leaf,Link2,Square,X}from'lucide-react'
 import{createSelection,toggleSelection,selectAll,clearSelection,isSelected,selectionSummary}from'../core/selection/index.js'
 import{publishDomainEvent}from'../core/events/publishDomainEvent.js'
+import{createMaterialPlantPassportFromState}from'../core/passport/index.js'
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'../domain/materialPlantIdentity.js'
 import{applyMaterialPlantUnitPatch,materialPlantActionDetail}from'../domain/materialPlantActions.js'
 
 const typeLabel=type=>type===MATERIAL_PLANT_TYPES.GRANDMOTHER?'Abuela':'Madre'
 const emptyDraft={status:'',healthStatus:'',siteId:'',notes:'',confirmed:false}
+const indicator=(passport,key)=>passport?.indicators.find(item=>item.key===key)?.value||0
 
 export default function MaterialPlantUnitExplorer({state,update,lots,plantType,title}){
  const units=useMemo(()=>lots.flatMap(lot=>projectLotPlantUnits(lot,{plantType,overrides:state.materialPlantUnits})),[lots,plantType,state.materialPlantUnits])
@@ -18,6 +20,7 @@ export default function MaterialPlantUnitExplorer({state,update,lots,plantType,t
  const summary=selectionSummary(selection,availableIds)
  const active=units.find(unit=>unit.id===activeId)||null
  const selectedUnits=units.filter(unit=>selection.selectedIds.includes(unit.id))
+ const passport=active?createMaterialPlantPassportFromState(state,{unitId:active.id}):null
  const activeLot=active?.sourceLot||null
  const genetic=state.genetics.find(item=>item.id===active?.geneticId)||null
  const site=state.sites.find(item=>item.id===active?.siteId)||null
@@ -37,43 +40,17 @@ export default function MaterialPlantUnitExplorer({state,update,lots,plantType,t
   setDraft(value=>({...value,confirmed:false}))
  }
  return <section className="material-unit-explorer">
-  <div className="admin-summary-row">
-   <div><strong>{title}</strong><span>{units.length} plantas individuales</span></div>
-   <div className="button-row">
-    <button type="button" className="button secondary" onClick={()=>setSelection(current=>selectAll(current,availableIds))}>Seleccionar todas</button>
-    <button type="button" className="button ghost" disabled={summary.isEmpty} onClick={()=>setSelection(current=>clearSelection(current))}>Limpiar selección</button>
-   </div>
-  </div>
+  <div className="admin-summary-row"><div><strong>{title}</strong><span>{units.length} plantas individuales</span></div><div className="button-row"><button type="button" className="button secondary" onClick={()=>setSelection(current=>selectAll(current,availableIds))}>Seleccionar todas</button><button type="button" className="button ghost" disabled={summary.isEmpty} onClick={()=>setSelection(current=>clearSelection(current))}>Limpiar selección</button></div></div>
   <p className="form-help" aria-live="polite">{summary.selectedCount} de {summary.availableCount} plantas seleccionadas.</p>
-  {summary.selectedCount>1&&<div className="inline-operational-form">
-   <strong>Acción masiva sobre {summary.selectedCount} plantas</strong>
-   <select aria-label="Estado masivo" value={draft.status} onChange={event=>setDraft({...draft,status:event.target.value})}><option value="">Conservar estado</option><option>Activa</option><option>En seguimiento</option><option>Retirada</option><option>Descartada</option><option>Fallecida</option><option>Banco genético</option></select>
-   <select aria-label="Sanidad masiva" value={draft.healthStatus} onChange={event=>setDraft({...draft,healthStatus:event.target.value})}><option value="">Conservar sanidad</option><option>Sana</option><option>En seguimiento</option><option>No apta</option></select>
-   <select aria-label="Sede masiva" value={draft.siteId} onChange={event=>setDraft({...draft,siteId:event.target.value})}><option value="">Conservar sede</option>{state.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
-   <textarea aria-label="Observación masiva" placeholder="Observación común" value={draft.notes} onChange={event=>setDraft({...draft,notes:event.target.value})}/>
-   <label className="checkbox-row"><input type="checkbox" checked={draft.confirmed} onChange={event=>setDraft({...draft,confirmed:event.target.checked})}/> Confirmo aplicar esta acción a {summary.selectedCount} plantas.</label>
-   <button type="button" className="button primary" onClick={()=>persist(selectedUnits,{bulk:true})}>Aplicar cambios masivos</button>
-  </div>}
-  {!units.length?<p className="inline-empty">Aún no existen plantas individuales para mostrar.</p>:<div className="material-unit-layout">
-   <div className="material-unit-grid" role="list" aria-label={title}>{units.map(unit=>{
-    const selected=isSelected(selection,unit.id)
-    const unitGenetic=state.genetics.find(item=>item.id===unit.geneticId)
-    return <button type="button" role="listitem" aria-pressed={selected} className={`material-unit-card${selected?' is-selected':''}`} key={unit.id} onClick={()=>choose(unit)}>
-     {selected?<CheckSquare size={18}/>:<Square size={18}/>}<span><strong>{unit.code}</strong><small>{unitGenetic?.name||'Sin genética'} · {unit.healthStatus}</small></span>
-    </button>})}</div>
-   {active&&<aside className="material-unit-passport" aria-label={`Passport de ${active.code}`}>
-    <button type="button" className="map-side-close" onClick={()=>setActiveId(null)}><X size={18}/> Cerrar</button>
-    <div className="plant-drawer-hero"><Leaf size={24}/><div><span>Passport individual · {typeLabel(plantType)}</span><h3>{active.code}</h3></div></div>
-    <div className="detail-grid">
-     <div><span>Lote</span><strong>{activeLot?.lotCode||'—'}</strong></div><div><span>Genética</span><strong>{genetic?.name||'Sin asignar'}</strong></div><div><span>Sede</span><strong>{site?.name||'Sin asignar'}</strong></div><div><span>Estado</span><strong>{active.status}</strong></div><div><span>Sanidad</span><strong>{active.healthStatus}</strong></div><div><span>Índice dentro del lote</span><strong>{active.unitIndex+1}</strong></div><div><span>Inicio del ciclo</span><strong>{activeLot?.cycleStartedAt||active.createdAt||'—'}</strong></div><div><span>Origen</span><strong>{origin?.lotCode||activeLot?.source||'—'}</strong></div>
-    </div>
-    <section className="drawer-findings"><h4>Actualizar planta</h4>
-     <select aria-label="Estado individual" value={draft.status} onChange={event=>setDraft({...draft,status:event.target.value})}><option>Activa</option><option>En seguimiento</option><option>Retirada</option><option>Descartada</option><option>Fallecida</option><option>Banco genético</option></select>
-     <select aria-label="Sanidad individual" value={draft.healthStatus} onChange={event=>setDraft({...draft,healthStatus:event.target.value})}><option>Sana</option><option>En seguimiento</option><option>No apta</option></select>
-     <select aria-label="Sede individual" value={draft.siteId} onChange={event=>setDraft({...draft,siteId:event.target.value})}>{state.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
-     <textarea aria-label="Observaciones individuales" value={draft.notes} onChange={event=>setDraft({...draft,notes:event.target.value})} placeholder="Observaciones de esta planta"/>
-     <button type="button" className="button primary full-width" onClick={()=>persist([active])}>Guardar planta</button>
-    </section>
+  {summary.selectedCount>1&&<div className="inline-operational-form"><strong>Acción masiva sobre {summary.selectedCount} plantas</strong><select aria-label="Estado masivo" value={draft.status} onChange={event=>setDraft({...draft,status:event.target.value})}><option value="">Conservar estado</option><option>Activa</option><option>En seguimiento</option><option>Retirada</option><option>Descartada</option><option>Fallecida</option><option>Banco genético</option></select><select aria-label="Sanidad masiva" value={draft.healthStatus} onChange={event=>setDraft({...draft,healthStatus:event.target.value})}><option value="">Conservar sanidad</option><option>Sana</option><option>En seguimiento</option><option>No apta</option></select><select aria-label="Sede masiva" value={draft.siteId} onChange={event=>setDraft({...draft,siteId:event.target.value})}><option value="">Conservar sede</option>{state.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select><textarea aria-label="Observación masiva" placeholder="Observación común" value={draft.notes} onChange={event=>setDraft({...draft,notes:event.target.value})}/><label className="checkbox-row"><input type="checkbox" checked={draft.confirmed} onChange={event=>setDraft({...draft,confirmed:event.target.checked})}/> Confirmo aplicar esta acción a {summary.selectedCount} plantas.</label><button type="button" className="button primary" onClick={()=>persist(selectedUnits,{bulk:true})}>Aplicar cambios masivos</button></div>}
+  {!units.length?<p className="inline-empty">Aún no existen plantas individuales para mostrar.</p>:<div className="material-unit-layout"><div className="material-unit-grid" role="list" aria-label={title}>{units.map(unit=>{const selected=isSelected(selection,unit.id),unitGenetic=state.genetics.find(item=>item.id===unit.geneticId);return <button type="button" role="listitem" aria-pressed={selected} className={`material-unit-card${selected?' is-selected':''}`} key={unit.id} onClick={()=>choose(unit)}>{selected?<CheckSquare size={18}/>:<Square size={18}/>}<span><strong>{unit.code}</strong><small>{unitGenetic?.name||'Sin genética'} · {unit.healthStatus}</small></span></button>})}</div>
+   {active&&passport&&<aside className="material-unit-passport" aria-label={`Passport de ${active.code}`}><button type="button" className="map-side-close" onClick={()=>setActiveId(null)}><X size={18}/> Cerrar</button><div className="plant-drawer-hero"><Leaf size={24}/><div><span>Passport universal · {typeLabel(plantType)}</span><h3>{passport.object.label}</h3></div></div>
+    <div className="detail-grid"><div><span>Lote</span><strong>{activeLot?.lotCode||'—'}</strong></div><div><span>Genética</span><strong>{genetic?.name||'Sin asignar'}</strong></div><div><span>Sede</span><strong>{site?.name||'Sin asignar'}</strong></div><div><span>Estado</span><strong>{passport.object.status}</strong></div><div><span>Sanidad</span><strong>{passport.object.attributes.healthStatus||'—'}</strong></div><div><span>Descendientes</span><strong>{indicator(passport,'descendants')}</strong></div><div><span>Documentos</span><strong>{indicator(passport,'documents')}</strong></div><div><span>Eventos</span><strong>{indicator(passport,'timeline_events')}</strong></div><div><span>Origen</span><strong>{origin?.lotCode||activeLot?.source||'—'}</strong></div></div>
+    {passport.risks.length>0&&<section className="drawer-findings"><h4><AlertTriangle size={17}/> Riesgos</h4>{passport.risks.map(item=><article key={item.id}><strong>{item.label}</strong><span>{item.status}</span></article>)}</section>}
+    <section className="drawer-findings"><h4><Link2 size={17}/> Relaciones</h4>{passport.relationships.length?passport.relationships.map(item=><p key={`${item.type}:${item.targetId}`}><strong>{item.type.replaceAll('_',' ')}:</strong> {item.label}</p>):<p className="inline-empty">Sin relaciones registradas.</p>}</section>
+    <section className="drawer-findings"><h4><FileText size={17}/> Documentos</h4>{passport.documents.length?passport.documents.map(item=><p key={item.id}>{item.name}</p>):<p className="inline-empty">Sin documentos asociados.</p>}</section>
+    <section className="drawer-findings"><h4><History size={17}/> Timeline</h4>{passport.timeline.length?passport.timeline.slice(0,8).map((item,index)=><article key={item.id||index}><strong>{item.title||item.eventName||'Actividad'}</strong><span>{item.summary||item.detail||''}</span></article>):<p className="inline-empty">Sin eventos individuales todavía.</p>}</section>
+    <section className="drawer-findings"><h4>Actualizar planta</h4><select aria-label="Estado individual" value={draft.status} onChange={event=>setDraft({...draft,status:event.target.value})}><option>Activa</option><option>En seguimiento</option><option>Retirada</option><option>Descartada</option><option>Fallecida</option><option>Banco genético</option></select><select aria-label="Sanidad individual" value={draft.healthStatus} onChange={event=>setDraft({...draft,healthStatus:event.target.value})}><option>Sana</option><option>En seguimiento</option><option>No apta</option></select><select aria-label="Sede individual" value={draft.siteId} onChange={event=>setDraft({...draft,siteId:event.target.value})}>{state.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select><textarea aria-label="Observaciones individuales" value={draft.notes} onChange={event=>setDraft({...draft,notes:event.target.value})} placeholder="Observaciones de esta planta"/><button type="button" className="button primary full-width" onClick={()=>persist([active])}>Guardar planta</button></section>
    </aside>}
   </div>}
  </section>
