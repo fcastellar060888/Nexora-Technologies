@@ -1,17 +1,13 @@
-import{useEffect,useRef}from'react'
+import{useEffect}from'react'
 import{eventBus}from'../events/index.js'
 import{useStore}from'../../services/store.jsx'
 import{connectLedgerToEventBus,operationalLedger}from'./index.js'
 
 export default function OperationalLedgerBridge(){
  const{state,update}=useStore()
- const hydrated=useRef(false)
 
  useEffect(()=>{
-  if(hydrated.current)return
-  operationalLedger.clear()
-  operationalLedger.appendMany(state.operationalLedgerEntries||[])
-  hydrated.current=true
+  operationalLedger.replaceMany(state.operationalLedgerEntries||[])
  },[state.operationalLedgerEntries])
 
  useEffect(()=>{
