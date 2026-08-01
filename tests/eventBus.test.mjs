@@ -47,6 +47,7 @@ test('publica a suscriptores específicos y universales',async()=>{
  const result=await bus.publish(createDomainEvent(base))
  assert.equal(result.delivered,2)
  assert.equal(result.failed,0)
+ assert.equal(result.duplicate,false)
  assert.deepEqual(received,['specific:company-1','all:organization.company.created'])
 })
 
@@ -61,10 +62,42 @@ test('un suscriptor puede cancelarse sin afectar a los demás',async()=>{
 
 test('conserva historia filtrable por evento y objeto',async()=>{
  const bus=createEventBus()
- await bus.publish(createDomainEvent(base))
+ await bus.publish(createDomainEvent({...base,eventId:'event-1'}))
  await bus.publish(createDomainEvent({...base,eventId:'event-2',aggregateId:'company-2',organizationId:'company-2'}))
  assert.equal(bus.getHistory({name:DomainEvents.COMPANY_CREATED}).length,2)
  assert.equal(bus.getHistory({aggregateId:'company-1'}).length,1)
+})
+
+test('ignora la republicación del mismo eventId',async()=>{
+ const bus=createEventBus(),received=[]
+ const event=createDomainEvent({...base,eventId:'event-duplicate'})
+ bus.subscribe('*',item=>received.push(item.eventId))
+ const first=await bus.publish(event)
+ const second=await bus.publish(event)
+ assert.equal(first.duplicate,false)
+ assert.equal(second.duplicate,true)
+ assert.equal(second.delivered,0)
+ assert.deepEqual(received,['event-duplicate'])
+ assert.equal(bus.getHistory().length,1)
+})
+
+test('limita la historia y la ventana de deduplicación',async()=>{
+ const bus=createEventBus({maxHistory:2})
+ const first=createDomainEvent({...base,eventId:'event-1'})
+ await bus.publish(first)
+ await bus.publish(createDomainEvent({...base,eventId:'event-2'}))
+ await bus.publish(createDomainEvent({...base,eventId:'event-3'}))
+ assert.deepEqual(bus.getHistory({limit:10}).map(item=>item.eventId),['event-2','event-3'])
+ const replay=await bus.publish(first)
+ assert.equal(replay.duplicate,false)
+ assert.deepEqual(bus.getHistory({limit:10}).map(item=>item.eventId),['event-3','event-1'])
+})
+
+test('valida el límite de historial y permite desactivarlo',async()=>{
+ assert.throws(()=>createEventBus({maxHistory:-1}),/límite de historial/)
+ const bus=createEventBus({maxHistory:0})
+ await bus.publish(createDomainEvent({...base,eventId:'event-without-history'}))
+ assert.equal(bus.getHistory().length,0)
 })
 
 test('el catálogo reconoce únicamente eventos registrados',()=>{
