@@ -8,7 +8,7 @@ test('la ficha visual consume la proyección universal de Passport',async()=>{
  assert.match(source,/Passport universal/)
  assert.match(source,/passport\.relationships/)
  assert.match(source,/passport\.indicators/)
- assert.match(source,/passport\.timeline|timeline=passport/)
+ assert.match(source,/const\{object,timeline\}=passport/)
  assert.doesNotMatch(source,/plantTimeline\(/)
  assert.doesNotMatch(source,/tracePlant\(/)
 })
