@@ -1,4 +1,5 @@
-import{createIntelligentObject,createPassport}from'./passportContract.js'
+import{createIntelligentObject}from'./passportContract.js'
+import{createPassportBuilder}from'./passportBuilder.js'
 import{composePassportTimeline}from'./passportTimeline.js'
 
 const text=(value,fallback='')=>{const normalized=String(value??'').trim();return normalized||fallback}
@@ -6,6 +7,11 @@ const list=value=>Array.isArray(value)?value:[]
 const validDate=value=>!Number.isNaN(Date.parse(value))
 const date=value=>validDate(value)?new Date(value).toISOString():null
 const openFinding=finding=>!['Resuelto','Falso positivo'].includes(finding?.status)
+
+const cultivationPlantPassportBuilder=createPassportBuilder({plugins:[{
+ id:'cultivation.plant.projection',
+ project:({context})=>context.projection
+}]})
 
 function locationFor(state,plant){
  const bed=list(state?.beds).find(item=>item.id===plant?.bedId)||null
@@ -65,7 +71,8 @@ export function createCultivationPlantPassportFromState(state,{plantId,actions=[
  const label=text(plant.code||plant.plantCode)||`${text(location.site?.name,'SED').slice(0,3).toUpperCase()}-${text(location.house?.name,'N')}-${text(location.bed?.name,'C')}-F${plant.row||0}-P${plant.position||0}`.replaceAll(' ','')
  const object=createIntelligentObject({objectType:'cultivation.plant',objectId:id,organizationId,siteId:location.site?.id||null,label,status:text(plant.status,plant.active===false?'inactive':'active'),createdAt,updatedAt:date(plant.updatedAt)||createdAt,identity:{code:label,row:plant.row??null,position:plant.position??null,bedId:plant.bedId||null},attributes:{active:plant.active!==false,geneticId:genetic?.id||null,geneticName:genetic?.name||'',phase:lineage.batch?.phase||'',lotId:lineage.batch?.id||null,healthStatus:plant.healthStatus||''},metadata:{compatibilityMode:'existing-plant-position-v1',sourceCollection:'plantPositions'}})
  const risks=activeFindings.map(item=>({id:item.id,type:'mipe.finding',severity:item.severity??null,status:item.status||'',label:incidentLabel(state,item)}))
- return createPassport({object,relationships:relationshipsFor(location,lineage),documents:documentsFor(state,id),indicators:[{key:'open_mipe_findings',value:activeFindings.length,unit:'findings'},{key:'total_mipe_findings',value:findings.length,unit:'findings'}],risks,actions,timeline:timelineFor(state,id,findings),decisionContext})
+ const projection={relationships:relationshipsFor(location,lineage),documents:documentsFor(state,id),indicators:[{key:'open_mipe_findings',value:activeFindings.length,unit:'findings'},{key:'total_mipe_findings',value:findings.length,unit:'findings'}],risks,actions,timeline:timelineFor(state,id,findings),decisionContext}
+ return cultivationPlantPassportBuilder.build({object,state,context:{projection}})
 }
 
 function incidentLabel(state,finding){return list(state?.incidents).find(item=>item.id===finding.incidentId)?.name||finding.type||finding.pest||'Hallazgo MIPE'}
