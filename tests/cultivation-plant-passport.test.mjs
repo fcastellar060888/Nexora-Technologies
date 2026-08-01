@@ -62,6 +62,16 @@ test('integra fotografías, MIPE, tratamientos y eventos en una sola ficha',()=>
  assert.equal(passport.timeline.some(item=>item.title==='Tratamiento A'),true)
 })
 
+test('el builder conserva acciones y contexto de decisión de la proyección productiva',()=>{
+ const actions=[{id:'mipe.record-finding',label:'Registrar hallazgo'}]
+ const decisionContext={priority:'high',reason:'Hallazgo sanitario abierto'}
+ const passport=createCultivationPlantPassportFromState(state,{plantId:'plant-1',actions,decisionContext})
+ assert.deepEqual(passport.actions,actions)
+ assert.deepEqual(passport.decisionContext,decisionContext)
+ assert.equal(Object.isFrozen(passport.actions[0]),true)
+ assert.equal(Object.isFrozen(passport.decisionContext),true)
+})
+
 test('mantiene compatibilidad con plantas antiguas sin estructura organizacional completa',()=>{
  const legacy={plantPositions:[{id:'legacy-plant',row:1,position:1}],beds:[],houses:[],sites:[],companies:[]}
  const passport=createCultivationPlantPassportFromState(legacy,{plantId:'legacy-plant'})
