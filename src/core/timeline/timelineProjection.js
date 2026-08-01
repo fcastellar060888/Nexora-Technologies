@@ -22,13 +22,15 @@ function summaryFor(event){
  return String(event.payload?.summary||event.payload?.label||event.payload?.name||event.aggregate.id||'')
 }
 
-export function domainEventToTimelineEntry(event){
+export function domainEventToTimelineEntry(event,{sequence=null,recordedAt=null}={}){
  const presentation=LABELS[event.name]||{title:event.name,category:'Sistema',tone:'neutral'}
  return Object.freeze({
   id:event.eventId,
   eventName:event.name,
   version:event.version,
   occurredAt:event.occurredAt,
+  recordedAt:recordedAt?new Date(recordedAt).toISOString():null,
+  sequence:Number.isInteger(sequence)&&sequence>=0?sequence:null,
   title:presentation.title,
   summary:summaryFor(event),
   category:presentation.category,
