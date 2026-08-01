@@ -49,7 +49,9 @@ La certificación ejecuta, en este orden:
 
 1. auditoría estática;
 2. suite automatizada;
-3. build de producción.
+3. validación de identidad pública;
+4. validación de compatibilidad con identificadores históricos;
+5. build de producción.
 
 El mismo comando se ejecuta en GitHub Actions mediante el workflow **Quality**.
 
@@ -62,4 +64,4 @@ El mismo comando se ejecuta en GitHub Actions mediante el workflow **Quality**.
 
 ## Política de compatibilidad
 
-Las mejoras deben conservar compatibilidad con los datos existentes. Las migraciones destructivas y las decisiones de negocio no confirmadas quedan fuera del alcance de cambios incrementales.
+Las mejoras deben conservar compatibilidad con los datos existentes. Los identificadores históricos necesarios para leer instalaciones anteriores permanecen aislados en la capa de servicios y no se presentan en la interfaz. Las migraciones destructivas y las decisiones de negocio no confirmadas quedan fuera del alcance de cambios incrementales.
