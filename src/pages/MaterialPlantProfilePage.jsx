@@ -5,7 +5,7 @@ import AttachmentUploader from'../components/AttachmentUploader.jsx'
 import Card from'../components/Card.jsx'
 import PageHeader from'../components/PageHeader.jsx'
 import{createMaterialPlantPassportFromState}from'../core/passport/index.js'
-import{useStore}from'../services/store.js'
+import{useStore}from'../services/store.jsx'
 
 const indicator=(passport,key)=>passport?.indicators.find(item=>item.key===key)?.value||0
 const formatDate=value=>value?new Intl.DateTimeFormat('es-CO',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—'
