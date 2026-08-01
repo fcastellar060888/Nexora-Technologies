@@ -66,6 +66,39 @@ test('compone un Passport profundamente inmutable',()=>{
  assert.throws(()=>{passport.relationships[0].metadata.confidence=0},TypeError)
 })
 
+test('deduplica relaciones, indicadores y colecciones identificadas',()=>{
+ const relationship={type:'descends_from',targetType:'propagation.mother',targetId:'mother-1'}
+ const passport=createPassport({
+  object:plant,
+  relationships:[relationship,relationship],
+  documents:[{id:'photo-1'},{id:'photo-1'}],
+  indicators:[{key:'days_in_phase',value:18},{key:'days_in_phase',value:19}],
+  risks:[{id:'risk-1'},{id:'risk-1'}],
+  actions:[{id:'action-1'},{id:'action-1'}],
+  timeline:[{eventId:'event-1'},{eventId:'event-1'}]
+ })
+ assert.equal(passport.relationships.length,1)
+ assert.equal(passport.documents.length,1)
+ assert.equal(passport.indicators.length,1)
+ assert.equal(passport.indicators[0].value,18)
+ assert.equal(passport.risks.length,1)
+ assert.equal(passport.actions.length,1)
+ assert.equal(passport.timeline.length,1)
+})
+
+test('impide relaciones cruzadas entre empresas',()=>{
+ assert.throws(()=>createPassport({
+  object:plant,
+  relationships:[{type:'related_to',targetType:'cultivation.plant',targetId:'plant-2',targetOrganizationId:'company-002'}]
+ }),/otra empresa/)
+})
+
+test('exige identidad en acciones y contrato mínimo en relaciones e indicadores',()=>{
+ assert.throws(()=>createPassport({object:plant,actions:[{label:'Acción sin ID'}]}),/requiere identidad/)
+ assert.throws(()=>createPassport({object:plant,relationships:[{type:'located_in',targetId:'site-1'}]}),/tipo del destino/)
+ assert.throws(()=>createPassport({object:plant,indicators:[{value:1}]}),/clave del indicador/)
+})
+
 test('expone una referencia común para Digital Twin, Ledger y Knowledge Graph',()=>{
  assert.deepEqual(passportObjectRef(createPassport({object:plant})),{
   objectType:'cultivation.plant',
