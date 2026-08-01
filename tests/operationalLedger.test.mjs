@@ -35,6 +35,28 @@ test('rehidrata entradas preservando secuencia y avanza el contador',()=>{
  assert.equal(next.sequence,13)
 })
 
+test('rechaza colisiones de secuencia entre eventos distintos',()=>{
+ const ledger=createMemoryLedgerRepository()
+ ledger.append(event(),{sequence:7})
+ assert.throws(()=>ledger.append(event({eventId:'event-2'}),{sequence:7}),/secuencia 7 ya pertenece/)
+ assert.equal(ledger.count(),1)
+})
+
+test('recorta índices e historial de forma coherente',()=>{
+ const ledger=createMemoryLedgerRepository({maxEntries:2})
+ ledger.append(event(),{sequence:1})
+ ledger.append(event({eventId:'event-2'}),{sequence:2})
+ ledger.append(event({eventId:'event-3'}),{sequence:3})
+ assert.equal(ledger.count(),2)
+ assert.equal(ledger.getByEventId('event-1'),null)
+ assert.deepEqual(ledger.find({order:'asc'}).map(item=>item.id),['event-2','event-3'])
+})
+
+test('rechaza límites de retención inválidos',()=>{
+ assert.throws(()=>createMemoryLedgerRepository({maxEntries:0}),/entero positivo/)
+ assert.throws(()=>createMemoryLedgerRepository({maxEntries:1.5}),/entero positivo/)
+})
+
 test('se conecta al Event Bus y puede desconectarse',async()=>{
  const ledger=createMemoryLedgerRepository(),bus=createEventBus()
  const disconnect=connectLedgerToEventBus(ledger,bus)
@@ -48,7 +70,7 @@ test('se conecta al Event Bus y puede desconectarse',async()=>{
 test('reporta salud del repositorio',()=>{
  const ledger=createMemoryLedgerRepository()
  ledger.append(event())
- assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2})
+ assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2,maxEntries:10000})
 })
 
 test('el bridge hidrata, persiste y limita el registro canónico',async()=>{
