@@ -14,7 +14,7 @@ test('el formulario asigna lotes a bancos y posiciones físicas',async()=>{
 test('el mapa usa la misma definición de posiciones de bandeja',async()=>{
  const source=await readFile(new URL('../src/pages/UnifiedCultivationMapPage.jsx',import.meta.url),'utf8')
  assert.match(source,/bankTrayPositions/)
- assert.match(source,/cellsPerTray/)
+ assert.match(source,/group\.positions/)
  assert.match(source,/traySlot/)
  assert.match(source,/propagationUnitId/)
 })
