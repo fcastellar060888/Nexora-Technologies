@@ -69,6 +69,19 @@ test('rehidrata entradas persistidas sin duplicados y de forma atómica',()=>{
  assert.deepEqual(timeline.query({order:'asc'}).map(item=>item.id),['event-1','event-2'])
 })
 
+test('incrementa revisión aunque el snapshot conserve el mismo tamaño',()=>{
+ const timeline=createTimelineEngine()
+ const first=domainEventToTimelineEntry(event(),{sequence:1})
+ const replacement=domainEventToTimelineEntry(event({eventId:'event-2',aggregateId:'site-2'}),{sequence:2})
+ timeline.hydrate([first])
+ const before=timeline.getVersion()
+ timeline.hydrate([replacement])
+ assert.equal(timeline.size(),1)
+ assert.ok(timeline.getVersion()>before)
+ assert.equal(timeline.getById('event-1'),null)
+ assert.equal(timeline.getById('event-2').aggregateId,'site-2')
+})
+
 test('recorta historial e índice de forma coherente',()=>{
  const timeline=createTimelineEngine({maxEntries:2})
  timeline.record(domainEventToTimelineEntry(event(),{sequence:1}))
