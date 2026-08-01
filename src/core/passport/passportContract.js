@@ -46,6 +46,51 @@ function validObjectShape(value){
   &&value.metadata!==null&&!Array.isArray(value.metadata)&&typeof value.metadata==='object')
 }
 
+function uniqueBy(items,keyFor,label){
+ const seen=new Set()
+ return items.map(item=>deepClone(item,label)).filter(item=>{
+  const key=keyFor(item)
+  if(seen.has(key))return false
+  seen.add(key)
+  return true
+ })
+}
+
+function normalizeRelationships(relationships,object){
+ if(!Array.isArray(relationships))throw new Error('Las relaciones debe ser una lista')
+ return deepFreeze(uniqueBy(relationships,relationship=>{
+  if(!relationship||typeof relationship!=='object'||Array.isArray(relationship))throw new Error('Cada relación debe ser un objeto')
+  const type=requiredString(relationship.type,'El tipo de relación')
+  const targetType=requiredString(relationship.targetType,'El tipo del destino')
+  const targetId=requiredString(relationship.targetId,'El identificador del destino')
+  if(!OBJECT_TYPE_PATTERN.test(targetType))throw new Error('El tipo del destino debe usar una nomenclatura estable en minúsculas')
+  const targetOrganizationId=relationship.targetOrganizationId??relationship.organizationId
+  if(targetOrganizationId&&String(targetOrganizationId).trim()!==object.organizationId)throw new Error('El Passport no puede relacionar objetos de otra empresa')
+  return`${type}:${targetType}:${targetId}`
+ },'Las relaciones'))
+}
+
+function normalizeIndicators(indicators){
+ if(!Array.isArray(indicators))throw new Error('Los indicadores debe ser una lista')
+ return deepFreeze(uniqueBy(indicators,indicator=>{
+  if(!indicator||typeof indicator!=='object'||Array.isArray(indicator))throw new Error('Cada indicador debe ser un objeto')
+  return requiredString(indicator.key,'La clave del indicador')
+ },'Los indicadores'))
+}
+
+function normalizeIdentified(items,label,{required=false}={}){
+ if(!Array.isArray(items))throw new Error(`${label} debe ser una lista`)
+ return deepFreeze(uniqueBy(items,item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item))throw new Error(`Cada elemento de ${label.toLowerCase()} debe ser un objeto`)
+  const identity=item.id??item.key??item.eventId
+  if(identity===null||identity===undefined||String(identity).trim()===''){
+   if(required)throw new Error(`Cada elemento de ${label.toLowerCase()} requiere identidad`)
+   return JSON.stringify(item)
+  }
+  return String(identity).trim()
+ },label))
+}
+
 export function createIntelligentObject({
  objectType,
  objectId,
@@ -101,12 +146,12 @@ export function createPassport({
   passportId:`${object.organizationId}:${object.objectType}:${object.objectId}`,
   generatedAt:new Date(generatedAt).toISOString(),
   object,
-  relationships:arrayValue(relationships,'Las relaciones'),
-  documents:arrayValue(documents,'Los documentos'),
-  indicators:arrayValue(indicators,'Los indicadores'),
-  risks:arrayValue(risks,'Los riesgos'),
-  actions:arrayValue(actions,'Las acciones'),
-  timeline:arrayValue(timeline,'El historial'),
+  relationships:normalizeRelationships(relationships,object),
+  documents:normalizeIdentified(documents,'Los documentos'),
+  indicators:normalizeIndicators(indicators),
+  risks:normalizeIdentified(risks,'Los riesgos'),
+  actions:normalizeIdentified(actions,'Las acciones',{required:true}),
+  timeline:normalizeIdentified(timeline,'El historial'),
   decisionContext:objectValue(decisionContext,'El contexto de decisión')
  })
 }
