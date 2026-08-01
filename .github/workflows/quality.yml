@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - foundation/event-bus-core
       - audit/**
   pull_request:
 
