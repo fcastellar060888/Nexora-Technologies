@@ -3,10 +3,33 @@ import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 import{createTimelineEngine}from'../src/core/timeline/timelineEngine.js'
 
+const timelineEntry={
+ id:'one',
+ eventName:'system.test.recorded',
+ version:1,
+ occurredAt:'2026-07-31T20:00:00.000Z',
+ title:'Prueba registrada',
+ summary:'Entrada válida para probar notificaciones',
+ category:'Sistema',
+ tone:'neutral',
+ actorId:'user-1',
+ actorName:'Fer',
+ organizationId:'company-1',
+ siteId:null,
+ aggregateType:'test',
+ aggregateId:'test-1',
+ correlationId:null,
+ causationId:null,
+ payload:{},
+ metadata:{},
+ sequence:1,
+ recordedAt:'2026-07-31T20:00:01.000Z'
+}
+
 test('el Timeline notifica registros nuevos y limpieza',()=>{
  const engine=createTimelineEngine(),versions=[]
  const unsubscribe=engine.subscribe(()=>versions.push(engine.size()))
- engine.record({id:'one',occurredAt:'2026-07-31T20:00:00.000Z'})
+ engine.record(timelineEntry)
  engine.clear()
  unsubscribe()
  assert.deepEqual(versions,[1,0])
