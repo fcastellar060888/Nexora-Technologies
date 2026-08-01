@@ -1,4 +1,5 @@
 import{createIntelligentObject,createPassport}from'./passportContract.js'
+import{composePassportTimeline}from'./passportTimeline.js'
 
 const text=(value,fallback='')=>{const normalized=String(value??'').trim();return normalized||fallback}
 const list=value=>Array.isArray(value)?value:[]
@@ -25,48 +26,17 @@ function lineageFor(state,plantId){
 function documentsFor(state,plantId){
  return list(state?.attachments)
   .filter(item=>item.entityType==='plant'&&item.entityId===plantId)
-  .map(item=>Object.freeze({
-   id:text(item.id),
-   type:text(item.type,'application/octet-stream'),
-   name:text(item.name,'Adjunto'),
-   size:Number(item.size)||0,
-   dataUrl:item.dataUrl||'',
-   createdAt:date(item.createdAt)
-  }))
+  .map(item=>Object.freeze({id:text(item.id),type:text(item.type,'application/octet-stream'),name:text(item.name,'Adjunto'),size:Number(item.size)||0,dataUrl:item.dataUrl||'',createdAt:date(item.createdAt)}))
 }
 
 function timelineFor(state,plantId,findings){
  const findingIds=new Set(findings.map(item=>item.id))
  const incidentById=new Map(list(state?.incidents).map(item=>[item.id,item]))
  const productById=new Map(list(state?.products).map(item=>[item.id,item]))
- const events=list(state?.plantEvents).filter(item=>item.plantId===plantId).map(item=>({
-  id:text(item.id),
-  occurredAt:date(item.date||item.createdAt),
-  type:text(item.type,'Observación'),
-  title:text(item.title,'Evento de planta'),
-  summary:text(item.detail),
-  status:text(item.status)
- }))
- const findingEvents=findings.map(item=>({
-  id:text(item.id),
-  occurredAt:date(item.createdAt||item.updatedAt),
-  type:'MIPE',
-  title:text(incidentById.get(item.incidentId)?.name,'Hallazgo MIPE'),
-  summary:text(item.notes||item.observation||`Severidad ${item.severity??'—'}`),
-  status:text(item.status)
- }))
- const treatmentEvents=list(state?.treatments).filter(item=>findingIds.has(item.findingId)).map(item=>({
-  id:text(item.id),
-  occurredAt:date(item.executedAt||item.date||item.createdAt),
-  type:'Tratamiento',
-  title:text(productById.get(item.productId)?.name,'Tratamiento MIPE'),
-  summary:text(item.executionNotes||item.notes||`${item.totalQuantity||0} ${item.inventoryUnit||''}`),
-  status:text(item.status)
- }))
- return[...events,...findingEvents,...treatmentEvents]
-  .filter(item=>item.id)
-  .sort((a,b)=>Date.parse(b.occurredAt||0)-Date.parse(a.occurredAt||0))
-  .map(item=>Object.freeze(item))
+ const events=list(state?.plantEvents).filter(item=>item.plantId===plantId).map(item=>({id:`plant:${text(item.id)}`,sourceId:text(item.id),occurredAt:date(item.date||item.createdAt),type:text(item.type,'Observación'),title:text(item.title,'Evento de planta'),summary:text(item.detail),status:text(item.status)}))
+ const findingEvents=findings.map(item=>({id:`mipe:${text(item.id)}`,sourceId:text(item.id),occurredAt:date(item.createdAt||item.updatedAt),type:'MIPE',title:text(incidentById.get(item.incidentId)?.name,'Hallazgo MIPE'),summary:text(item.notes||item.observation||`Severidad ${item.severity??'—'}`),status:text(item.status)}))
+ const treatmentEvents=list(state?.treatments).filter(item=>findingIds.has(item.findingId)).map(item=>({id:`treatment:${text(item.id)}`,sourceId:text(item.id),occurredAt:date(item.executedAt||item.date||item.createdAt),type:'Tratamiento',title:text(productById.get(item.productId)?.name,'Tratamiento MIPE'),summary:text(item.executionNotes||item.notes||`${item.totalQuantity||0} ${item.inventoryUnit||''}`),status:text(item.status)}))
+ return composePassportTimeline({canonical:state?.timelineEntries,legacy:[...events,...findingEvents,...treatmentEvents],aggregateId:plantId})
 }
 
 function relationshipsFor({bed,house,site},lineage){
@@ -93,32 +63,9 @@ export function createCultivationPlantPassportFromState(state,{plantId,actions=[
  const organizationId=text(location.site?.companyId||plant.companyId||plant.organizationId)||'local-installation'
  const createdAt=date(plant.createdAt||lineage.unit?.cutDate||lineage.batch?.createdAt)||new Date().toISOString()
  const label=text(plant.code||plant.plantCode)||`${text(location.site?.name,'SED').slice(0,3).toUpperCase()}-${text(location.house?.name,'N')}-${text(location.bed?.name,'C')}-F${plant.row||0}-P${plant.position||0}`.replaceAll(' ','')
- const object=createIntelligentObject({
-  objectType:'cultivation.plant',
-  objectId:id,
-  organizationId,
-  siteId:location.site?.id||null,
-  label,
-  status:text(plant.status,plant.active===false?'inactive':'active'),
-  createdAt,
-  updatedAt:date(plant.updatedAt)||createdAt,
-  identity:{code:label,row:plant.row??null,position:plant.position??null,bedId:plant.bedId||null},
-  attributes:{active:plant.active!==false,geneticId:genetic?.id||null,geneticName:genetic?.name||'',phase:lineage.batch?.phase||'',lotId:lineage.batch?.id||null,healthStatus:plant.healthStatus||''},
-  metadata:{compatibilityMode:'existing-plant-position-v1',sourceCollection:'plantPositions'}
- })
+ const object=createIntelligentObject({objectType:'cultivation.plant',objectId:id,organizationId,siteId:location.site?.id||null,label,status:text(plant.status,plant.active===false?'inactive':'active'),createdAt,updatedAt:date(plant.updatedAt)||createdAt,identity:{code:label,row:plant.row??null,position:plant.position??null,bedId:plant.bedId||null},attributes:{active:plant.active!==false,geneticId:genetic?.id||null,geneticName:genetic?.name||'',phase:lineage.batch?.phase||'',lotId:lineage.batch?.id||null,healthStatus:plant.healthStatus||''},metadata:{compatibilityMode:'existing-plant-position-v1',sourceCollection:'plantPositions'}})
  const risks=activeFindings.map(item=>({id:item.id,type:'mipe.finding',severity:item.severity??null,status:item.status||'',label:incidentLabel(state,item)}))
- return createPassport({
-  object,
-  relationships:relationshipsFor(location,lineage),
-  documents:documentsFor(state,id),
-  indicators:[{key:'open_mipe_findings',value:activeFindings.length,unit:'findings'},{key:'total_mipe_findings',value:findings.length,unit:'findings'}],
-  risks,
-  actions,
-  timeline:timelineFor(state,id,findings),
-  decisionContext
- })
+ return createPassport({object,relationships:relationshipsFor(location,lineage),documents:documentsFor(state,id),indicators:[{key:'open_mipe_findings',value:activeFindings.length,unit:'findings'},{key:'total_mipe_findings',value:findings.length,unit:'findings'}],risks,actions,timeline:timelineFor(state,id,findings),decisionContext})
 }
 
-function incidentLabel(state,finding){
- return list(state?.incidents).find(item=>item.id===finding.incidentId)?.name||finding.type||finding.pest||'Hallazgo MIPE'
-}
+function incidentLabel(state,finding){return list(state?.incidents).find(item=>item.id===finding.incidentId)?.name||finding.type||finding.pest||'Hallazgo MIPE'}
