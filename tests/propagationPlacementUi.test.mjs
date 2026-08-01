@@ -2,7 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 
-test('el formulario asigna lotes a bancos y posiciones físicas',async()=>{
+test('la página delega la asignación física al formulario de propagación por propósito',async()=>{
  const page=await readFile(new URL('../src/pages/PropagationPage.jsx',import.meta.url),'utf8')
  const form=await readFile(new URL('../src/components/PurposeAwarePropagationForm.jsx',import.meta.url),'utf8')
  assert.match(page,/PurposeAwarePropagationForm/)
