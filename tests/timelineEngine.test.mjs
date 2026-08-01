@@ -9,12 +9,14 @@ import{migrateState,CURRENT_SCHEMA_VERSION}from'../src/services/stateMigration.j
 const event=(overrides={})=>createDomainEvent({name:DomainEvents.SITE_CREATED,aggregateType:'site',aggregateId:'site-1',organizationId:'company-1',siteId:'site-1',actorId:'user-1',occurredAt:'2026-07-31T21:00:00.000Z',eventId:'event-1',payload:{label:'Canapa · Villeta'},metadata:{actorName:'Fer'},...overrides})
 
 test('proyecta eventos a entradas legibles del timeline',()=>{
- const entry=domainEventToTimelineEntry(event())
+ const entry=domainEventToTimelineEntry(event(),{sequence:4,recordedAt:'2026-07-31T21:00:01.000Z'})
  assert.equal(entry.title,'Sede creada')
  assert.equal(entry.category,'Organización')
  assert.equal(entry.summary,'Canapa · Villeta')
  assert.equal(entry.actorName,'Fer')
  assert.equal(entry.aggregateId,'site-1')
+ assert.equal(entry.sequence,4)
+ assert.equal(entry.recordedAt,'2026-07-31T21:00:01.000Z')
  assert.ok(Object.isFrozen(entry))
 })
 
@@ -23,6 +25,7 @@ test('registra eventos sin duplicar por eventId',()=>{
  timeline.recordEvent(event())
  timeline.recordEvent(event())
  assert.equal(timeline.size(),1)
+ assert.equal(timeline.getById('event-1').id,'event-1')
 })
 
 test('consulta por empresa, sede, objeto, texto y rango de fechas',()=>{
@@ -36,12 +39,12 @@ test('consulta por empresa, sede, objeto, texto y rango de fechas',()=>{
  assert.equal(timeline.query({from:'2026-08-01T00:00:00.000Z'}).length,1)
 })
 
-test('ordena por fecha y limita resultados',()=>{
+test('ordena por fecha y usa secuencia como desempate estable',()=>{
  const timeline=createTimelineEngine()
- timeline.recordEvent(event())
- timeline.recordEvent(event({eventId:'event-2',occurredAt:'2026-08-01T10:00:00.000Z'}))
- assert.equal(timeline.query({limit:1})[0].id,'event-2')
- assert.equal(timeline.query({order:'asc',limit:1})[0].id,'event-1')
+ timeline.record(domainEventToTimelineEntry(event(),{sequence:2}))
+ timeline.record(domainEventToTimelineEntry(event({eventId:'event-2'}),{sequence:1}))
+ assert.deepEqual(timeline.query({order:'asc'}).map(item=>item.id),['event-2','event-1'])
+ assert.equal(timeline.query({limit:1})[0].id,'event-1')
 })
 
 test('mantiene compatibilidad con conexión directa del motor',async()=>{
@@ -49,17 +52,37 @@ test('mantiene compatibilidad con conexión directa del motor',async()=>{
  const disconnect=timeline.connect(bus)
  await bus.publish(event())
  assert.equal(timeline.size(),1)
+ assert.equal(timeline.health().connected,true)
  disconnect()
  await bus.publish(event({eventId:'event-2'}))
  assert.equal(timeline.size(),1)
+ assert.equal(timeline.health().connected,false)
 })
 
-test('rehidrata entradas persistidas sin duplicados',()=>{
+test('rehidrata entradas persistidas sin duplicados y de forma atómica',()=>{
  const timeline=createTimelineEngine()
- const first=domainEventToTimelineEntry(event())
- const second=domainEventToTimelineEntry(event({eventId:'event-2',occurredAt:'2026-08-01T10:00:00.000Z'}))
+ const first=domainEventToTimelineEntry(event(),{sequence:1})
+ const second=domainEventToTimelineEntry(event({eventId:'event-2',occurredAt:'2026-08-01T10:00:00.000Z'}),{sequence:2})
  assert.equal(timeline.hydrate([second,first,first]),2)
  assert.deepEqual(timeline.query({order:'asc'}).map(item=>item.id),['event-1','event-2'])
+ assert.throws(()=>timeline.hydrate([first,{id:'invalid'}]),/contrato requerido/)
+ assert.deepEqual(timeline.query({order:'asc'}).map(item=>item.id),['event-1','event-2'])
+})
+
+test('recorta historial e índice de forma coherente',()=>{
+ const timeline=createTimelineEngine({maxEntries:2})
+ timeline.record(domainEventToTimelineEntry(event(),{sequence:1}))
+ timeline.record(domainEventToTimelineEntry(event({eventId:'event-2',occurredAt:'2026-08-01T10:00:00.000Z'}),{sequence:2}))
+ timeline.record(domainEventToTimelineEntry(event({eventId:'event-3',occurredAt:'2026-08-02T10:00:00.000Z'}),{sequence:3}))
+ assert.equal(timeline.size(),2)
+ assert.equal(timeline.getById('event-1'),null)
+ assert.deepEqual(timeline.query({order:'asc'}).map(item=>item.id),['event-2','event-3'])
+})
+
+test('rechaza límites y entradas inválidas',()=>{
+ assert.throws(()=>createTimelineEngine({maxEntries:0}),/entero positivo/)
+ const timeline=createTimelineEngine()
+ assert.throws(()=>timeline.record({id:'event-x'}),/contrato requerido/)
 })
 
 test('migra Timeline y Operational Ledger al esquema persistente actual',()=>{
@@ -74,12 +97,15 @@ test('migra Timeline y Operational Ledger al esquema persistente actual',()=>{
  assert.equal(state.operationalLedgerEntries[0].sequence,4)
 })
 
-test('el Timeline se hidrata y proyecta desde el Operational Ledger',async()=>{
+test('el Timeline se reconcilia y proyecta desde el Operational Ledger',async()=>{
  const source=await readFile(new URL('../src/core/timeline/DomainEventTimelineBridge.jsx',import.meta.url),'utf8')
  assert.match(source,/operationalLedger\.subscribe/)
  assert.match(source,/operationalLedgerEntries/)
- assert.match(source,/domainEventToTimelineEntry\(ledgerEntry\.event\)/)
+ assert.match(source,/projectLedgerEntry/)
+ assert.match(source,/sequence:ledgerEntry\.sequence/)
+ assert.match(source,/timelineEngine\.hydrate/)
+ assert.doesNotMatch(source,/hydrated=useRef/)
  assert.doesNotMatch(source,/eventBus\.subscribe/)
  assert.match(source,/sync:false,audit:false/)
- assert.match(source,/slice\(-2000\)/)
+ assert.match(source,/limit:2000/)
 })
