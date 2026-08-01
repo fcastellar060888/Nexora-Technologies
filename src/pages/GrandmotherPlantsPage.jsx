@@ -40,7 +40,7 @@ export default function GrandmotherPlantsPage(){
    <Field label="Observaciones"><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field>
    <button className="button primary">Crear lote</button>
   </form></Card>
-  <Card title="Plantas individuales"><MaterialPlantUnitExplorer state={state} lots={state.grandmotherPlants} plantType={MATERIAL_PLANT_TYPES.GRANDMOTHER} title="Abuelas individuales"/></Card>
+  <Card title="Plantas individuales"><MaterialPlantUnitExplorer state={state} update={update} lots={state.grandmotherPlants} plantType={MATERIAL_PLANT_TYPES.GRANDMOTHER} title="Abuelas individuales"/></Card>
   <Card title="Lotes registrados"><div className="table-scroll"><table><thead><tr><th>Lote</th><th>Genética</th><th>Cantidad</th><th>Semana</th><th>Restantes</th><th>Renovación</th><th>Madres originadas</th><th>Estado</th></tr></thead><tbody>{state.grandmotherPlants.map(x=>{const t=renewalTiming(x),m=state.motherPlants.filter(y=>y.grandmotherPlantId===x.id);return <tr key={x.id} className={t.remaining<0?'row-overdue':''}><td><strong>{x.lotCode}</strong></td><td>{state.genetics.find(g=>g.id===x.geneticId)?.name}</td><td>{x.quantity||1}</td><td>{t.week}</td><td>{t.remaining}</td><td>{t.dueDate}</td><td>{m.reduce((s,y)=>s+Number(y.quantity||0),0)} en {m.length} lotes</td><td><span className={`tag ${t.remaining<0?'danger-tag':t.remaining<=Number(x.alertDays||30)?'warning':'success'}`}>{t.status}</span></td></tr>})}</tbody></table></div></Card>
  </>
 }
