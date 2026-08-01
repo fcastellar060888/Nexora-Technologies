@@ -24,6 +24,7 @@ import CostsPage from './pages/CostsPage'
 import UsersPage from './pages/UsersPage'
 import LoginPage from './pages/LoginPage'
 import PlantProfilePage from './pages/PlantProfilePage'
+import MaterialPlantProfilePage from './pages/MaterialPlantProfilePage'
 import InventoryMovementsPage from './pages/InventoryMovementsPage'
 import IrrigationWorkflowPage from './pages/IrrigationWorkflowPage'
 import AuditLogPage from './pages/AuditLogPage'
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/site-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/house-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/plant/:plantId" element={<PlantProfilePage />} />
+        <Route path="/material-plant/:plantId" element={<MaterialPlantProfilePage />} />
         <Route path="/companies" element={<Guard permission="manage_settings"><CompaniesPage /></Guard>} />
         <Route path="/sites" element={<Guard permission="manage_settings"><SitesPage /></Guard>} />
         <Route path="/houses" element={<Guard permission="manage_settings"><HousesPage /></Guard>} />
