@@ -1,4 +1,5 @@
 export{createIntelligentObject,createPassport,isIntelligentObject,passportObjectRef}from'./passportContract.js'
+export{createPassportBuilder}from'./passportBuilder.js'
 export{expandPlantLot,listIndividualPlants,findIndividualPlant,createPlantPassportFromState}from'./plantIdentity.js'
 export{createCultivationPlantPassportFromState}from'./cultivationPlantPassport.js'
 export{createMaterialPlantPassportFromState}from'./materialPlantPassport.js'
