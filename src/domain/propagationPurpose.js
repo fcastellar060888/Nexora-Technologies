@@ -16,22 +16,35 @@ export const PROPAGATION_PURPOSE_LABELS=Object.freeze({
  [PROPAGATION_PURPOSES.EVALUATION]:'Evaluación / cuarentena'
 })
 
+export const PROPAGATION_SOURCE_AVAILABILITY='Disponible para corte'
+
 const allowedPurposes=new Set(Object.values(PROPAGATION_PURPOSES))
 const allowedSourceTypes=new Set(Object.values(MATERIAL_PLANT_TYPES))
+const retiredStatuses=new Set(['Retirada','Descartada','Fallecida'])
 
-export function propagationSourceUnits(state,{siteId='',activeOnly=true}={}){
+export function propagationSourceEligibility(unit){
+ if(!unit)return Object.freeze({eligible:false,reason:'No se encontró la planta de origen.'})
+ if(retiredStatuses.has(unit.status))return Object.freeze({eligible:false,reason:`La planta está ${String(unit.status).toLowerCase()}.`})
+ if(unit.healthStatus==='No apta')return Object.freeze({eligible:false,reason:'La planta está marcada como no apta sanitariamente.'})
+ const availability=unit.operationalAvailability||PROPAGATION_SOURCE_AVAILABILITY
+ if(availability!==PROPAGATION_SOURCE_AVAILABILITY)return Object.freeze({eligible:false,reason:`Disponibilidad operativa: ${availability}.`})
+ return Object.freeze({eligible:true,reason:'Disponible para corte.'})
+}
+
+export function propagationSourceUnits(state,{siteId='',activeOnly=true,eligibleOnly=true}={}){
  const overrides=state.materialPlantUnits||[]
  const lots=[
   ...(state.grandmotherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,overrides})),
   ...(state.motherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,overrides}))
  ]
- return lots.filter(unit=>(!siteId||unit.siteId===siteId)&&(!activeOnly||!['Retirada','Descartada','Fallecida'].includes(unit.status)))
+ return lots.filter(unit=>(!siteId||unit.siteId===siteId)&&(!activeOnly||!retiredStatuses.has(unit.status))&&(!eligibleOnly||propagationSourceEligibility(unit).eligible))
 }
 
-export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId=''}){
+export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId='',sourceUnit=null}){
  if(!sourcePlantId)throw new Error('Selecciona la planta individual de origen.')
  if(!allowedSourceTypes.has(sourcePlantType))throw new Error('El tipo de planta de origen no es válido.')
  if(!allowedPurposes.has(purpose))throw new Error('Selecciona el propósito de los esquejes.')
+ if(sourceUnit){const eligibility=propagationSourceEligibility(sourceUnit);if(!eligibility.eligible)throw new Error(`La planta no puede originar esquejes. ${eligibility.reason}`)}
  if(purpose===PROPAGATION_PURPOSES.PRODUCTION&&productionLotId===null)throw new Error('El destino productivo no es válido.')
  return true
 }
@@ -45,7 +58,7 @@ export function propagationDestination(purpose){
 }
 
 export function createPurposeAwareBatch(base,{sourceUnit,purpose,productionLotId=''}){
- validatePropagationIntent({sourcePlantId:sourceUnit?.id,sourcePlantType:sourceUnit?.plantType,purpose,productionLotId})
+ validatePropagationIntent({sourcePlantId:sourceUnit?.id,sourcePlantType:sourceUnit?.plantType,purpose,productionLotId,sourceUnit})
  const destination=propagationDestination(purpose)
  return{
   ...base,
