@@ -7,6 +7,15 @@ export const MATERIAL_PLANT_TYPES=Object.freeze({
  MOTHER:'MOTHER'
 })
 
+export const MATERIAL_PLANT_AVAILABILITY=Object.freeze({
+ AVAILABLE:'Disponible para corte',
+ RECOVERING:'En recuperación',
+ QUARANTINE:'En cuarentena',
+ MIPE_BLOCKED:'Bloqueada por MIPE',
+ RENEWAL_SCHEDULED:'Programada para renovación',
+ UNAVAILABLE:'No disponible'
+})
+
 function unitCode(lot,type,index){
  const prefix=type===MATERIAL_PLANT_TYPES.GRANDMOTHER?'A':'M'
  return `${text(lot.lotCode)||text(lot.code)||text(lot.id)}-${prefix}${String(index+1).padStart(3,'0')}`
@@ -37,6 +46,7 @@ export function projectLotPlantUnits(lot,{plantType,overrides=[]}={}){
    parentPlantId:override.parentPlantId||null,
    status:override.status||lot.status||'Activa',
    healthStatus:override.healthStatus||lot.healthStatus||'Sana',
+   operationalAvailability:override.operationalAvailability||lot.operationalAvailability||MATERIAL_PLANT_AVAILABILITY.AVAILABLE,
    location:override.location||null,
    notes:override.notes||'',
    createdAt:override.createdAt||lot.createdAt||lot.cycleStartedAt||null,
