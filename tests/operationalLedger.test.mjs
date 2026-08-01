@@ -22,6 +22,7 @@ test('mantiene secuencia, deduplicación y consulta contextual',()=>{
  ledger.append(event({eventId:'event-2',aggregateId:'company-2',organizationId:'company-2',payload:{label:'Otra empresa'}}))
  assert.equal(ledger.count(),2)
  assert.equal(ledger.getByEventId('event-1').sequence,1)
+ assert.equal(ledger.getBySequence(2).id,'event-2')
  assert.equal(ledger.find({organizationId:'company-2'}).length,1)
  assert.equal(ledger.find({search:'otra empresa'}).length,1)
  assert.deepEqual(ledger.find({order:'asc'}).map(item=>item.sequence),[1,2])
@@ -33,6 +34,28 @@ test('rehidrata entradas preservando secuencia y avanza el contador',()=>{
  ledger.appendMany([stored])
  const next=ledger.append(event({eventId:'event-2'}))
  assert.equal(next.sequence,13)
+})
+
+test('reemplaza el snapshot de forma atómica y sin notificar eventos históricos',()=>{
+ const ledger=createMemoryLedgerRepository(),received=[]
+ ledger.append(event({eventId:'original'}),{sequence:1})
+ ledger.subscribe(entry=>received.push(entry.id))
+ const stored=createLedgerEntry(event({eventId:'stored'}),{sequence:9,recordedAt:'2026-07-31T22:00:01.000Z'})
+ ledger.replaceMany([stored])
+ assert.equal(ledger.getByEventId('original'),null)
+ assert.equal(ledger.getByEventId('stored').sequence,9)
+ assert.deepEqual(received,[])
+ assert.equal(ledger.append(event({eventId:'next'})).sequence,10)
+})
+
+test('una rehidratación inválida no destruye el snapshot vigente',()=>{
+ const ledger=createMemoryLedgerRepository()
+ ledger.append(event({eventId:'safe'}),{sequence:3})
+ const first=createLedgerEntry(event({eventId:'first'}),{sequence:7})
+ const collision=createLedgerEntry(event({eventId:'collision'}),{sequence:7})
+ assert.throws(()=>ledger.replaceMany([first,collision]),/secuencia 7 ya pertenece/)
+ assert.equal(ledger.getByEventId('safe').sequence,3)
+ assert.equal(ledger.count(),1)
 })
 
 test('rechaza colisiones de secuencia entre eventos distintos',()=>{
@@ -49,6 +72,7 @@ test('recorta índices e historial de forma coherente',()=>{
  ledger.append(event({eventId:'event-3'}),{sequence:3})
  assert.equal(ledger.count(),2)
  assert.equal(ledger.getByEventId('event-1'),null)
+ assert.equal(ledger.getBySequence(1),null)
  assert.deepEqual(ledger.find({order:'asc'}).map(item=>item.id),['event-2','event-3'])
 })
 
@@ -73,9 +97,10 @@ test('reporta salud del repositorio',()=>{
  assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2,maxEntries:10000})
 })
 
-test('el bridge hidrata, persiste y limita el registro canónico',async()=>{
+test('el bridge reconcilia snapshots, persiste y limita el registro canónico',async()=>{
  const source=await readFile(new URL('../src/core/ledger/OperationalLedgerBridge.jsx',import.meta.url),'utf8')
- assert.match(source,/appendMany\(state\.operationalLedgerEntries/)
+ assert.match(source,/replaceMany\(state\.operationalLedgerEntries/)
+ assert.doesNotMatch(source,/hydrated\.current/)
  assert.match(source,/operationalLedger\.subscribe/)
  assert.match(source,/connectLedgerToEventBus/)
  assert.match(source,/operationalLedgerEntries:/)
