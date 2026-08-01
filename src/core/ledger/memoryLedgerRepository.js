@@ -3,19 +3,32 @@ import{createLedgerEntry,isLedgerEntry}from'./ledgerEntry.js'
 const text=value=>String(value||'').toLocaleLowerCase('es')
 
 export function createMemoryLedgerRepository({maxEntries=10000}={}){
+ if(!Number.isInteger(maxEntries)||maxEntries<1)throw new Error('El límite del Ledger debe ser un entero positivo')
  const entries=[]
+ const entriesById=new Map()
+ const entriesBySequence=new Map()
  const listeners=new Set()
  let nextSequence=1
 
  function notify(entry){listeners.forEach(listener=>{try{listener(entry)}catch{/* Un consumidor no bloquea el Ledger. */}})}
+ function trim(){
+  if(entries.length<=maxEntries)return
+  const removed=entries.splice(0,entries.length-maxEntries)
+  removed.forEach(entry=>{entriesById.delete(entry.id);entriesBySequence.delete(entry.sequence)})
+ }
  function append(event,options={}){
-  const existing=entries.find(item=>item.id===event?.eventId)
+  const existing=entriesById.get(event?.eventId)
   if(existing)return existing
-  const entry=createLedgerEntry(event,{...options,sequence:options.sequence??nextSequence++})
+  const sequence=options.sequence??nextSequence
+  const sequenceOwner=entriesBySequence.get(sequence)
+  if(sequenceOwner)throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
+  const entry=createLedgerEntry(event,{...options,sequence})
   entries.push(entry)
   entries.sort((a,b)=>a.sequence-b.sequence)
-  if(entries.length>maxEntries)entries.splice(0,entries.length-maxEntries)
+  entriesById.set(entry.id,entry)
+  entriesBySequence.set(entry.sequence,entry)
   nextSequence=Math.max(nextSequence,entry.sequence+1)
+  trim()
   notify(entry)
   return entry
  }
@@ -35,11 +48,11 @@ export function createMemoryLedgerRepository({maxEntries=10000}={}){
     &&(!needle||[event.name,event.aggregate.type,event.aggregate.id,event.metadata?.actorName,event.payload?.label,event.payload?.summary].some(value=>text(value).includes(needle)))
   }).sort((a,b)=>(order==='asc'?1:-1)*(a.sequence-b.sequence)).slice(0,Math.max(0,limit))
  }
- function getByEventId(id){return entries.find(entry=>entry.id===id)||null}
+ function getByEventId(id){return entriesById.get(id)||null}
  function count(filters={}){return find({...filters,limit:Number.MAX_SAFE_INTEGER}).length}
  function subscribe(listener){if(typeof listener!=='function')throw new Error('El observador del Ledger debe ser una función');listeners.add(listener);return()=>listeners.delete(listener)}
- function clear(){entries.length=0;nextSequence=1}
- function health(){return Object.freeze({status:'ready',driver:'memory',entries:entries.length,nextSequence})}
+ function clear(){entries.length=0;entriesById.clear();entriesBySequence.clear();nextSequence=1}
+ function health(){return Object.freeze({status:'ready',driver:'memory',entries:entries.length,nextSequence,maxEntries})}
  return Object.freeze({append,appendMany,find,getByEventId,count,subscribe,clear,health})
 }
 
