@@ -26,8 +26,8 @@ test('declara la identidad oficial de Nexora en las superficies principales',asy
  assert.equal(pkg.name,'nexora-one')
 })
 
-test('no conserva la marca anterior en código, documentación ni metadatos públicos',async()=>{
- const candidates=['README.md','index.html',...await filesIn('src'),...await filesIn('docs')]
+test('no conserva la marca anterior en interfaces ni documentación pública',async()=>{
+ const candidates=['README.md','index.html',...await filesIn('src/pages'),...await filesIn('src/components'),...await filesIn('docs')]
  const textFiles=candidates.filter(file=>/\.(?:html|md|js|jsx|json|css|mjs|yml|yaml)$/i.test(file))
  const findings=[]
  for(const file of textFiles){
@@ -36,4 +36,18 @@ test('no conserva la marca anterior en código, documentación ni metadatos púb
   if(matches.length)findings.push(`${file}: ${[...new Set(matches)].join(', ')}`)
  }
  assert.deepEqual(findings,[])
+})
+
+test('los identificadores históricos permanecen aislados para conservar compatibilidad de datos',async()=>{
+ const compatibilityFiles=[
+  'src/services/initialMigration.js',
+  'src/services/realtimeContext.jsx',
+  'src/services/realtimePresence.js',
+  'src/services/safeStorage.js',
+  'src/services/storage.js'
+ ]
+ for(const file of compatibilityFiles){
+  const content=await readFile(file,'utf8')
+  assert.match(content,/cann?apa/i,`${file} debe conservar temporalmente el alias histórico de lectura`)
+ }
 })
