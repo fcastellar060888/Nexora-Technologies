@@ -30,8 +30,9 @@ export function createTimelineEngine({maxEntries=2000}={}){
  const entriesById=new Map()
  const listeners=new Set()
  let unsubscribe=null
+ let version=0
 
- function notify(){listeners.forEach(listener=>{try{listener()}catch{/* Un observador visual no bloquea el Timeline. */}})}
+ function notify(){version+=1;listeners.forEach(listener=>{try{listener()}catch{/* Un observador visual no bloquea el Timeline. */}})}
  function subscribe(listener){
   if(typeof listener!=='function')throw new Error('El observador del Timeline debe ser una función')
   listeners.add(listener)
@@ -108,10 +109,11 @@ export function createTimelineEngine({maxEntries=2000}={}){
  function disconnect(){if(unsubscribe){unsubscribe();unsubscribe=null}}
  function clear(){if(entries.length){entries.length=0;entriesById.clear();notify()}}
  function size(){return entries.length}
+ function getVersion(){return version}
  function getById(id){return entriesById.get(id)||null}
- function health(){return Object.freeze({status:'ready',entries:entries.length,maxEntries,connected:Boolean(unsubscribe)})}
+ function health(){return Object.freeze({status:'ready',entries:entries.length,maxEntries,connected:Boolean(unsubscribe),version})}
 
- return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,getById,health,subscribe})
+ return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,getVersion,getById,health,subscribe})
 }
 
 export const timelineEngine=createTimelineEngine()
