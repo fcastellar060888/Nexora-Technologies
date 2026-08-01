@@ -57,7 +57,7 @@ test('integra fotografías, MIPE, tratamientos y eventos en una sola ficha',()=>
  assert.equal(passport.indicators.find(item=>item.key==='total_mipe_findings').value,2)
  assert.equal(passport.risks.length,1)
  assert.equal(passport.risks[0].label,'Botrytis')
- assert.deepEqual(passport.timeline.map(item=>item.id),['event-1','photo-never','treatment-1','finding-1','finding-2'].filter(id=>id!=='photo-never'))
+ assert.deepEqual(passport.timeline.map(item=>item.id),['plant:event-1','treatment:treatment-1','mipe:finding-1','mipe:finding-2'])
  assert.equal(passport.timeline[0].title,'Inspección')
  assert.equal(passport.timeline.some(item=>item.title==='Tratamiento A'),true)
 })
