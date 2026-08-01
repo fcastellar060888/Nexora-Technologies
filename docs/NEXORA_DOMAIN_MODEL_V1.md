@@ -83,7 +83,7 @@ Entidades principales:
 
 Debe soportar coco, turba, tierra, mezclas, jiffy, plug y medios personalizados. Cada asignación registra volumen, lote del proveedor, costo y ciclo de reutilización.
 
-Ejemplo configurable de Canapa:
+Ejemplo configurable de implementación:
 - contenedor productivo: matera de 10 L;
 - reposición parcial: 30 %;
 - remanente reutilizado: 70 %;
