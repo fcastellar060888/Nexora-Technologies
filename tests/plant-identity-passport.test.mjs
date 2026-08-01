@@ -19,6 +19,16 @@ test('expande un lote existente en identidades individuales estables sin alterar
  assert.equal(Object.isFrozen(plants[0]),true)
 })
 
+test('mantiene los identificadores existentes cuando el lote supera tres dígitos',()=>{
+ const before=expandPlantLot({id:'large-lot',lotCode:'LM-LARGE',quantity:999},{kind:'mother'})
+ const after=expandPlantLot({id:'large-lot',lotCode:'LM-LARGE',quantity:1000},{kind:'mother'})
+ assert.equal(before[0].id,'large-lot:001')
+ assert.equal(after[0].id,'large-lot:001')
+ assert.equal(after[998].id,'large-lot:999')
+ assert.equal(after[999].id,'large-lot:1000')
+ assert.equal(after[0].code,'LM-LARGE-001')
+})
+
 test('lista, filtra y localiza abuelas y madres individuales conservando compatibilidad por lote',()=>{
  const mothers=listIndividualPlants(state,{kind:'mother',siteId:'site-1',status:'Activa'})
  assert.equal(mothers.length,3)
