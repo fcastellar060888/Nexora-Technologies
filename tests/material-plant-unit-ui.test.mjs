@@ -25,7 +25,8 @@ test('abuelas y madres exponen plantas individuales con el mismo componente',asy
  assert.match(mother,/MATERIAL_PLANT_TYPES\.MOTHER/)
 })
 
-test('la ficha individual conserva identidad lote genética sede sanidad y origen',async()=>{
+test('la ficha universal conserva identidad lote genética sede sanidad y origen',async()=>{
  const source=await readFile('src/components/MaterialPlantUnitExplorer.jsx','utf8')
- for(const label of['Passport individual','Lote','Genética','Sede','Estado','Sanidad','Inicio del ciclo','Origen'])assert.match(source,new RegExp(label))
+ for(const label of['Passport universal','Lote','Genética','Sede','Estado','Sanidad','Origen'])assert.match(source,new RegExp(label))
+ assert.match(source,/createMaterialPlantPassportFromState/)
 })
