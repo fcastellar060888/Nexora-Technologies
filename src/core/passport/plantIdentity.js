@@ -5,10 +5,10 @@ const OBJECT_TYPE_BY_KIND=Object.freeze({grandmother:'cultivation.grandmother',m
 
 function text(value,fallback=''){const normalized=String(value??'').trim();return normalized||fallback}
 function quantity(value){const parsed=Math.trunc(Number(value));return Number.isFinite(parsed)&&parsed>0?parsed:1}
-function pad(index,total){return String(index).padStart(Math.max(3,String(total).length),'0')}
+function pad(index){return String(index).padStart(3,'0')}
 function normalizeKind(kind){const normalized=text(kind).toLowerCase();if(!COLLECTION_BY_KIND[normalized])throw new Error('El tipo de planta debe ser grandmother o mother');return normalized}
-function stableIndividualId(lotId,index,total){return`${text(lotId,'lot')}:${pad(index,total)}`}
-function individualCode(lot,index,total){return`${text(lot.lotCode,lot.id)}-${pad(index,total)}`}
+function stableIndividualId(lotId,index){return`${text(lotId,'lot')}:${pad(index)}`}
+function individualCode(lot,index){return`${text(lot.lotCode,lot.id)}-${pad(index)}`}
 
 export function expandPlantLot(lot,{kind}={}){
  const normalizedKind=normalizeKind(kind)
@@ -19,12 +19,12 @@ export function expandPlantLot(lot,{kind}={}){
  return Object.freeze(Array.from({length:total},(_,offset)=>{
   const index=offset+1
   return Object.freeze({
-   id:stableIndividualId(lotId,index,total),
+   id:stableIndividualId(lotId,index),
    lotId,
    kind:normalizedKind,
    index,
    total,
-   code:individualCode(lot,index,total),
+   code:individualCode(lot,index),
    organizationId:text(lot.companyId||lot.organizationId,'local-installation'),
    siteId:text(lot.siteId)||null,
    geneticId:text(lot.geneticId)||null,
