@@ -74,7 +74,10 @@ function provisionalNode(node){
 function preferredTargetNode(existing,incoming){
  if(!existing)return incoming
  if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa')
- if(!provisionalNode(existing)&&provisionalNode(incoming))return existing
+ const existingProvisional=provisionalNode(existing),incomingProvisional=provisionalNode(incoming)
+ if(!existingProvisional&&incomingProvisional)return existing
+ if(existingProvisional&&!incomingProvisional)return incoming
+ if(!existingProvisional&&!incomingProvisional&&Date.parse(incoming.updatedAt)<Date.parse(existing.updatedAt))return existing
  return incoming
 }
 
