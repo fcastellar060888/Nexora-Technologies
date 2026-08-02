@@ -67,6 +67,17 @@ function ownedByPassport(edge,passportId){
  return edge?.source==='passport'&&edge?.metadata?.passportId===passportId
 }
 
+function provisionalNode(node){
+ return node?.metadata?.source==='passport-reference'
+}
+
+function preferredTargetNode(existing,incoming){
+ if(!existing)return incoming
+ if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa')
+ if(!provisionalNode(existing)&&provisionalNode(incoming))return existing
+ return incoming
+}
+
 function removeOrphanPassportReferences(nodes,edges){
  const connected=new Set()
  for(const edge of edges.values()){
@@ -74,7 +85,7 @@ function removeOrphanPassportReferences(nodes,edges){
   connected.add(edge.targetNodeId)
  }
  for(const[nodeId,node]of nodes){
-  if(node?.metadata?.source==='passport-reference'&&!connected.has(nodeId))nodes.delete(nodeId)
+  if(provisionalNode(node)&&!connected.has(nodeId))nodes.delete(nodeId)
  }
 }
 
@@ -90,9 +101,7 @@ export function projectPassportToGraph(repository,passport,{resolveTarget=null}=
  const projectedEdges=[]
  for(const relationship of list(passport.relationships)){
   const target=targetNode(passport,relationship,resolveTarget)
-  const existingTarget=nodes.get(target.nodeId)
-  if(existingTarget&&existingTarget.organizationId!==target.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa')
-  if(!existingTarget)nodes.set(target.nodeId,target)
+  nodes.set(target.nodeId,preferredTargetNode(nodes.get(target.nodeId),target))
   const edge=projectedEdge(passport,relationship,source.nodeId,target.nodeId)
   edges.set(edge.edgeId,edge)
   projectedEdges.push(edge)
