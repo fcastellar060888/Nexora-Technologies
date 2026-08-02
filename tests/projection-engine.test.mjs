@@ -8,6 +8,8 @@ test('valida el contrato mínimo de un proyector',()=>{
  assert.throws(()=>createProjector({id:'',supports:()=>true,project:()=>null}),/requiere id/)
  assert.throws(()=>createProjector({id:'a',version:0,supports:()=>true,project:()=>null}),/entero positivo/)
  assert.throws(()=>createProjector({id:'a',dependencies:['a'],supports:()=>true,project:()=>null}),/depender de sí mismo/)
+ assert.throws(()=>createProjector({id:'a',supports:()=>true,project:()=>null,policy:{maxAttempts:0}}),/entero positivo/)
+ assert.throws(()=>createProjector({id:'a',supports:()=>true,project:()=>null,policy:{failStrategy:'invalid'}}),/no es válida/)
 })
 
 test('ordena por dependencias y luego por prioridad e id',async()=>{
@@ -71,6 +73,46 @@ test('una falla bloquea solo sus dependientes y permite continuar ramas independ
  assert.deepEqual(calls,['audit','timeline'])
  assert.equal(engine.hasProcessed('evt-1','timeline',1),false)
  assert.equal(engine.hasProcessed('evt-1','audit',1),true)
+})
+
+test('reintenta hasta éxito sin romper idempotencia',async()=>{
+ const engine=createProjectionEngine();let attempts=0
+ engine.registerProjector(createProjector({id:'retry',supports:()=>true,policy:{maxAttempts:3},project:()=>{attempts++;if(attempts<3)throw new Error('temporal');return'OK'}}))
+ const result=await engine.execute({...event,eventId:'evt-retry'})
+ assert.equal(result.results[0].status,'succeeded')
+ assert.equal(result.results[0].attempts,3)
+ assert.equal(result.results[0].output,'OK')
+ assert.equal(engine.hasProcessed('evt-retry','retry',1),true)
+})
+
+test('aplica timeout y no marca el proyector como procesado',async()=>{
+ const engine=createProjectionEngine()
+ engine.registerProjector(createProjector({id:'slow',supports:()=>true,policy:{timeoutMs:5},project:()=>new Promise(resolve=>setTimeout(()=>resolve('late'),30))}))
+ const result=await engine.execute({...event,eventId:'evt-timeout'})
+ assert.equal(result.results[0].status,'failed')
+ assert.match(result.results[0].error,/Tiempo de espera/)
+ assert.equal(engine.hasProcessed('evt-timeout','slow',1),false)
+})
+
+test('continue permite ejecutar dependientes pese al fallo',async()=>{
+ const engine=createProjectionEngine(),calls=[]
+ engine.registerProjector(createProjector({id:'optional',supports:()=>true,policy:{failStrategy:'continue'},project:()=>{throw new Error('optional failed')}}))
+ engine.registerProjector(createProjector({id:'after',dependencies:['optional'],supports:()=>true,project:()=>calls.push('after')}))
+ const result=await engine.execute({...event,eventId:'evt-continue'})
+ assert.equal(result.results.find(item=>item.projectorId==='optional').status,'failed')
+ assert.equal(result.results.find(item=>item.projectorId==='after').status,'succeeded')
+ assert.deepEqual(calls,['after'])
+})
+
+test('stop-all bloquea toda ejecución posterior',async()=>{
+ const engine=createProjectionEngine(),calls=[]
+ engine.registerProjector(createProjector({id:'critical',priority:100,supports:()=>true,policy:{failStrategy:'stop-all'},project:()=>{throw new Error('critical')}}))
+ engine.registerProjector(createProjector({id:'independent',supports:()=>true,project:()=>calls.push('independent')}))
+ const result=await engine.execute({...event,eventId:'evt-stop-all'})
+ assert.equal(result.results[0].status,'failed')
+ assert.equal(result.results[1].status,'blocked')
+ assert.equal(result.results[1].reason,'execution-stopped')
+ assert.deepEqual(calls,[])
 })
 
 test('expone snapshots inmutables y registro reversible',()=>{
