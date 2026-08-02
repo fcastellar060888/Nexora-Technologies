@@ -67,6 +67,17 @@ function ownedByPassport(edge,passportId){
  return edge?.source==='passport'&&edge?.metadata?.passportId===passportId
 }
 
+function removeOrphanPassportReferences(nodes,edges){
+ const connected=new Set()
+ for(const edge of edges.values()){
+  connected.add(edge.sourceNodeId)
+  connected.add(edge.targetNodeId)
+ }
+ for(const[nodeId,node]of nodes){
+  if(node?.metadata?.source==='passport-reference'&&!connected.has(nodeId))nodes.delete(nodeId)
+ }
+}
+
 export function projectPassportToGraph(repository,passport,{resolveTarget=null}={}){
  assertRepository(repository)
  assertPassport(passport)
@@ -86,6 +97,7 @@ export function projectPassportToGraph(repository,passport,{resolveTarget=null}=
   edges.set(edge.edgeId,edge)
   projectedEdges.push(edge)
  }
+ removeOrphanPassportReferences(nodes,edges)
  repository.replaceAll({nodes:[...nodes.values()],edges:[...edges.values()]})
  return Object.freeze({node:repository.getNode?.(source.nodeId)??source,edges:Object.freeze(projectedEdges),version:repository.getVersion?.()??repository.snapshot().version})
 }
