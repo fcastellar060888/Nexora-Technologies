@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createKnowledgeGraphRepository,projectPassportToGraph}from'../src/core/knowledgeGraph/index.js'
+import{createGraphNode,createGraphEdge,createKnowledgeGraphRepository,projectPassportToGraph}from'../src/core/knowledgeGraph/index.js'
 import{createIntelligentObject,createPassport}from'../src/core/passport/index.js'
 
 const generatedAt='2026-08-01T18:00:00.000Z'
@@ -21,6 +21,7 @@ test('proyecta el objeto y sus relaciones canónicas de forma atómica',()=>{
  assert.equal(snapshot.nodes.length,3)
  assert.equal(snapshot.edges.length,2)
  assert.deepEqual(snapshot.edges.map(edge=>edge.relationType).sort(),['descends_from','located_in'])
+ assert.equal(snapshot.edges.every(edge=>edge.source==='passport'&&edge.metadata.passportId===source.passportId),true)
  assert.equal(result.node.label,'Planta 1')
  assert.equal(Object.isFrozen(result.edges),true)
 })
@@ -32,6 +33,37 @@ test('reproyectar el mismo Passport no duplica nodos ni aristas',()=>{
  const snapshot=repository.snapshot()
  assert.equal(snapshot.nodes.length,2)
  assert.equal(snapshot.edges.length,1)
+})
+
+test('reemplaza solo las aristas propias del Passport y retira las obsoletas',()=>{
+ const repository=createKnowledgeGraphRepository()
+ const initial=passport([
+  {type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'},
+  {type:'descends.from',targetType:'cultivation.materialplant',targetId:'mother-1'}
+ ])
+ projectPassportToGraph(repository,initial)
+ const sensor=createGraphNode({nodeId:'org-1:iot.sensor:sensor-1',nodeType:'iot.sensor',organizationId:'org-1',siteId:'site-1',label:'Sensor 1',status:'active',createdAt:generatedAt,updatedAt:generatedAt})
+ repository.addNode(sensor)
+ repository.addEdge(createGraphEdge({edgeId:'iot-edge-1',relationType:'monitored_by',sourceNodeId:'org-1:cultivation.plant:plant-1',targetNodeId:sensor.nodeId,organizationId:'org-1',source:'iot',confidence:1,validFrom:generatedAt,createdAt:generatedAt}))
+ const updated=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-2'}])
+ projectPassportToGraph(repository,updated)
+ const snapshot=repository.snapshot()
+ const passportEdges=snapshot.edges.filter(edge=>edge.source==='passport')
+ assert.equal(passportEdges.length,1)
+ assert.equal(passportEdges[0].targetNodeId,'org-1:cultivation.bed:bed-2')
+ assert.equal(snapshot.edges.some(edge=>edge.edgeId==='iot-edge-1'&&edge.source==='iot'),true)
+ assert.equal(snapshot.edges.some(edge=>edge.targetNodeId.endsWith('bed-1')||edge.targetNodeId.endsWith('mother-1')),false)
+})
+
+test('un Passport sin relaciones elimina solo sus aristas proyectadas',()=>{
+ const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}])
+ projectPassportToGraph(repository,source)
+ const bed=repository.getNode('org-1:cultivation.bed:bed-1')
+ repository.addEdge(createGraphEdge({edgeId:'manual-edge-1',relationType:'assigned_to',sourceNodeId:'org-1:cultivation.plant:plant-1',targetNodeId:bed.nodeId,organizationId:'org-1',source:'user',confidence:1,validFrom:generatedAt,createdAt:generatedAt}))
+ projectPassportToGraph(repository,passport([]))
+ const snapshot=repository.snapshot()
+ assert.equal(snapshot.edges.length,1)
+ assert.equal(snapshot.edges[0].edgeId,'manual-edge-1')
 })
 
 test('permite resolver destinos con datos completos sin cambiar su identidad',()=>{
