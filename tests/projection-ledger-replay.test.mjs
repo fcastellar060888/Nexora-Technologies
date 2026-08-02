@@ -47,9 +47,7 @@ test('un replay de un evento nuevo no lo marca como procesado para ejecución no
 })
 
 test('valida rangos y permite detenerse ante error del motor',async()=>{
- const{ledger}=fixture()
- await assert.rejects(()=>replayLedger(ledger,{replay:async()=>{throw new Error('fallo controlado')}},{stopOnError:true}),/^(?!)/)
- const engine={replay:async()=>{throw new Error('fallo controlado')}}
+ const{ledger}=fixture(),engine={replay:async()=>{throw new Error('fallo controlado')}}
  const result=await replayLedger(ledger,engine,{stopOnError:true})
  assert.equal(result.processed,1)
  assert.equal(result.failed,1)
