@@ -53,6 +53,7 @@ test('reemplaza solo las aristas propias del Passport y retira las obsoletas',()
  assert.equal(passportEdges[0].targetNodeId,'org-1:cultivation.bed:bed-2')
  assert.equal(snapshot.edges.some(edge=>edge.edgeId==='iot-edge-1'&&edge.source==='iot'),true)
  assert.equal(snapshot.edges.some(edge=>edge.targetNodeId.endsWith('bed-1')||edge.targetNodeId.endsWith('mother-1')),false)
+ assert.equal(snapshot.nodes.some(node=>node.nodeId.endsWith('bed-1')||node.nodeId.endsWith('mother-1')),false)
 })
 
 test('un Passport sin relaciones elimina solo sus aristas proyectadas',()=>{
@@ -64,6 +65,16 @@ test('un Passport sin relaciones elimina solo sus aristas proyectadas',()=>{
  const snapshot=repository.snapshot()
  assert.equal(snapshot.edges.length,1)
  assert.equal(snapshot.edges[0].edgeId,'manual-edge-1')
+ assert.equal(snapshot.nodes.some(node=>node.nodeId===bed.nodeId),true)
+})
+
+test('preserva nodos enriquecidos aunque ya no estén en el Passport',()=>{
+ const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}])
+ projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:generatedAt,metadata:{capacity:50},siteId:ref.siteId})})
+ projectPassportToGraph(repository,passport([]))
+ const target=repository.getNode('org-1:cultivation.bed:bed-1')
+ assert.equal(target.label,'Cama Norte')
+ assert.equal(target.metadata.capacity,50)
 })
 
 test('permite resolver destinos con datos completos sin cambiar su identidad',()=>{
