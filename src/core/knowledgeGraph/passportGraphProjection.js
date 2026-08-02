@@ -71,6 +71,13 @@ function provisionalNode(node){
  return node?.metadata?.source==='passport-reference'
 }
 
+function preferredSourceNode(existing,incoming){
+ if(!existing)return incoming
+ if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo del Passport ya pertenece a otra empresa')
+ if(Date.parse(incoming.updatedAt)<Date.parse(existing.updatedAt))return existing
+ return incoming
+}
+
 function preferredTargetNode(existing,incoming){
  if(!existing)return incoming
  if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa')
@@ -98,9 +105,7 @@ export function projectPassportToGraph(repository,passport,{resolveTarget=null}=
  const current=repository.snapshot(),nodes=new Map(current.nodes.map(node=>[node.nodeId,node]))
  const edges=new Map(current.edges.filter(edge=>!ownedByPassport(edge,passport.passportId)).map(edge=>[edge.edgeId,edge]))
  const source=objectNode(passport)
- const existingSource=nodes.get(source.nodeId)
- if(existingSource&&existingSource.organizationId!==source.organizationId)throw new Error('El nodo del Passport ya pertenece a otra empresa')
- nodes.set(source.nodeId,source)
+ nodes.set(source.nodeId,preferredSourceNode(nodes.get(source.nodeId),source))
  const projectedEdges=[]
  for(const relationship of list(passport.relationships)){
   const target=targetNode(passport,relationship,resolveTarget)
