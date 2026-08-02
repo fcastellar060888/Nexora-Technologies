@@ -77,6 +77,37 @@ test('preserva nodos enriquecidos aunque ya no estén en el Passport',()=>{
  assert.equal(target.metadata.capacity,50)
 })
 
+test('enriquece una referencia provisional cuando aparecen datos completos',()=>{
+ const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}])
+ projectPassportToGraph(repository,source)
+ assert.equal(repository.getNode('org-1:cultivation.bed:bed-1').metadata.source,'passport-reference')
+ projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:generatedAt,metadata:{capacity:50},siteId:ref.siteId})})
+ const target=repository.getNode('org-1:cultivation.bed:bed-1')
+ assert.equal(target.label,'Cama Norte')
+ assert.equal(target.metadata.capacity,50)
+ assert.notEqual(target.metadata.source,'passport-reference')
+})
+
+test('una proyección provisional no degrada un nodo ya enriquecido',()=>{
+ const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1',targetLabel:'Referencia incompleta'}])
+ projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:generatedAt,metadata:{capacity:50,source:'facility'},siteId:ref.siteId})})
+ projectPassportToGraph(repository,source)
+ const target=repository.getNode('org-1:cultivation.bed:bed-1')
+ assert.equal(target.label,'Cama Norte')
+ assert.equal(target.status,'active')
+ assert.equal(target.metadata.capacity,50)
+ assert.equal(target.metadata.source,'facility')
+})
+
+test('permite actualizar un nodo enriquecido con información enriquecida más reciente',()=>{
+ const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}])
+ projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-07-01T00:00:00.000Z',metadata:{capacity:50},siteId:ref.siteId})})
+ projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte ampliada',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:generatedAt,metadata:{capacity:60},siteId:ref.siteId})})
+ const target=repository.getNode('org-1:cultivation.bed:bed-1')
+ assert.equal(target.label,'Cama Norte ampliada')
+ assert.equal(target.metadata.capacity,60)
+})
+
 test('permite resolver destinos con datos completos sin cambiar su identidad',()=>{
  const repository=createKnowledgeGraphRepository(),source=passport([{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}])
  projectPassportToGraph(repository,source,{resolveTarget:ref=>({label:'Cama Norte',status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:generatedAt,metadata:{capacity:50},siteId:ref.siteId})})
