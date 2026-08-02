@@ -55,9 +55,9 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
  function unregisterProjector(projectorId){return projectors.delete(text(projectorId))}
  function getProjector(projectorId){return projectors.get(text(projectorId))??null}
  function listProjectors(){return frozenList(orderedProjectors([...projectors.values()]))}
- function record(eventId,projector,result,startedMs,finishedMs){
+ function record(eventId,projector,result,startedMs,finishedMs,mode){
   const durationMs=Math.max(0,finishedMs-startedMs),startedAt=new Date(startedMs).toISOString(),finishedAt=new Date(finishedMs).toISOString()
-  const execution=Object.freeze({executionId:`${eventId}:${projector.id}:${projector.version}:${history.length+1}`,eventId,projectorId:projector.id,projectorVersion:projector.version,startedAt,finishedAt,durationMs,attempts:result.attempts??0,status:result.status,reason:result.reason??null,error:result.error??null,blockedBy:result.blockedBy??Object.freeze([]),failStrategy:projector.policy.failStrategy,timeoutMs:projector.policy.timeoutMs,timedOut:Boolean(result.error?.startsWith('Tiempo de espera agotado'))})
+  const execution=Object.freeze({executionId:`${eventId}:${projector.id}:${projector.version}:${history.length+1}`,eventId,projectorId:projector.id,projectorVersion:projector.version,mode,startedAt,finishedAt,durationMs,attempts:result.attempts??0,status:result.status,reason:result.reason??null,error:result.error??null,blockedBy:result.blockedBy??Object.freeze([]),failStrategy:projector.policy.failStrategy,timeoutMs:projector.policy.timeoutMs,timedOut:Boolean(result.error?.startsWith('Tiempo de espera agotado'))})
   history.push(execution);if(history.length>Number(historyLimit))history.splice(0,history.length-Number(historyLimit))
   const current=metrics.get(projector.id)??emptyMetrics(projector),next={...current,processed:current.processed+1,totalDurationMs:current.totalDurationMs+durationMs,maxDurationMs:Math.max(current.maxDurationMs,durationMs),lastExecution:finishedAt}
   if(result.status==='succeeded'){next.succeeded++;next.lastSuccess=finishedAt}
@@ -68,12 +68,12 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
   if(execution.timedOut)next.timedOut++
   next.avgDurationMs=next.processed?next.totalDurationMs/next.processed:0
   metrics.set(projector.id,next)
-  return execution
  }
- async function execute(event,context={}){
+ async function run(event,context,mode){
   const eventId=eventIdOf(event)
   if(!eventId)throw new Error('El evento requiere eventId o id')
-  const results=[],statusByProjector=new Map();let stopAll=false
+  const replayMode=mode==='replay',results=[],statusByProjector=new Map();let stopAll=false
+  const executionContext=Object.freeze({...context,projectionMode:mode})
   for(const projector of orderedProjectors([...projectors.values()])){
    const startedMs=now();let result
    if(stopAll){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'blocked',reason:'execution-stopped'});statusByProjector.set(projector.id,'blocked')}
@@ -82,23 +82,25 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
     if(blockedBy.length){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'blocked',reason:'dependency-failed',blockedBy:frozenList(blockedBy)});statusByProjector.set(projector.id,'blocked')}
     else{
      const key=`${eventId}:${projector.id}:${projector.version}`
-     if(processed.has(key)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'already-processed'});statusByProjector.set(projector.id,'succeeded')}
+     if(!replayMode&&processed.has(key)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'already-processed'});statusByProjector.set(projector.id,'succeeded')}
      else try{
-      if(!await projector.supports(event,context)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported'});statusByProjector.set(projector.id,'skipped')}
+      if(!await projector.supports(event,executionContext)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported'});statusByProjector.set(projector.id,'skipped')}
       else{
-       const run=await runProjector(projector,event,context)
-       if(run.ok){processed.add(key);result=Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',attempts:run.attempts,output:run.output});statusByProjector.set(projector.id,'succeeded')}
-       else{result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:run.attempts,error:errorMessage(run.error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
+       const execution=await runProjector(projector,event,executionContext)
+       if(execution.ok){if(!replayMode)processed.add(key);result=Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',attempts:execution.attempts,output:execution.output});statusByProjector.set(projector.id,'succeeded')}
+       else{result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:execution.attempts,error:errorMessage(execution.error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
       }
      }catch(error){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:1,error:errorMessage(error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
     }
    }
-   results.push(result);record(eventId,projector,result,startedMs,now())
+   results.push(result);record(eventId,projector,result,startedMs,now(),mode)
   }
-  return Object.freeze({eventId,executedAt:timestamp(),results:frozenList(results)})
+  return Object.freeze({eventId,mode,executedAt:timestamp(),results:frozenList(results)})
  }
+ const execute=(event,context={})=>run(event,context,'live')
+ const replay=(event,context={})=>run(event,context,'replay')
  function hasProcessed(eventId,projectorId,version){return processed.has(`${text(eventId)}:${text(projectorId)}:${Number(version)}`)}
- function getHistory({projectorId=null,eventId=null,limit=historyLimit}={}){return frozenList(history.filter(item=>(!projectorId||item.projectorId===text(projectorId))&&(!eventId||item.eventId===text(eventId))).slice(-Math.max(0,Number(limit)||0)))}
+ function getHistory({projectorId=null,eventId=null,mode=null,limit=historyLimit}={}){return frozenList(history.filter(item=>(!projectorId||item.projectorId===text(projectorId))&&(!eventId||item.eventId===text(eventId))&&(!mode||item.mode===text(mode))).slice(-Math.max(0,Number(limit)||0)))}
  function getMetrics(projectorId=null){
   if(projectorId){const item=metrics.get(text(projectorId));return item?Object.freeze({...item}):null}
   return frozenList([...metrics.values()].map(item=>Object.freeze({...item})).sort((a,b)=>a.projectorId.localeCompare(b.projectorId)))
@@ -109,5 +111,5 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
   return Object.freeze({status,failureRate,totals:Object.freeze(totals),projectors:getMetrics(),historySize:history.length,historyLimit:Number(historyLimit)})
  }
  function snapshot(){return Object.freeze({projectors:listProjectors(),processed:frozenList([...processed].sort()),history:getHistory(),metrics:getMetrics(),health:health()})}
- return Object.freeze({registerProjector,unregisterProjector,getProjector,listProjectors,execute,hasProcessed,getHistory,getMetrics,health,snapshot})
+ return Object.freeze({registerProjector,unregisterProjector,getProjector,listProjectors,execute,replay,hasProcessed,getHistory,getMetrics,health,snapshot})
 }
