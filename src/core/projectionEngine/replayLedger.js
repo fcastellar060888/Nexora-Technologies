@@ -15,9 +15,10 @@ function sequence(value,label){
  return number
 }
 
-export async function replayLedger(ledger,engine,{organizationId=null,siteId=null,eventName=null,aggregateType=null,aggregateId=null,from=null,to=null,fromSequence=null,toSequence=null,limit=Number.MAX_SAFE_INTEGER,context={},onResult=null,onError=null,stopOnError=false}={}){
+export async function replayLedger(ledger,engine,{organizationId=null,siteId=null,eventName=null,aggregateType=null,aggregateId=null,from=null,to=null,fromSequence=null,toSequence=null,limit=Number.MAX_SAFE_INTEGER,context={},onResult=null,onError=null,stopOnError=false,signal=null}={}){
  assertLedger(ledger)
  assertEngine(engine)
+ if(signal!==null&&typeof signal?.aborted!=='boolean')throw new Error('signal debe ser una AbortSignal válida')
  const firstSequence=sequence(fromSequence,'fromSequence'),lastSequence=sequence(toSequence,'toSequence')
  if(firstSequence!==null&&lastSequence!==null&&firstSequence>lastSequence)throw new Error('fromSequence no puede ser mayor que toSequence')
  const max=Number(limit)
@@ -28,8 +29,9 @@ export async function replayLedger(ledger,engine,{organizationId=null,siteId=nul
  const notifyResult=typeof onResult==='function'?onResult:()=>{}
  const notifyError=typeof onError==='function'?onError:()=>{}
  const results=[]
- let succeeded=0,failed=0
+ let succeeded=0,failed=0,cancelled=false
  for(const entry of entries){
+  if(signal?.aborted){cancelled=true;break}
   try{
    const result=await engine.replay(entry.event,Object.freeze({...context,replay:true,ledgerEntry:entry,ledgerSequence:entry.sequence,recordedAt:entry.recordedAt}))
    results.push(Object.freeze({entry,result,error:null}))
@@ -43,5 +45,6 @@ export async function replayLedger(ledger,engine,{organizationId=null,siteId=nul
    if(stopOnError)break
   }
  }
- return Object.freeze({mode:'replay',selected:entries.length,processed:results.length,succeeded,failed,fromSequence:entries[0]?.sequence??null,toSequence:results.at(-1)?.entry?.sequence??null,results:Object.freeze(results)})
+ if(signal?.aborted&&results.length<entries.length)cancelled=true
+ return Object.freeze({mode:'replay',selected:entries.length,processed:results.length,succeeded,failed,cancelled,remaining:Math.max(0,entries.length-results.length),fromSequence:entries[0]?.sequence??null,toSequence:results.at(-1)?.entry?.sequence??null,results:Object.freeze(results)})
 }
