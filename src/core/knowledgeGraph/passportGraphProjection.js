@@ -5,6 +5,7 @@ const list=value=>Array.isArray(value)?value:[]
 const relationType=value=>text(value).replaceAll('.','_')
 const nodeIdFor=({organizationId,objectType,objectId})=>`${organizationId}:${objectType}:${objectId}`
 const edgeIdFor=(passport,relationship)=>`${passport.passportId}:${relationType(relationship.type)}:${relationship.targetType}:${relationship.targetId}`
+const SOURCE_PRIORITY=Object.freeze({ledger:600,'iot-certified':500,iot:450,user:400,facility:350,domain:300,passport:200,'passport-reference':0})
 
 function assertRepository(repository){
  const required=['snapshot','replaceAll']
@@ -71,11 +72,39 @@ function provisionalNode(node){
  return node?.metadata?.source==='passport-reference'
 }
 
-function preferredSourceNode(existing,incoming){
+function sourcePriority(node){
+ const source=text(node?.metadata?.source).toLowerCase()
+ return SOURCE_PRIORITY[source]??100
+}
+
+function objectVersion(node){
+ const value=node?.metadata?.objectVersion??node?.metadata?.version??0
+ const numeric=Number(value)
+ return Number.isFinite(numeric)?numeric:0
+}
+
+function canonical(value){
+ if(Array.isArray(value))return value.map(canonical)
+ if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]))
+ return value
+}
+
+function stableFingerprint(node){return JSON.stringify(canonical(node))}
+
+function preferredNode(existing,incoming,organizationError){
  if(!existing)return incoming
- if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo del Passport ya pertenece a otra empresa')
- if(Date.parse(incoming.updatedAt)<Date.parse(existing.updatedAt))return existing
- return incoming
+ if(existing.organizationId!==incoming.organizationId)throw new Error(organizationError)
+ const incomingTime=Date.parse(incoming.updatedAt),existingTime=Date.parse(existing.updatedAt)
+ if(incomingTime!==existingTime)return incomingTime>existingTime?incoming:existing
+ const incomingPriority=sourcePriority(incoming),existingPriority=sourcePriority(existing)
+ if(incomingPriority!==existingPriority)return incomingPriority>existingPriority?incoming:existing
+ const incomingVersion=objectVersion(incoming),existingVersion=objectVersion(existing)
+ if(incomingVersion!==existingVersion)return incomingVersion>existingVersion?incoming:existing
+ return stableFingerprint(incoming)>=stableFingerprint(existing)?incoming:existing
+}
+
+function preferredSourceNode(existing,incoming){
+ return preferredNode(existing,incoming,'El nodo del Passport ya pertenece a otra empresa')
 }
 
 function preferredTargetNode(existing,incoming){
@@ -84,8 +113,7 @@ function preferredTargetNode(existing,incoming){
  const existingProvisional=provisionalNode(existing),incomingProvisional=provisionalNode(incoming)
  if(!existingProvisional&&incomingProvisional)return existing
  if(existingProvisional&&!incomingProvisional)return incoming
- if(!existingProvisional&&!incomingProvisional&&Date.parse(incoming.updatedAt)<Date.parse(existing.updatedAt))return existing
- return incoming
+ return preferredNode(existing,incoming,'El nodo destino ya pertenece a otra empresa')
 }
 
 function removeOrphanPassportReferences(nodes,edges){
