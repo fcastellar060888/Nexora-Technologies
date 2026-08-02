@@ -20,14 +20,17 @@ test('ordena por dependencias y luego por prioridad e id',async()=>{
  assert.deepEqual(calls,['timeline','passport','graph'])
 })
 
-test('rechaza dependencias ausentes y ciclos',()=>{
+test('rechaza dependencias ausentes y ciclos sin alterar parcialmente el registro',()=>{
  const missing=createProjectionEngine()
  assert.throws(()=>missing.registerProjector(createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>null})),/Dependencia no registrada/)
+ assert.deepEqual(missing.listProjectors(),[])
  const cycle=createProjectionEngine()
  cycle.registerProjector(createProjector({id:'a',supports:()=>true,project:()=>null}))
  cycle.registerProjector(createProjector({id:'b',dependencies:['a'],supports:()=>true,project:()=>null}))
  cycle.unregisterProjector('a')
  assert.throws(()=>cycle.registerProjector(createProjector({id:'a',dependencies:['b'],supports:()=>true,project:()=>null})),/Ciclo de dependencias/)
+ assert.equal(cycle.getProjector('a'),null)
+ assert.equal(cycle.getProjector('b').id,'b')
 })
 
 test('es idempotente por evento proyector y versión',async()=>{
@@ -48,6 +51,26 @@ test('omite proyectores que no soportan el evento sin marcarlos procesados',asyn
  assert.equal(result.results[0].status,'skipped')
  assert.equal(result.results[0].reason,'unsupported')
  assert.equal(engine.hasProcessed('evt-1','inventory',1),false)
+})
+
+test('una falla bloquea solo sus dependientes y permite continuar ramas independientes',async()=>{
+ const engine=createProjectionEngine(),calls=[]
+ engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>{calls.push('timeline');throw new Error('timeline roto')}}))
+ engine.registerProjector(createProjector({id:'passport',dependencies:['timeline'],supports:()=>true,project:()=>calls.push('passport')}))
+ engine.registerProjector(createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>calls.push('graph')}))
+ engine.registerProjector(createProjector({id:'audit',supports:()=>true,project:()=>calls.push('audit')}))
+ const result=await engine.execute(event)
+ const byId=Object.fromEntries(result.results.map(item=>[item.projectorId,item]))
+ assert.equal(byId.timeline.status,'failed')
+ assert.equal(byId.timeline.error,'timeline roto')
+ assert.equal(byId.passport.status,'blocked')
+ assert.deepEqual(byId.passport.blockedBy,['timeline'])
+ assert.equal(byId.graph.status,'blocked')
+ assert.deepEqual(byId.graph.blockedBy,['passport'])
+ assert.equal(byId.audit.status,'succeeded')
+ assert.deepEqual(calls,['audit','timeline'])
+ assert.equal(engine.hasProcessed('evt-1','timeline',1),false)
+ assert.equal(engine.hasProcessed('evt-1','audit',1),true)
 })
 
 test('expone snapshots inmutables y registro reversible',()=>{
