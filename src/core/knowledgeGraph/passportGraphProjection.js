@@ -54,19 +54,24 @@ function projectedEdge(passport,relationship,sourceNodeId,targetNodeId){
   sourceNodeId,
   targetNodeId,
   organizationId:passport.object.organizationId,
-  source:text(relationship.source)||'passport',
+  source:'passport',
   confidence:relationship.confidence??1,
   validFrom:timestamp,
   validTo:relationship.validTo??null,
   createdAt:relationship.createdAt??timestamp,
-  metadata:{passportId:passport.passportId,relationship:{...relationship}}
+  metadata:{passportId:passport.passportId,relationshipSource:text(relationship.source)||null,relationship:{...relationship}}
  })
+}
+
+function ownedByPassport(edge,passportId){
+ return edge?.source==='passport'&&edge?.metadata?.passportId===passportId
 }
 
 export function projectPassportToGraph(repository,passport,{resolveTarget=null}={}){
  assertRepository(repository)
  assertPassport(passport)
- const current=repository.snapshot(),nodes=new Map(current.nodes.map(node=>[node.nodeId,node])),edges=new Map(current.edges.map(edge=>[edge.edgeId,edge]))
+ const current=repository.snapshot(),nodes=new Map(current.nodes.map(node=>[node.nodeId,node]))
+ const edges=new Map(current.edges.filter(edge=>!ownedByPassport(edge,passport.passportId)).map(edge=>[edge.edgeId,edge]))
  const source=objectNode(passport)
  const existingSource=nodes.get(source.nodeId)
  if(existingSource&&existingSource.organizationId!==source.organizationId)throw new Error('El nodo del Passport ya pertenece a otra empresa')
