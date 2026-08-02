@@ -2,6 +2,7 @@ import{isProjector}from'./projectorContract.js'
 
 const text=value=>String(value??'').trim()
 const eventIdOf=event=>text(event?.eventId??event?.id)
+const errorMessage=error=>text(error?.message)||'Error de proyección no identificado'
 
 function orderedProjectors(projectors){
  const byId=new Map(projectors.map(projector=>[projector.id,projector]))
@@ -29,8 +30,10 @@ export function createProjectionEngine(){
   if(!isProjector(projector))throw new Error('Se requiere un proyector válido')
   const existing=projectors.get(projector.id)
   if(existing&&existing!==projector)throw new Error(`El proyector ${projector.id} ya está registrado`)
+  const candidate=new Map(projectors)
+  candidate.set(projector.id,projector)
+  orderedProjectors([...candidate.values()])
   projectors.set(projector.id,projector)
-  orderedProjectors([...projectors.values()])
   return projector
  }
  function unregisterProjector(projectorId){return projectors.delete(text(projectorId))}
@@ -39,20 +42,35 @@ export function createProjectionEngine(){
  async function execute(event,context={}){
   const eventId=eventIdOf(event)
   if(!eventId)throw new Error('El evento requiere eventId o id')
-  const results=[]
+  const results=[],statusByProjector=new Map()
   for(const projector of orderedProjectors([...projectors.values()])){
+   const blockedBy=projector.dependencies.filter(id=>['failed','blocked'].includes(statusByProjector.get(id)))
+   if(blockedBy.length){
+    const result=Object.freeze({projectorId:projector.id,version:projector.version,status:'blocked',reason:'dependency-failed',blockedBy:Object.freeze([...blockedBy])})
+    results.push(result)
+    statusByProjector.set(projector.id,'blocked')
+    continue
+   }
    const key=`${eventId}:${projector.id}:${projector.version}`
    if(processed.has(key)){
     results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'already-processed'}))
+    statusByProjector.set(projector.id,'succeeded')
     continue
    }
-   if(!await projector.supports(event,context)){
-    results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported'}))
-    continue
+   try{
+    if(!await projector.supports(event,context)){
+     results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported'}))
+     statusByProjector.set(projector.id,'skipped')
+     continue
+    }
+    const output=await projector.project(event,Object.freeze({...context,projectorId:projector.id,projectorVersion:projector.version}))
+    processed.add(key)
+    results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',output}))
+    statusByProjector.set(projector.id,'succeeded')
+   }catch(error){
+    results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',error:errorMessage(error)}))
+    statusByProjector.set(projector.id,'failed')
    }
-   const output=await projector.project(event,Object.freeze({...context,projectorId:projector.id,projectorVersion:projector.version}))
-   processed.add(key)
-   results.push(Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',output}))
   }
   return Object.freeze({eventId,results:Object.freeze(results)})
  }
