@@ -43,7 +43,14 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
  const repository=createKnowledgeGraphRepository()
 
  function upsertNode(nodeInput){const node=nodeInput?.ref?graphNode(nodeInput):graphNode({ref:nodeInput,label:nodeInput?.label,status:nodeInput?.status,attributes:nodeInput?.attributes});const existing=repository.getNode(node.id);if(existing)return legacyNode(existing);repository.addNode(canonicalNode(node));return node}
- function connect(relationInput){const relation=graphRelation(relationInput),fromId=nodeKey(relation.from),toId=nodeKey(relation.to);if(!repository.getNode(fromId))upsertNode({ref:relation.from});if(!repository.getNode(toId))upsertNode({ref:relation.to});const result=repository.addEdge(canonicalEdge(relation));trimRelations();return legacyRelation(result.edge)}
+ function connect(relationInput){
+  const relation=graphRelation(relationInput),fromId=nodeKey(relation.from),toId=nodeKey(relation.to),canonicalType=canonicalRelationType(relation.relationType)
+  if(!repository.getNode(fromId))upsertNode({ref:relation.from})
+  if(!repository.getNode(toId))upsertNode({ref:relation.to})
+  const existing=repository.neighbors(fromId,{direction:'out',relationType:canonicalType}).find(item=>item.edge.targetNodeId===toId)
+  if(existing)return legacyRelation(existing.edge)
+  const result=repository.addEdge(canonicalEdge(relation));trimRelations();return legacyRelation(result.edge)
+ }
  function trimRelations(){const snapshot=repository.snapshot();if(snapshot.edges.length<=maxRelations)return;const keep=snapshot.edges.slice(snapshot.edges.length-maxRelations);repository.replaceAll({nodes:snapshot.nodes,edges:keep})}
  function disconnect(relationId){const id=String(relationId??'').trim(),snapshot=repository.snapshot();if(!repository.getEdge(id))return false;repository.replaceAll({nodes:snapshot.nodes,edges:snapshot.edges.filter(edge=>edge.edgeId!==id)});return true}
  function getNode(ref){return legacyNode(repository.getNode(nodeKey(objectRef(ref))))}
