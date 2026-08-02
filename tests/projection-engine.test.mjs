@@ -10,13 +10,14 @@ test('valida el contrato mínimo de un proyector',()=>{
  assert.throws(()=>createProjector({id:'a',dependencies:['a'],supports:()=>true,project:()=>null}),/depender de sí mismo/)
 })
 
-test('ordena por dependencias y luego por prioridad e id',()=>{
+test('ordena por dependencias y luego por prioridad e id',async()=>{
  const engine=createProjectionEngine(),calls=[]
- engine.registerProjector(createProjector({id:'graph',priority:100,dependencies:['passport'],supports:()=>true,project:()=>calls.push('graph')}))
  engine.registerProjector(createProjector({id:'timeline',priority:10,supports:()=>true,project:()=>calls.push('timeline')}))
  engine.registerProjector(createProjector({id:'passport',priority:1,dependencies:['timeline'],supports:()=>true,project:()=>calls.push('passport')}))
+ engine.registerProjector(createProjector({id:'graph',priority:100,dependencies:['passport'],supports:()=>true,project:()=>calls.push('graph')}))
  assert.deepEqual(engine.listProjectors().map(item=>item.id),['timeline','passport','graph'])
- return engine.execute(event).then(()=>assert.deepEqual(calls,['timeline','passport','graph']))
+ await engine.execute(event)
+ assert.deepEqual(calls,['timeline','passport','graph'])
 })
 
 test('rechaza dependencias ausentes y ciclos',()=>{
@@ -25,7 +26,8 @@ test('rechaza dependencias ausentes y ciclos',()=>{
  const cycle=createProjectionEngine()
  cycle.registerProjector(createProjector({id:'a',supports:()=>true,project:()=>null}))
  cycle.registerProjector(createProjector({id:'b',dependencies:['a'],supports:()=>true,project:()=>null}))
- assert.throws(()=>cycle.registerProjector(createProjector({id:'a',dependencies:['b'],supports:()=>true,project:()=>null})),/ya está registrado/)
+ cycle.unregisterProjector('a')
+ assert.throws(()=>cycle.registerProjector(createProjector({id:'a',dependencies:['b'],supports:()=>true,project:()=>null})),/Ciclo de dependencias/)
 })
 
 test('es idempotente por evento proyector y versión',async()=>{
