@@ -35,10 +35,11 @@ test('combina lotes actuales con entidades individuales sin perder compatibilida
   materialPlantUnits:[{id:'mother-special',lotId:'m1',plantType:'MOTHER',unitIndex:1,code:'MADRE-ELITE-01',healthStatus:'En seguimiento'}]
  }
  const units=projectMaterialPlantUnits(state)
- assert.equal(units.length,3)
+ assert.equal(units.length,4)
  assert.equal(materialPlantUnitById(state,'mother-special').code,'MADRE-ELITE-01')
  assert.equal(materialPlantUnitById(state,'mother-special').healthStatus,'En seguimiento')
  assert.equal(selectedMaterialPlantUnits(state,['material-plant:GRANDMOTHER:g1:1','mother-special']).length,2)
+ assert.ok(units.some(item=>item.id==='material-plant:MOTHER:m1:1'))
 })
 
 test('rechaza lotes sin identidad, tipos desconocidos e ids duplicados',()=>{
