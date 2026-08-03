@@ -20,7 +20,11 @@ function immutableCopy(value,label){
   try{
    if(Array.isArray(current)){
     if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
-    for(let index=0;index<current.length;index+=1)if(!Object.hasOwn(current,index))throw new Error(`${path} no puede contener posiciones vacías`)
+    for(let index=0;index<current.length;index+=1){
+     if(!Object.hasOwn(current,index))throw new Error(`${path} no puede contener posiciones vacías`)
+     const descriptor=Object.getOwnPropertyDescriptor(current,String(index))
+     if(!descriptor||!Object.hasOwn(descriptor,'value'))throw new Error(`${path}[${index}] no puede ser una propiedad accesora`)
+    }
     const extraKeys=Object.keys(current).filter(key=>!/^\d+$/.test(key)||Number(key)>=current.length)
     if(extraKeys.length)throw new Error(`${path} no puede contener propiedades adicionales`)
     return Object.freeze(current.map((item,index)=>copy(item,`${path}[${index}]`)))
@@ -30,7 +34,11 @@ function immutableCopy(value,label){
    if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
    if(Object.getOwnPropertyNames(current).length!==Object.keys(current).length)throw new Error(`${path} no puede contener propiedades no enumerables`)
    const result={}
-   for(const key of Object.keys(current))result[key]=copy(current[key],`${path}.${key}`)
+   for(const key of Object.keys(current)){
+    const descriptor=Object.getOwnPropertyDescriptor(current,key)
+    if(!descriptor||!Object.hasOwn(descriptor,'value'))throw new Error(`${path}.${key} no puede ser una propiedad accesora`)
+    Object.defineProperty(result,key,{value:copy(descriptor.value,`${path}.${key}`),enumerable:true,writable:false,configurable:false})
+   }
    return Object.freeze(result)
   }finally{active.delete(current)}
  }
