@@ -1,4 +1,4 @@
-export{createIntelligentObject,createPassport,isIntelligentObject,passportObjectRef}from'./passportContract.js'
+export{createIntelligentObject,createPassport,isIntelligentObject,passportObjectRef,DETERMINISTIC_TIMESTAMP}from'./passportContract.js'
 export{createPassportBuilder}from'./passportBuilder.js'
 export{createProjectionPlugin}from'./passportProjectionPlugin.js'
 export{projectPassportDocuments,projectPassportTimeline,passportSourceValue}from'./passportSources.js'
