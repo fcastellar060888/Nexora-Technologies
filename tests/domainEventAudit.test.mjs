@@ -21,15 +21,18 @@ test('el evento de selección de sesión pertenece al catálogo',()=>{
  assert.equal(isKnownDomainEvent(DomainEvents.USER_SESSION_SELECTED),true)
 })
 
-test('los dominios publican eventos y auditoría proyecta desde el Ledger',async()=>{
+test('los dominios publican eventos y auditoría proyecta desde el Ledger del workspace',async()=>{
  for(const path of['../src/pages/CompaniesPage.jsx','../src/pages/SitesPage.jsx','../src/pages/UsersPage.jsx']){
   const source=await readFile(new URL(path,import.meta.url),'utf8')
   assert.match(source,/publishDomainEvent/)
   assert.match(source,/audit:false/)
  }
  const bridge=await readFile(new URL('../src/core/audit/DomainEventAuditBridge.jsx',import.meta.url),'utf8')
- assert.match(bridge,/operationalLedger\.subscribe/)
+ assert.match(bridge,/getOperationalLedgerForScope\(scope\)/)
+ assert.match(bridge,/ledger\.subscribe/)
+ assert.match(bridge,/organizationId===companyId/)
  assert.match(bridge,/operationalLedgerEntries/)
+ assert.doesNotMatch(bridge,/import\{[^}]*operationalLedger[^}]*\}/)
  assert.doesNotMatch(bridge,/eventBus\.subscribe/)
  assert.match(bridge,/some\(item=>item\.id===entry\.id\)/)
 })
