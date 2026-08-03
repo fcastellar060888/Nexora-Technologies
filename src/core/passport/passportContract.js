@@ -1,4 +1,5 @@
 const OBJECT_TYPE_PATTERN=/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/
+export const DETERMINISTIC_TIMESTAMP='1970-01-01T00:00:00.000Z'
 
 function requiredString(value,label){
  const normalized=String(value??'').trim()
@@ -101,7 +102,7 @@ export function createIntelligentObject({
  identity={},
  attributes={},
  metadata={},
- createdAt=new Date().toISOString(),
+ createdAt=DETERMINISTIC_TIMESTAMP,
  updatedAt=createdAt,
  version=1
 }){
@@ -137,14 +138,15 @@ export function createPassport({
  actions=[],
  timeline=[],
  decisionContext={},
- generatedAt=new Date().toISOString()
+ generatedAt
 }){
  if(!isIntelligentObject(object))throw new Error('El Passport requiere un Objeto Inteligente válido')
- if(Number.isNaN(Date.parse(generatedAt)))throw new Error('La fecha de generación del Passport no es válida')
+ const projectionTime=generatedAt??object.updatedAt??object.createdAt??DETERMINISTIC_TIMESTAMP
+ if(Number.isNaN(Date.parse(projectionTime)))throw new Error('La fecha de generación del Passport no es válida')
 
  return deepFreeze({
   passportId:`${object.organizationId}:${object.objectType}:${object.objectId}`,
-  generatedAt:new Date(generatedAt).toISOString(),
+  generatedAt:new Date(projectionTime).toISOString(),
   object,
   relationships:normalizeRelationships(relationships,object),
   documents:normalizeIdentified(documents,'Los documentos'),
