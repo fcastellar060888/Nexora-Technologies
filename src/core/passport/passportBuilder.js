@@ -25,13 +25,16 @@ export function createPassportBuilder({plugins=[]}={}){
 
  function build({object,state={},context={},base={}}={}){
   if(!isIntelligentObject(object))throw new Error('El builder requiere un Objeto Inteligente válido')
+  const projectionTime=base.generatedAt??context.projectionTime??object.updatedAt??object.createdAt
+  if(Number.isNaN(Date.parse(projectionTime)))throw new Error('El builder requiere una fecha de proyección determinista')
+  const projectionContext=Object.freeze({...context,projectionTime:new Date(projectionTime).toISOString()})
   const output={
    relationships:[...list(base.relationships)],documents:[...list(base.documents)],indicators:[...list(base.indicators)],
    risks:[...list(base.risks)],actions:[...list(base.actions)],timeline:[...list(base.timeline)],
    decisionContext:{...(base.decisionContext||{})}
   }
   for(const plugin of registry){
-   const projection=plugin.project(Object.freeze({object,state,context}))||{}
+   const projection=plugin.project(Object.freeze({object,state,context:projectionContext}))||{}
    if(typeof projection!=='object'||Array.isArray(projection))throw new Error(`El plugin ${plugin.id} devolvió una proyección inválida`)
    for(const key of SECTION_KEYS)output[key].push(...list(projection[key]))
    if(projection.decisionContext){
@@ -39,7 +42,7 @@ export function createPassportBuilder({plugins=[]}={}){
     Object.assign(output.decisionContext,projection.decisionContext)
    }
   }
-  return createPassport({object,...output,generatedAt:base.generatedAt})
+  return createPassport({object,...output,generatedAt:projectionContext.projectionTime})
  }
 
  function listPlugins(){return Object.freeze(registry.map(plugin=>plugin.id))}
