@@ -1,7 +1,9 @@
 import{domainEventToTimelineEntry}from'./timelineProjection.js'
+import{timelineEntryFingerprint}from'./timelineSnapshot.js'
 
 const text=value=>String(value||'').toLocaleLowerCase('es')
 const required=value=>String(value||'').trim()
+const SOURCE_AUTHORITY={'event-bus':1,'operational-ledger':2}
 
 function isTimelineEntry(entry){
  return Boolean(entry
@@ -41,6 +43,34 @@ function compareRetention(a,b){
  return String(a.id).localeCompare(String(b.id))
 }
 
+function assertSameEventIdentity(existing,incoming){
+ const fields=['eventName','organizationId','aggregateType','aggregateId','occurredAt']
+ for(const field of fields){
+  if(existing[field]!==incoming[field])throw new Error(`El evento ${incoming.id} contradice su identidad canónica en ${field}`)
+ }
+}
+
+function authority(entry){
+ return SOURCE_AUTHORITY[entry.source]||0
+}
+
+function reconcileEntry(existing,incoming){
+ assertSameEventIdentity(existing,incoming)
+ if(timelineEntryFingerprint(existing)===timelineEntryFingerprint(incoming))return existing
+ const existingAuthority=authority(existing)
+ const incomingAuthority=authority(incoming)
+ if(incomingAuthority<existingAuthority)return existing
+ if(incomingAuthority>existingAuthority)return incoming
+ const existingSequence=Number.isInteger(existing.sequence)?existing.sequence:-1
+ const incomingSequence=Number.isInteger(incoming.sequence)?incoming.sequence:-1
+ if(incomingSequence<existingSequence)return existing
+ if(incomingSequence>existingSequence)return incoming
+ const existingRecorded=existing.recordedAt?Date.parse(existing.recordedAt):-1
+ const incomingRecorded=incoming.recordedAt?Date.parse(incoming.recordedAt):-1
+ if(incomingRecorded<existingRecorded)return existing
+ return incoming
+}
+
 export function createTimelineEngine({maxEntries=2000}={}){
  if(!Number.isInteger(maxEntries)||maxEntries<1)throw new Error('El límite del Timeline debe ser un entero positivo')
  const entries=[]
@@ -71,7 +101,16 @@ export function createTimelineEngine({maxEntries=2000}={}){
  function insert(entry,{silent=false}={}){
   const normalized=normalize(entry)
   const existing=entriesById.get(normalized.id)
-  if(existing)return existing
+  if(existing){
+   const reconciled=reconcileEntry(existing,normalized)
+   if(reconciled===existing)return existing
+   const index=entries.indexOf(existing)
+   entries[index]=reconciled
+   entriesById.set(reconciled.id,reconciled)
+   entries.sort(compareEntries)
+   if(!silent)notify()
+   return reconciled
+  }
   entries.push(normalized)
   entriesById.set(normalized.id,normalized)
   trim()
@@ -82,15 +121,13 @@ export function createTimelineEngine({maxEntries=2000}={}){
  function record(entry,options={}){return insert(entry,options)}
  function hydrate(persisted=[]){
   const incoming=Array.isArray(persisted)?persisted:[]
-  const next=[]
   const nextById=new Map()
   for(const raw of incoming){
    const entry=normalize(raw)
-   if(nextById.has(entry.id))continue
-   next.push(entry)
-   nextById.set(entry.id,entry)
+   const existing=nextById.get(entry.id)
+   nextById.set(entry.id,existing?reconcileEntry(existing,entry):entry)
   }
-  const retained=[...next].sort(compareRetention).slice(-maxEntries).sort(compareEntries)
+  const retained=[...nextById.values()].sort(compareRetention).slice(-maxEntries).sort(compareEntries)
   entries.length=0
   entries.push(...retained)
   entriesById.clear()
