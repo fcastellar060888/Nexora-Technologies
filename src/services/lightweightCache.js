@@ -15,6 +15,7 @@ function parse(raw,fallback=null){try{return raw?JSON.parse(raw):fallback}catch{
 function companyKey(companyId){return`${COMPANY_PREFIX}${companyId}`}
 function stamp(record){return Date.parse(record?.updatedAt||record?.createdAt||record?.date||0)||0}
 function bounded(records,max=MAX_COLLECTION_RECORDS){return list(records).sort((a,b)=>stamp(b)-stamp(a)).slice(0,max)}
+function recordOrganizationId(record){return String(record?._organizationId||record?.companyId||record?.organizationId||'')}
 
 export function cacheCollections(state={}){
  return Object.keys(state).filter(key=>Array.isArray(state[key])&&!INTERNAL_ARRAYS.has(key))
@@ -40,7 +41,10 @@ export function compactCompanyState(state={},companyId=''){
  const collections={}
  for(const key of cacheCollections(state)){
   if(key==='companies')continue
-  collections[key]=bounded(list(state[key]).filter(record=>!record?.companyId||record.companyId===companyId))
+  collections[key]=bounded(list(state[key]).filter(record=>{
+   const owner=recordOrganizationId(record)
+   return!owner||owner===companyId
+  }))
  }
  return{companyId,cachedAt:new Date().toISOString(),collections}
 }
