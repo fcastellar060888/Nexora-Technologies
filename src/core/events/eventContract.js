@@ -7,16 +7,28 @@ function requiredString(value,label){
 }
 
 function immutableCopy(value,label){
- try{
-  const copy=structuredClone(value)
-  const freeze=current=>{
-   if(!current||typeof current!=='object'||Object.isFrozen(current))return current
-   Object.values(current).forEach(freeze)
-   return Object.freeze(current)
+ const active=new WeakSet()
+ function copy(current,path){
+  if(current===null||typeof current==='string'||typeof current==='boolean')return current
+  if(typeof current==='number'){
+   if(!Number.isFinite(current))throw new Error(`${path} debe contener números finitos`)
+   return current
   }
-  return freeze(copy)
- }catch{
-  throw new Error(`${label} debe contener datos serializables`)
+  if(typeof current!=='object')throw new Error(`${path} debe contener datos JSON serializables`)
+  if(active.has(current))throw new Error(`${path} no puede contener referencias cíclicas`)
+  active.add(current)
+  try{
+   if(Array.isArray(current))return Object.freeze(current.map((item,index)=>copy(item,`${path}[${index}]`)))
+   const prototype=Object.getPrototypeOf(current)
+   if(prototype!==Object.prototype&&prototype!==null)throw new Error(`${path} debe contener únicamente objetos planos`)
+   const result={}
+   for(const key of Object.keys(current))result[key]=copy(current[key],`${path}.${key}`)
+   return Object.freeze(result)
+  }finally{active.delete(current)}
+ }
+ try{return copy(value,label)}catch(error){
+  if(error instanceof Error&&error.message.startsWith(label))throw error
+  throw new Error(`${label} debe contener datos JSON serializables`)
  }
 }
 
