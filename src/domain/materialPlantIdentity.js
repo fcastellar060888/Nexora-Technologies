@@ -29,12 +29,13 @@ function defaultId(){
 }
 
 function normalizeUnit(unit,lot){
+ const unitIndex=positiveInteger(unit.unitIndex)
  return Object.freeze({
   ...unit,
   id:text(unit.id),
-  code:text(unit.code),
+  code:text(unit.code)||unitCode(lot||{id:unit.lotId},unit.plantType,unitIndex),
   plantType:unit.plantType,
-  unitIndex:positiveInteger(unit.unitIndex),
+  unitIndex,
   lotId:unit.lotId,
   siteId:unit.siteId||lot?.siteId||null,
   geneticId:unit.geneticId||lot?.geneticId||null,
@@ -83,10 +84,10 @@ export function materializeLotPlantUnits(lot,{plantType,existingUnits=[],idFacto
  return[...current,...created]
 }
 
-export function projectLotPlantUnits(lot,{plantType,units=[]}={}){
+export function projectLotPlantUnits(lot,{plantType,units=[],overrides=units}={}){
  if(!lot?.id)throw new Error('El lote necesita un identificador estable.')
  if(!Object.values(MATERIAL_PLANT_TYPES).includes(plantType))throw new Error('Tipo de planta de material vegetal inválido.')
- const materialized=materializeLotPlantUnits(lot,{plantType,existingUnits:units,idFactory:legacyMaterialPlantId})
+ const materialized=materializeLotPlantUnits(lot,{plantType,existingUnits:overrides,idFactory:legacyMaterialPlantId})
  return Object.freeze(materialized
   .filter(item=>item?.lotId===lot.id&&item?.plantType===plantType)
   .sort((a,b)=>positiveInteger(a.unitIndex)-positiveInteger(b.unitIndex)||text(a.id).localeCompare(text(b.id)))
