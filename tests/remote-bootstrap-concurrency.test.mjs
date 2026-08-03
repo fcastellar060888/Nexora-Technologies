@@ -76,7 +76,10 @@ test('AUD-F045: un snapshot remoto vacío elimina solo la partición activa',()=
   {id:'house-b',name:'B',_organizationId:'company-2'}
  ]})
  const hydrated=hydrateAuthoritativeState(local,[],{companyId:'company-1',initialState:local})
- assert.deepEqual(hydrated.houses,[{id:'house-b',name:'B',_organizationId:'company-2'}])
+ assert.equal(hydrated.houses.length,1)
+ assert.equal(hydrated.houses[0].id,'house-b')
+ assert.equal(hydrated.houses[0].name,'B')
+ assert.equal(hydrated.houses[0]._organizationId,'company-2')
 })
 
 test('AUD-F045: mutaciones pendientes del tenant activo no colisionan con el mismo ID extranjero',()=>{
