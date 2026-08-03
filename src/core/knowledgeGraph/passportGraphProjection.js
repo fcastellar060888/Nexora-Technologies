@@ -100,6 +100,6 @@ export function projectPassportToGraph(repository,passport,{resolveTarget=null}=
   projectedEdges.push(edge)
  }
  removeOrphanPassportReferences(nodes,edges,cleanupCandidates)
- repository.replaceAll({nodes:[...nodes.values()],edges:[...edges.values()]})
+ repository.replaceAll({nodes:[...nodes.values()],edges:[...edges.values()],expectedVersion:current.version})
  return Object.freeze({node:repository.getNode?.(source.nodeId)??source,edges:Object.freeze(projectedEdges),version:repository.getVersion?.()??repository.snapshot().version})
 }
