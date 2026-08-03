@@ -47,7 +47,7 @@ test('exige coherencia temporal del objeto',()=>{
 test('compone un Passport profundamente inmutable',()=>{
  const passport=createPassport({
   object:plant,
-  relationships:[{type:'descends_from',targetType:'propagation.mother',targetId:'mother-1',metadata:{confidence:1}}],
+  relationships:[{type:'descends_from',targetType:'propagation.mother',targetId:'mother-1',targetOrganizationId:'company-001',metadata:{confidence:1}}],
   documents:[{id:'photo-1',type:'image'}],
   indicators:[{key:'days_in_phase',value:18,unit:'days',details:{source:'timeline'}}],
   risks:[{key:'open_mipe_findings',severity:'high',value:1}],
@@ -67,7 +67,7 @@ test('compone un Passport profundamente inmutable',()=>{
 })
 
 test('deduplica relaciones, indicadores y colecciones identificadas',()=>{
- const relationship={type:'descends_from',targetType:'propagation.mother',targetId:'mother-1'}
+ const relationship={type:'descends_from',targetType:'propagation.mother',targetId:'mother-1',targetOrganizationId:'company-001'}
  const passport=createPassport({
   object:plant,
   relationships:[relationship,relationship],
