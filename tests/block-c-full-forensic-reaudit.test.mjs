@@ -22,7 +22,7 @@ async function files(dir){
 const source=async()=>Promise.all((await files(root)).map(async path=>({path:relative(root,path),text:await readFile(path,'utf8')})))
 const scope=(organizationId,actorId)=>({organizationId,actorId})
 
-function event(organizationId,actorId,id){return createDomainEvent({eventId:id,name:'cultivation.plant.inspected',version:1,aggregate:{type:'cultivation.plant',id:`plant-${id}`},context:{organizationId,actorId},occurredAt:'2026-08-03T12:00:00.000Z',payload:{id}})}
+function event(organizationId,actorId,id){return createDomainEvent({eventId:id,name:'cultivation.plant.inspected',version:1,aggregateType:'cultivation.plant',aggregateId:`plant-${id}`,organizationId,actorId,occurredAt:'2026-08-03T12:00:00.000Z',payload:{id}})}
 
 test('reauditoría C: ninguna ruta productiva crea repositorios Graph fuera del runtime canónico',async()=>{
  const matches=(await source()).filter(({path,text})=>text.includes('createKnowledgeGraphRepository(')&&!['core/knowledgeGraph/graphRepository.js','core/knowledgeGraph/graphRuntime.js','core/knowledgeGraph/knowledgeGraph.js'].includes(path))
