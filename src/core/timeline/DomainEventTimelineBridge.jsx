@@ -4,7 +4,7 @@ import{domainEventToTimelineEntry}from'./timelineProjection.js'
 import{getTimelineEngineForScope}from'./timelineEngine.js'
 import{useStore}from'../../services/store.jsx'
 
-const projectLedgerEntry=ledgerEntry=>domainEventToTimelineEntry(ledgerEntry.event,{sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt})
+const projectLedgerEntry=ledgerEntry=>domainEventToTimelineEntry(ledgerEntry.event,{sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt,source:'operational-ledger'})
 const activeScope=state=>{
  const user=(state.users||[]).find(item=>item.activeSession)
  return{
@@ -23,13 +23,11 @@ export default function DomainEventTimelineBridge(){
  useEffect(()=>{
   const ledgerEntries=(state.operationalLedgerEntries||[]).filter(entry=>entry?.event?.context?.organizationId===companyId)
   const projected=ledgerEntries.map(projectLedgerEntry)
-  const historical=(state.timelineEntries||[]).filter(item=>item.organizationId===companyId)
-  const historicalById=new Map(historical.map(item=>[item.id,item]))
-  projected.forEach(item=>historicalById.set(item.id,item))
-  timeline.hydrate([...historicalById.values()])
+  timeline.hydrate(projected)
 
   const canonical=timeline.query({organizationId:companyId,order:'asc',limit:2000})
-  const unchanged=historical.length===canonical.length&&historical.every((item,index)=>JSON.stringify(item)===JSON.stringify(canonical[index]))
+  const current=(state.timelineEntries||[]).filter(item=>item.organizationId===companyId)
+  const unchanged=current.length===canonical.length&&current.every((item,index)=>JSON.stringify(item)===JSON.stringify(canonical[index]))
   if(!unchanged){
    update(value=>{
     const foreign=(value.timelineEntries||[]).filter(item=>item.organizationId!==companyId)
