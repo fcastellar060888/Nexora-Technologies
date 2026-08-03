@@ -61,3 +61,25 @@ test('AUD-F031: la poda confirma nodos y aristas en una sola revisión',()=>{
  assert.equal(after.nodes.length,2)
  assert.equal(after.edges.length,1)
 })
+
+test('AUD-F031: disconnect recoge únicamente endpoints automáticos que quedan sin relaciones',()=>{
+ const graph=createKnowledgeGraph()
+ const from=ref('cultivation.plant','disconnect-from'),to=ref('cultivation.bed','disconnect-to')
+ graph.connect(relation('edge-disconnect',from,to))
+ assert.equal(graph.disconnect('edge-disconnect'),true)
+ assert.equal(graph.getNode(from),null)
+ assert.equal(graph.getNode(to),null)
+ assert.equal(graph.repository.snapshot().edges.length,0)
+})
+
+test('AUD-F031: un endpoint automático promovido explícitamente deja de ser recolectable',()=>{
+ const graph=createKnowledgeGraph()
+ const from=ref('cultivation.plant','promoted'),to=ref('cultivation.bed','temporary-target')
+ graph.connect(relation('edge-promote',from,to))
+ graph.upsertNode({ref:from,label:'Planta consolidada',attributes:{registry:'official'},createdAt:at,updatedAt:at})
+ graph.disconnect('edge-promote')
+ assert.equal(graph.getNode(from).label,'Planta consolidada')
+ assert.equal(graph.getNode(from).attributes.registry,'official')
+ assert.equal(graph.getNode(to),null)
+ assert.equal(graph.repository.getNode('org-1:cultivation.plant:promoted').metadata.retention,'persistent')
+})
