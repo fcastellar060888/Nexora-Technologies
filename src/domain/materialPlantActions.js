@@ -20,9 +20,13 @@ export function upsertMaterialPlantUnit(units=[],plant,patch={}){
  const now=new Date().toISOString()
  const next={id:plant.id,lotId:plant.lotId,plantType:plant.plantType,unitIndex:plant.unitIndex,code:plant.code,siteId:plant.siteId||null,geneticId:plant.geneticId||null,parentPlantId:plant.parentPlantId||null,createdAt:plant.createdAt||now,updatedAt:now,...cleanPatch(patch)}
  const current=list(units)
- const index=current.findIndex(item=>item.id===plant.id||(item.lotId===plant.lotId&&item.plantType===plant.plantType&&Number(item.unitIndex)===Number(plant.unitIndex)))
+ const idIndex=current.findIndex(item=>item.id===plant.id)
+ const slotIndex=current.findIndex(item=>item.lotId===plant.lotId&&item.plantType===plant.plantType&&Number(item.unitIndex)===Number(plant.unitIndex))
+ if(idIndex>=0&&slotIndex>=0&&idIndex!==slotIndex)throw new Error('La identidad de la planta colisiona con otra vida materializada.')
+ if(slotIndex>=0&&current[slotIndex].id!==plant.id)throw new Error('No se puede reemplazar la identidad estable de una vida materializada.')
+ const index=idIndex>=0?idIndex:slotIndex
  if(index<0)return[...current,next]
- return current.map((item,itemIndex)=>itemIndex===index?{...item,...next}:item)
+ return current.map((item,itemIndex)=>itemIndex===index?{...item,...next,id:item.id,lotId:item.lotId,plantType:item.plantType,unitIndex:item.unitIndex,createdAt:item.createdAt||next.createdAt}:item)
 }
 
 export function applyMaterialPlantUnitPatch(state,plants,patch={}){
