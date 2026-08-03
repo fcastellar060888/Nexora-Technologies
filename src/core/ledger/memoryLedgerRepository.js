@@ -116,4 +116,19 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
  return Object.freeze({append,appendMany,reconcileMany,replaceMany,find,getByEventId,getBySequence,count,subscribe,getListenerErrors,clearListenerErrors,clear,health})
 }
 
-export const operationalLedger=createMemoryLedgerRepository()
+const scopedLedgers=new Map()
+function scopePart(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio para resolver el runtime`);return normalized}
+export function ledgerRuntimeKey({organizationId,actorId='system'}={}){return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`}
+export function getOperationalLedgerForScope(scope){
+ const key=ledgerRuntimeKey(scope)
+ if(!scopedLedgers.has(key))scopedLedgers.set(key,createMemoryLedgerRepository())
+ return scopedLedgers.get(key)
+}
+export function releaseOperationalLedgerScope(scope){
+ const key=ledgerRuntimeKey(scope),ledger=scopedLedgers.get(key)
+ if(!ledger)return false
+ ledger.clear();scopedLedgers.delete(key);return true
+}
+export function operationalLedgerScopeCount(){return scopedLedgers.size}
+
+export const operationalLedger=getOperationalLedgerForScope({organizationId:'local-installation',actorId:'system'})
