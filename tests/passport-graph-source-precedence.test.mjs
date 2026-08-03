@@ -7,7 +7,8 @@ const timestamp='2026-08-02T10:00:00.000Z'
 
 function buildPassport({label='Planta Passport',status='vegetative',updatedAt=timestamp,relationships=[]}={}){
  const object=createIntelligentObject({objectType:'cultivation.plant',objectId:'plant-1',organizationId:'org-1',siteId:'site-1',label,status,createdAt:'2026-07-01T00:00:00.000Z',updatedAt})
- return createPassport({object,relationships,generatedAt:updatedAt})
+ const scoped=relationships.map(item=>({targetOrganizationId:'org-1',...item}))
+ return createPassport({object,relationships:scoped,generatedAt:updatedAt})
 }
 
 function targetResolver({label,source,version=0}){
