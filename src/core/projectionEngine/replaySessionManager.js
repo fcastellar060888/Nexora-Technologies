@@ -3,18 +3,34 @@ import{replayLedger}from'./replayLedger.js'
 const text=value=>String(value??'').trim()
 const terminal=new Set(['completed','cancelled','failed'])
 const freeze=value=>Object.freeze({...value})
+const positiveInteger=(value,label)=>{const number=Number(value);if(!Number.isSafeInteger(number)||number<1)throw new Error(`${label} debe ser un entero positivo`);return number}
 
-export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idFactory=()=>crypto.randomUUID()}={}){
+export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idFactory=()=>crypto.randomUUID(),maxSessions=100}={}){
  if(!ledger||typeof ledger.find!=='function')throw new Error('Se requiere un Operational Ledger válido')
  if(!engine||typeof engine.replay!=='function')throw new Error('Se requiere un Projection Engine válido')
  if(typeof now!=='function')throw new Error('now debe ser una función')
  if(typeof idFactory!=='function')throw new Error('idFactory debe ser una función')
+ const capacity=positiveInteger(maxSessions,'maxSessions')
  const sessions=new Map()
  const timestamp=()=>new Date(now()).toISOString()
  const snapshot=session=>freeze({sessionId:session.sessionId,status:session.status,createdAt:session.createdAt,startedAt:session.startedAt,finishedAt:session.finishedAt,selected:session.selected,processed:session.processed,succeeded:session.succeeded,failed:session.failed,remaining:session.remaining,lastSequence:session.lastSequence,error:session.error,filters:session.filters})
-
+ const orderedSessions=()=>[...sessions.values()].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.sessionId.localeCompare(b.sessionId))
+ function compact(){
+  const removed=[]
+  for(const session of orderedSessions()){
+   if(sessions.size<capacity)break
+   if(!terminal.has(session.status))continue
+   sessions.delete(session.sessionId);removed.push(session.sessionId)
+  }
+  return Object.freeze({removed:Object.freeze(removed),remaining:sessions.size,maxSessions:capacity})
+ }
+ function ensureCapacity(){
+  if(sessions.size<capacity)return
+  compact()
+  if(sessions.size>=capacity)throw new Error(`Replay Session Manager alcanzó maxSessions (${capacity}) con sesiones activas; espere o cancele antes de iniciar otra`)
+ }
  function getSession(sessionId){const session=sessions.get(text(sessionId));return session?snapshot(session):null}
- function listSessions(){return Object.freeze([...sessions.values()].map(snapshot).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))}
+ function listSessions(){return Object.freeze(orderedSessions().map(snapshot))}
  function cancelSession(sessionId){
   const session=sessions.get(text(sessionId))
   if(!session||terminal.has(session.status)||session.controller.signal.aborted)return false
@@ -23,6 +39,7 @@ export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idF
   return true
  }
  function start(options={}){
+  ensureCapacity()
   const sessionId=text(idFactory())
   if(!sessionId)throw new Error('La sesión de replay requiere un identificador')
   if(sessions.has(sessionId))throw new Error(`La sesión ${sessionId} ya existe`)
@@ -46,5 +63,6 @@ export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idF
   })()
   return Object.freeze({sessionId,completion:session.completion,cancel:()=>cancelSession(sessionId),status:()=>getSession(sessionId)})
  }
- return Object.freeze({start,getSession,listSessions,cancelSession})
+ function status(){return Object.freeze({sessions:sessions.size,maxSessions:capacity,active:orderedSessions().filter(session=>!terminal.has(session.status)).length,terminal:orderedSessions().filter(session=>terminal.has(session.status)).length})}
+ return Object.freeze({start,getSession,listSessions,cancelSession,compact,status})
 }
