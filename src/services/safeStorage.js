@@ -3,13 +3,15 @@ import { CURRENT_SCHEMA_VERSION, migrateState } from './stateMigration'
 import { getPersistenceDriver } from './persistenceDriver'
 import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
+import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 
 let lastObservedAuditId=''
 let persistenceRuntime=createPersistenceRuntime()
 const persistenceListeners=new Set()
+const normalizeState=value=>migrateMaterialPlantIdentity(migrateState(value))
 
 function cloneInitialState(){
- return migrateState(structuredClone(initialState))
+ return normalizeState(structuredClone(initialState))
 }
 
 function publishPersistenceResult(result){
@@ -36,9 +38,9 @@ function readLegacyState(){
   return null
  }
  driver.preserveBackup(raw,'Copia previa a migración hacia caché segmentada')
- try{return migrateState(parsed)}catch(error){
+ try{return normalizeState(parsed)}catch(error){
   console.error('Falló la normalización del estado legado.',error)
-  return migrateState({...structuredClone(initialState),...parsed,schemaVersion:Number(parsed.schemaVersion||1)})
+  return normalizeState({...structuredClone(initialState),...parsed,schemaVersion:Number(parsed.schemaVersion||1)})
  }
 }
 
@@ -64,7 +66,7 @@ export function loadState(){
  try{
   cleanupLightweightCache()
   const cached=readLightweightCache()
-  if(cached)return migrateState({...structuredClone(initialState),...cached})
+  if(cached)return normalizeState({...structuredClone(initialState),...cached})
  }catch(error){console.error('No fue posible cargar la caché segmentada.',error)}
  const legacy=readLegacyState()
  if(legacy){
@@ -76,7 +78,7 @@ export function loadState(){
 
 export function saveState(state){
  try{
-  const normalized=migrateState(state)
+  const normalized=normalizeState(state)
   const result=writeLightweightCache({...normalized,schemaVersion:CURRENT_SCHEMA_VERSION,persistedAt:new Date().toISOString()})
   emitOperationalChange(normalized)
   return publishPersistenceResult({ok:true,...result})
