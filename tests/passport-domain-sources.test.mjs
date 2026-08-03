@@ -20,7 +20,7 @@ test('clasifica hallazgos abiertos y cerrados',()=>{
 
 test('crea indicadores y relaciones canónicas',()=>{
  assert.deepEqual(passportIndicator('open_mipe_findings',2,'findings'),{key:'open_mipe_findings',value:2,unit:'findings'})
- assert.deepEqual(passportRelationship('located_in','organization.site','site-1','Villeta'),{type:'located_in',targetType:'organization.site',targetId:'site-1',label:'Villeta'})
+ assert.deepEqual(passportRelationship('located_in','organization.site','site-1','Villeta',{targetOrganizationId:'org-1'}),{type:'located_in',targetType:'organization.site',targetId:'site-1',targetOrganizationId:'org-1',label:'Villeta'})
 })
 
 test('rechaza configuraciones incompletas',()=>{
