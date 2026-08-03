@@ -56,7 +56,7 @@ test('reauditoría C: los cuatro motores comparten scope lógico pero no estado 
  timelineA.record({id:domainEvent.eventId,eventName:domainEvent.name,organizationId:'company-a',aggregateType:domainEvent.aggregate.type,aggregateId:domainEvent.aggregate.id,occurredAt:domainEvent.occurredAt,recordedAt:domainEvent.occurredAt,source:'operational-ledger',sequence:1,title:'Inspección',summary:'Prueba',payload:{},metadata:{}})
  graphA.addNode(createGraphNode({nodeId:'company-a:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'company-a',label:'Plant A',createdAt:domainEvent.occurredAt,updatedAt:domainEvent.occurredAt,metadata:{source:'ledger'}}))
  assert.equal(busB.getHistory().length,0)
- assert.equal(ledgerB.getEntries().length,0)
+ assert.equal(ledgerB.count(),0)
  assert.equal(timelineB.query({organizationId:'company-b'}).length,0)
  assert.equal(graphB.snapshot().nodes.length,0)
  releaseEventBusScope(a);releaseEventBusScope(b);releaseOperationalLedgerScope(a);releaseOperationalLedgerScope(b);releaseTimelineScope(a);releaseTimelineScope(b);releaseKnowledgeGraphScope(a);releaseKnowledgeGraphScope(b)
