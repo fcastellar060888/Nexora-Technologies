@@ -65,9 +65,10 @@ function normalizeRelationships(relationships,object){
   const targetType=requiredString(relationship.targetType,'El tipo del destino')
   const targetId=requiredString(relationship.targetId,'El identificador del destino')
   if(!OBJECT_TYPE_PATTERN.test(targetType))throw new Error('El tipo del destino debe usar una nomenclatura estable en minúsculas')
-  const targetOrganizationId=relationship.targetOrganizationId??relationship.organizationId
-  if(targetOrganizationId&&String(targetOrganizationId).trim()!==object.organizationId)throw new Error('El Passport no puede relacionar objetos de otra empresa')
-  return`${type}:${targetType}:${targetId}`
+  const targetOrganizationId=requiredString(relationship.targetOrganizationId,'La empresa del destino')
+  if(targetOrganizationId!==object.organizationId)throw new Error('El Passport no puede relacionar objetos de otra empresa')
+  relationship.targetOrganizationId=targetOrganizationId
+  return`${type}:${targetOrganizationId}:${targetType}:${targetId}`
  },'Las relaciones'))
 }
 
