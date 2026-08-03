@@ -1,2 +1,2 @@
 export{domainEventToTimelineEntry}from'./timelineProjection.js'
-export{createTimelineEngine,timelineEngine}from'./timelineEngine.js'
+export{createTimelineEngine,timelineEngine,timelineRuntimeKey,getTimelineEngineForScope,releaseTimelineScope,timelineScopeCount}from'./timelineEngine.js'
