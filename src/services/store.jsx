@@ -2,6 +2,7 @@ import {createContext,useCallback,useContext,useEffect,useMemo,useReducer,useRef
 import{loadState,saveState}from'./safeStorage'
 import{collectionChanges,enqueueChanges}from'./syncEngine'
 import{runIncrementalSync}from'./syncTransport.js'
+import{commitIncrementalSyncResult}from'./syncCommit.js'
 import{AUTO_SYNC_INTERVAL_MS,runtimeState,shouldAutoSync}from'./autoSyncRuntime.js'
 import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
 import{appendHealthEvent}from'./syncHealth.js'
@@ -146,13 +147,15 @@ export function StoreProvider({children}){
    const completedAt=new Date().toISOString()
    let next=result.state
    if(!result.skipped){
+    next=commitIncrementalSyncResult(current,stateRef.current,next)
     const healthPayload={companyId,deviceId:currentDeviceId,status:'success',reason,durationMs:Date.now()-started,pushed:result.pushed||0,pulled:result.pulled||0}
     next=appendHealthEvent(next,healthPayload)
     try{
      await reportDeviceHealth(healthPayload)
      next={...next,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
     }catch{/* La sincronización operativa no falla por telemetría. */}
-    update(next,{sync:false,audit:false})
+    const committed=next
+    update(prev=>commitIncrementalSyncResult(current,prev,committed),{sync:false,audit:false})
    }
    setRuntime(value=>({...value,running:false,status:result.skipped?'idle':'success',lastSuccessAt:result.skipped?value.lastSuccessAt:completedAt,lastError:''}))
    coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
