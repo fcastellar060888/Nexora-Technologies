@@ -49,7 +49,8 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
   const node=nodeInput?.ref?graphNode(nodeInput):graphNode({ref:nodeInput,label:nodeInput?.label,status:nodeInput?.status,attributes:nodeInput?.attributes,createdAt:nodeInput?.createdAt,updatedAt:nodeInput?.updatedAt})
   const incoming=canonicalNode(node,{retention}),existing=repository.getNode(node.id)
   if(!existing){repository.addNode(incoming);return node}
-  const preferred=preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo heredado ya pertenece a otra empresa'})
+  const promote=retention===PERSISTENT&&existing.metadata?.source==='legacy-api'&&existing.metadata?.retention===RELATION_SCOPED
+  const preferred=promote?incoming:preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo heredado ya pertenece a otra empresa'})
   if(preferred!==existing){const snapshot=repository.snapshot();repository.replaceAll({nodes:snapshot.nodes.map(item=>item.nodeId===preferred.nodeId?preferred:item),edges:snapshot.edges,expectedVersion:snapshot.version})}
   return legacyNode(preferred)
  }
@@ -59,14 +60,25 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
   if(!repository.getNode(toId))upsertNode({ref:relation.to},{retention:RELATION_SCOPED})
   const result=repository.addEdge(canonicalEdge(relation));trimRelations();return legacyRelation(result.edge)
  }
- function trimRelations(){
-  const snapshot=repository.snapshot();if(snapshot.edges.length<=maxRelations)return
-  const keep=snapshot.edges.slice(snapshot.edges.length-maxRelations),connected=new Set()
+ function replaceEdgesAndCollect(snapshot,keep,candidateIds){
+  const connected=new Set()
   for(const edge of keep){connected.add(edge.sourceNodeId);connected.add(edge.targetNodeId)}
-  const nodes=snapshot.nodes.filter(node=>node.metadata?.retention!==RELATION_SCOPED||connected.has(node.nodeId))
+  const candidates=new Set(candidateIds)
+  const nodes=snapshot.nodes.filter(node=>!candidates.has(node.nodeId)||node.metadata?.retention!==RELATION_SCOPED||connected.has(node.nodeId))
   repository.replaceAll({nodes,edges:keep,expectedVersion:snapshot.version})
  }
- function disconnect(relationId){const id=String(relationId??'').trim(),snapshot=repository.snapshot();if(!repository.getEdge(id))return false;repository.replaceAll({nodes:snapshot.nodes,edges:snapshot.edges.filter(edge=>edge.edgeId!==id),expectedVersion:snapshot.version});return true}
+ function trimRelations(){
+  const snapshot=repository.snapshot();if(snapshot.edges.length<=maxRelations)return
+  const keep=snapshot.edges.slice(snapshot.edges.length-maxRelations),removed=snapshot.edges.slice(0,snapshot.edges.length-maxRelations),candidates=[]
+  for(const edge of removed)candidates.push(edge.sourceNodeId,edge.targetNodeId)
+  replaceEdgesAndCollect(snapshot,keep,candidates)
+ }
+ function disconnect(relationId){
+  const id=String(relationId??'').trim(),snapshot=repository.snapshot(),removed=repository.getEdge(id)
+  if(!removed)return false
+  replaceEdgesAndCollect(snapshot,snapshot.edges.filter(edge=>edge.edgeId!==id),[removed.sourceNodeId,removed.targetNodeId])
+  return true
+ }
  function getNode(ref){return legacyNode(repository.getNode(nodeKey(objectRef(ref))))}
  function neighbors(ref,{relationType=null,direction='both'}={}){const canonicalType=relationType?canonicalRelationType(relationType):null;return repository.neighbors(nodeKey(objectRef(ref)),{relationType:canonicalType,direction}).map(item=>deepFreeze({relation:legacyRelation(item.edge),node:legacyNode(item.node),direction:item.direction}))}
  function traverse(start,{maxDepth=3,relationTypes=[]}={}){const startRef=objectRef(start),visited=new Set([nodeKey(startRef)]),queue=[{ref:startRef,depth:0}],result=[];while(queue.length){const current=queue.shift();if(current.depth>=maxDepth)continue;for(const item of neighbors(current.ref)){if(relationTypes.length&&!relationTypes.includes(item.relation.relationType))continue;const key=item.node.id;if(visited.has(key))continue;visited.add(key);const next=deepFreeze({...item,depth:current.depth+1});result.push(next);queue.push({ref:item.node.ref,depth:next.depth+0})}}return Object.freeze(result)}
