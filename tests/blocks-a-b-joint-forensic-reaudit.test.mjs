@@ -49,7 +49,7 @@ test('reauditoría A+B: reintento parcial, deduplicación e identidad siguen sie
  assert.equal(flakyCalls,2)
  const duplicate=await bus.publish(event)
  assert.equal(duplicate.duplicate,true)
- assert.throws(()=>bus.publish(domainEvent({payload:{value:2}})),/contenido diferente/)
+ await assert.rejects(bus.publish(domainEvent({payload:{value:2}})),/contenido diferente/)
 })
 
 test('reauditoría A+B: un lote inválido no modifica Ledger ni secuencia',()=>{
