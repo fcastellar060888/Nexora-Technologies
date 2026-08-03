@@ -70,9 +70,10 @@ export function createDomainEvent({
  causationId=null
 }){
  const normalizedName=requiredString(name,'El nombre del evento')
+ const normalizedOccurredAt=requiredString(occurredAt,'La fecha del evento')
  if(!EVENT_NAME_PATTERN.test(normalizedName))throw new Error('El evento debe usar el formato dominio.entidad.accion')
  if(!Number.isInteger(version)||version<1)throw new Error('La versión del evento debe ser un entero positivo')
- if(Number.isNaN(Date.parse(occurredAt)))throw new Error('La fecha del evento no es válida')
+ if(Number.isNaN(Date.parse(normalizedOccurredAt)))throw new Error('La fecha del evento no es válida')
  if(payload===null||Array.isArray(payload)||typeof payload!=='object')throw new Error('El payload del evento debe ser un objeto')
  if(metadata===null||Array.isArray(metadata)||typeof metadata!=='object')throw new Error('La metadata del evento debe ser un objeto')
 
@@ -89,7 +90,7 @@ export function createDomainEvent({
    siteId:optionalString(siteId,'La sede'),
    actorId:requiredString(actorId,'El actor')
   }),
-  occurredAt:new Date(occurredAt).toISOString(),
+  occurredAt:new Date(normalizedOccurredAt).toISOString(),
   correlationId:optionalString(correlationId,'El correlationId'),
   causationId:optionalString(causationId,'El causationId'),
   payload:immutableCopy(payload,'El payload del evento'),
