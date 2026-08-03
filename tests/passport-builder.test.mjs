@@ -7,7 +7,7 @@ const object=createIntelligentObject({objectType:'cultivation.plant',objectId:'p
 test('compone plugins de dominio sobre un único contrato de Passport',()=>{
  const builder=createPassportBuilder({plugins:[
   {id:'mipe',project:({object})=>({risks:[{id:`risk:${object.objectId}`,type:'mipe.finding'}],indicators:[{key:'open_findings',value:1}]})},
-  {id:'facility',project:()=>({relationships:[{type:'located_in',targetType:'cultivation.bed',targetId:'bed-1'}],decisionContext:{zone:'flowering'}})}
+  {id:'facility',project:()=>({relationships:[{type:'located_in',targetType:'cultivation.bed',targetId:'bed-1',targetOrganizationId:'company-1'}],decisionContext:{zone:'flowering'}})}
  ]})
  const passport=builder.build({object,base:{actions:[{id:'inspect'}]}})
  assert.deepEqual(builder.listPlugins(),['mipe','facility'])
