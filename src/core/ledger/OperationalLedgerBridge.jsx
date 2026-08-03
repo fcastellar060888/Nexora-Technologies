@@ -1,31 +1,46 @@
 import{useEffect}from'react'
-import{eventBus}from'../events/index.js'
+import{getEventBusForScope}from'../events/index.js'
 import{useStore}from'../../services/store.jsx'
-import{connectLedgerToEventBus,operationalLedger}from'./index.js'
+import{connectLedgerToEventBus,getOperationalLedgerForScope}from'./index.js'
 
-const canonicalEntries=()=>operationalLedger.find({order:'asc',limit:10000})
 const sameSnapshot=(left,right)=>JSON.stringify(left||[])===JSON.stringify(right||[])
+const entryOrganizationId=entry=>entry?.event?.context?.organizationId||''
+const activeScope=state=>{
+ const user=(state.users||[]).find(item=>item.activeSession)
+ return{
+  organizationId:state.currentContext?.companyId||'local-installation',
+  actorId:user?.remoteId||user?.id||'system'
+ }
+}
 
 export default function OperationalLedgerBridge(){
  const{state,update}=useStore()
+ const scope=activeScope(state)
+ const ledger=getOperationalLedgerForScope(scope)
+ const bus=getEventBusForScope(scope)
+ const companyId=scope.organizationId
 
  useEffect(()=>{
-  const incoming=state.operationalLedgerEntries||[]
-  const canonical=operationalLedger.reconcileMany(incoming)
+  const incoming=(state.operationalLedgerEntries||[]).filter(entry=>entryOrganizationId(entry)===companyId)
+  const canonical=ledger.reconcileMany(incoming)
   if(sameSnapshot(incoming,canonical))return
-  update(current=>({...current,operationalLedgerEntries:canonical}),{sync:false,audit:false})
- },[state.operationalLedgerEntries,update])
+  update(current=>{
+   const foreign=(current.operationalLedgerEntries||[]).filter(entry=>entryOrganizationId(entry)!==companyId)
+   return{...current,operationalLedgerEntries:[...foreign,...canonical]}
+  },{sync:false,audit:false})
+ },[state.operationalLedgerEntries,update,ledger,companyId])
 
  useEffect(()=>{
-  const persist=operationalLedger.subscribe(entry=>{
+  const persist=ledger.subscribe(()=>{
    update(current=>{
-    if((current.operationalLedgerEntries||[]).some(item=>item.id===entry.id))return current
-    return{...current,operationalLedgerEntries:canonicalEntries()}
+    const foreign=(current.operationalLedgerEntries||[]).filter(entry=>entryOrganizationId(entry)!==companyId)
+    const canonical=ledger.find({organizationId:companyId,order:'asc',limit:10000})
+    return{...current,operationalLedgerEntries:[...foreign,...canonical]}
    },{sync:false,audit:false})
   })
-  const disconnect=connectLedgerToEventBus(operationalLedger,eventBus)
+  const disconnect=connectLedgerToEventBus(ledger,bus)
   return()=>{disconnect();persist()}
- },[update])
+ },[update,ledger,bus,companyId])
 
  return null
 }
