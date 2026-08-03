@@ -32,17 +32,32 @@ export function objectVersion(value){
  return Number.isFinite(numeric)?numeric:0
 }
 
+function projectionTime(value){
+ const candidates=[
+  value?.metadata?.recordedAt,
+  value?.recordedAt,
+  value?.updatedAt,
+  value?.metadata?.occurredAt,
+  value?.occurredAt,
+  value?.createdAt
+ ]
+ for(const candidate of candidates){
+  const parsed=Date.parse(candidate??'')
+  if(Number.isFinite(parsed))return parsed
+ }
+ return Number.NEGATIVE_INFINITY
+}
+
 export function compareProjectionCandidates(left,right,options={}){
  if(!left&&!right)return 0
  if(!left)return-1
  if(!right)return 1
- const leftTime=Date.parse(left.updatedAt??left.createdAt??0)
- const rightTime=Date.parse(right.updatedAt??right.createdAt??0)
- if(leftTime!==rightTime)return leftTime>rightTime?1:-1
  const leftPriority=sourcePriority(left,options),rightPriority=sourcePriority(right,options)
  if(leftPriority!==rightPriority)return leftPriority>rightPriority?1:-1
  const leftVersion=objectVersion(left),rightVersion=objectVersion(right)
  if(leftVersion!==rightVersion)return leftVersion>rightVersion?1:-1
+ const leftTime=projectionTime(left),rightTime=projectionTime(right)
+ if(leftTime!==rightTime)return leftTime>rightTime?1:-1
  const leftFingerprint=stableFingerprint(left),rightFingerprint=stableFingerprint(right)
  if(leftFingerprint===rightFingerprint)return 0
  return leftFingerprint>rightFingerprint?1:-1
