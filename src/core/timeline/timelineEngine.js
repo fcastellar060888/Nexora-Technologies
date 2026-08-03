@@ -5,6 +5,39 @@ const text=value=>String(value||'').toLocaleLowerCase('es')
 const required=value=>String(value||'').trim()
 const SOURCE_AUTHORITY={'event-bus':1,'operational-ledger':2}
 
+function cloneAndFreeze(value,path='entry',seen=new WeakSet()){
+ if(value===null||typeof value==='string'||typeof value==='boolean'||typeof value==='undefined')return value
+ if(typeof value==='number'){
+  if(!Number.isFinite(value))throw new Error(`El Timeline no admite números no finitos en ${path}`)
+  return Object.is(value,-0)?0:value
+ }
+ if(typeof value!=='object')throw new Error(`El Timeline no admite valores no serializables en ${path}`)
+ if(seen.has(value))throw new Error(`El Timeline no admite referencias cíclicas en ${path}`)
+ seen.add(value)
+ try{
+  if(Array.isArray(value)){
+   const keys=Reflect.ownKeys(value)
+   for(let index=0;index<value.length;index+=1){
+    if(!Object.prototype.hasOwnProperty.call(value,index))throw new Error(`El Timeline no admite arreglos dispersos en ${path}`)
+   }
+   if(keys.some(key=>typeof key==='symbol'||(key!=='length'&&!/^\d+$/.test(String(key)))))throw new Error(`El Timeline no admite propiedades adicionales en arreglos en ${path}`)
+   const result=value.map((item,index)=>cloneAndFreeze(item,`${path}[${index}]`,seen))
+   return Object.freeze(result)
+  }
+  const prototype=Object.getPrototypeOf(value)
+  if(prototype!==Object.prototype&&prototype!==null)throw new Error(`El Timeline solo admite objetos planos en ${path}`)
+  const result=Object.create(null)
+  for(const key of Reflect.ownKeys(value)){
+   if(typeof key==='symbol')throw new Error(`El Timeline no admite propiedades Symbol en ${path}`)
+   const descriptor=Object.getOwnPropertyDescriptor(value,key)
+   if(!descriptor?.enumerable)throw new Error(`El Timeline no admite propiedades no enumerables en ${path}.${key}`)
+   if('get'in descriptor||'set'in descriptor)throw new Error(`El Timeline no admite accessors en ${path}.${key}`)
+   Object.defineProperty(result,key,{value:cloneAndFreeze(descriptor.value,`${path}.${key}`,seen),enumerable:true,writable:false,configurable:false})
+  }
+  return Object.freeze(result)
+ }finally{seen.delete(value)}
+}
+
 function isTimelineEntry(entry){
  return Boolean(entry
   &&required(entry.id)
@@ -50,9 +83,7 @@ function assertSameEventIdentity(existing,incoming){
  }
 }
 
-function authority(entry){
- return SOURCE_AUTHORITY[entry.source]||0
-}
+function authority(entry){return SOURCE_AUTHORITY[entry.source]||0}
 
 function reconcileEntry(existing,incoming){
  assertSameEventIdentity(existing,incoming)
@@ -96,7 +127,7 @@ export function createTimelineEngine({maxEntries=2000}={}){
  }
  function normalize(entry){
   if(!isTimelineEntry(entry))throw new Error('La entrada del Timeline no cumple el contrato requerido')
-  return Object.freeze({...entry})
+  return cloneAndFreeze(entry)
  }
  function insert(entry,{silent=false}={}){
   const normalized=normalize(entry)
