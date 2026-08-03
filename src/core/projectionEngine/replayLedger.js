@@ -1,4 +1,5 @@
 const text=value=>String(value??'').trim()
+const DETERMINISTIC_TIMESTAMP='1970-01-01T00:00:00.000Z'
 
 function assertLedger(ledger){
  if(!ledger||typeof ledger.find!=='function')throw new Error('Se requiere un Operational Ledger con find(filters)')
@@ -13,6 +14,13 @@ function sequence(value,label){
  const number=Number(value)
  if(!Number.isInteger(number)||number<0)throw new Error(`${label} debe ser un entero no negativo`)
  return number
+}
+
+function projectionTimeFor(entry){
+ const candidate=entry?.recordedAt??entry?.event?.occurredAt??DETERMINISTIC_TIMESTAMP
+ const parsed=Date.parse(candidate)
+ if(Number.isNaN(parsed))throw new Error('La entrada del Ledger no tiene una fecha determinista válida para replay')
+ return new Date(parsed).toISOString()
 }
 
 export async function replayLedger(ledger,engine,{organizationId=null,siteId=null,eventName=null,aggregateType=null,aggregateId=null,from=null,to=null,fromSequence=null,toSequence=null,limit=Number.MAX_SAFE_INTEGER,context={},onResult=null,onError=null,stopOnError=false,signal=null}={}){
@@ -33,7 +41,9 @@ export async function replayLedger(ledger,engine,{organizationId=null,siteId=nul
  for(const entry of entries){
   if(signal?.aborted){cancelled=true;break}
   try{
-   const result=await engine.replay(entry.event,Object.freeze({...context,replay:true,ledgerEntry:entry,ledgerSequence:entry.sequence,recordedAt:entry.recordedAt}))
+   const projectionTime=projectionTimeFor(entry)
+   const replayContext=Object.freeze({...context,replay:true,projectionTime,ledgerEntry:entry,ledgerSequence:entry.sequence,recordedAt:entry.recordedAt})
+   const result=await engine.replay(entry.event,replayContext)
    results.push(Object.freeze({entry,result,error:null}))
    succeeded+=1
    notifyResult(result,entry)
