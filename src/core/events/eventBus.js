@@ -1,10 +1,15 @@
 import{isDomainEvent}from'./eventContract.js'
 
+const errorText=error=>String(error?.message||error||'Error de suscriptor no identificado')
+
 export function createEventBus({onError=console.error,maxHistory=1000}={}){
  if(!Number.isInteger(maxHistory)||maxHistory<0)throw new Error('El límite de historial debe ser un entero no negativo')
+ if(typeof onError!=='function')throw new Error('onError debe ser una función')
  const subscriptions=new Map()
  const history=[]
  const knownEventIds=new Set()
+ const pendingFailures=new Map()
+ const inFlight=new Map()
 
  function subscribe(eventName,handler){
   if(typeof handler!=='function')throw new Error('El suscriptor debe ser una función')
@@ -26,23 +31,47 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
   }
  }
 
- async function publish(event){
-  if(!isDomainEvent(event))throw new Error('No se puede publicar un evento inválido')
-  if(knownEventIds.has(event.eventId))return{event,delivered:0,failed:0,duplicate:true}
-  remember(event)
-  const handlers=[...(subscriptions.get(event.name)||[]),...(subscriptions.get('*')||[])]
+ function handlersFor(event){return[...(subscriptions.get(event.name)||[]),...(subscriptions.get('*')||[])]}
+ function report(error,event){try{onError(error,event)}catch{/* La telemetría no altera la entrega ni el reintento. */}}
+
+ async function deliver(event,handlers,{retry=false}={}){
   const results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(()=>handler(event))))
-  results.forEach(result=>{if(result.status==='rejected')onError(result.reason,event)})
-  return{event,delivered:handlers.length,failed:results.filter(x=>x.status==='rejected').length,duplicate:false}
+  const failedHandlers=[]
+  results.forEach((result,index)=>{
+   if(result.status==='rejected'){
+    failedHandlers.push(handlers[index])
+    report(result.reason,event)
+   }
+  })
+  if(failedHandlers.length){
+   pendingFailures.set(event.eventId,Object.freeze({event,handlers:Object.freeze(failedHandlers)}))
+  }else{
+   pendingFailures.delete(event.eventId)
+   remember(event)
+  }
+  return Object.freeze({event,delivered:handlers.length,failed:failedHandlers.length,duplicate:false,retry,pending:failedHandlers.length>0,errors:Object.freeze(results.filter(result=>result.status==='rejected').map(result=>errorText(result.reason)))})
  }
 
- function clear(){subscriptions.clear();history.length=0;knownEventIds.clear()}
+ async function publish(event){
+  if(!isDomainEvent(event))throw new Error('No se puede publicar un evento inválido')
+  if(knownEventIds.has(event.eventId))return Object.freeze({event,delivered:0,failed:0,duplicate:true,retry:false,pending:false,errors:Object.freeze([])})
+  if(inFlight.has(event.eventId))return inFlight.get(event.eventId)
+  const pending=pendingFailures.get(event.eventId)
+  if(pending&&JSON.stringify(pending.event)!==JSON.stringify(event))throw new Error(`El eventId ${event.eventId} está pendiente con un contenido diferente`)
+  const handlers=pending?[...pending.handlers]:handlersFor(event)
+  const execution=deliver(event,handlers,{retry:Boolean(pending)}).finally(()=>inFlight.delete(event.eventId))
+  inFlight.set(event.eventId,execution)
+  return execution
+ }
+
+ function clear(){subscriptions.clear();history.length=0;knownEventIds.clear();pendingFailures.clear();inFlight.clear()}
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
   return history.filter(event=>(!name||event.name===name)&&(!aggregateId||event.aggregate.id===aggregateId)).slice(-safeLimit)
  }
+ function getPendingFailures(){return Object.freeze([...pendingFailures.values()].map(item=>Object.freeze({event:item.event,failedHandlers:item.handlers.length})))}
 
- return Object.freeze({subscribe,publish,getHistory,clear})
+ return Object.freeze({subscribe,publish,getHistory,getPendingFailures,clear})
 }
 
 export const eventBus=createEventBus()
