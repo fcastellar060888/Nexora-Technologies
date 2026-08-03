@@ -31,13 +31,17 @@ test('AUD-F017: retirar una vida no permite que el lote la sustituya',()=>{
  assert.equal(projected[0].retiredAt,'2026-06-01T00:00:00.000Z')
 })
 
-test('AUD-F017: entidades ya materializadas conservan ids externos',()=>{
+test('AUD-F017: reconcilia una colección histórica parcial antes de sellar el lote',()=>{
  const state={
-  grandmotherPlants:[{id:'g1',lotCode:'LAB-1',quantity:5}],
+  grandmotherPlants:[{id:'g1',lotCode:'LAB-1',quantity:3,createdAt:'2026-01-01T00:00:00.000Z'}],
   motherPlants:[],
-  materialPlantUnits:[{id:'uuid-life-1',lotId:'g1',plantType:'GRANDMOTHER',unitIndex:0,code:'A-001',createdAt:'2026-01-01T00:00:00.000Z'}]
+  materialPlantUnits:[{id:'uuid-life-1',lotId:'g1',plantType:'GRANDMOTHER',unitIndex:0,code:'A-001',status:'Retirada',createdAt:'2026-01-01T00:00:00.000Z'}]
  }
  const migrated=migrateMaterialPlantIdentity(state)
- assert.equal(migrated.materialPlantUnits.length,1)
+ assert.equal(migrated.materialPlantUnits.length,3)
  assert.equal(migrated.materialPlantUnits[0].id,'uuid-life-1')
+ assert.equal(migrated.materialPlantUnits[0].status,'Retirada')
+ assert.ok(migrated.materialPlantIdentityRegistry['GRANDMOTHER:g1'])
+ const expanded=migrateMaterialPlantIdentity({...migrated,grandmotherPlants:[{...migrated.grandmotherPlants[0],quantity:8}]})
+ assert.equal(expanded.materialPlantUnits.length,3)
 })
