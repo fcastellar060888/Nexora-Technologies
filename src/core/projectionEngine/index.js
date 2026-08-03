@@ -1,5 +1,6 @@
 export{createProjector,isProjector}from'./projectorContract.js'
-export{createProjectionEngine}from'./projectionEngine.js'
+export{createPersistentProjectionEngine as createProjectionEngine,createProjectionCheckpointStore,isProjectionCheckpointStore}from'./persistentProjectionEngine.js'
+export{createProjectionEngine as createVolatileProjectionEngine}from'./projectionEngine.js'
 export{connectLedgerToProjectionEngine}from'./connectLedger.js'
 export{replayLedger}from'./replayLedger.js'
 export{createReplaySessionManager}from'./replaySessionManager.js'
