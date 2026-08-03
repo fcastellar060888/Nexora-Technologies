@@ -60,7 +60,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  function assertSameIdentity(event,storedFingerprint){
   if(storedFingerprint!==fingerprint(event))throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
  }
- function duplicateResult(event,{inFlight=false}={}){return Object.freeze({event,delivered:0,failed:0,duplicate:true,inFlight,retry:false,pending:false,errors:Object.freeze([])})}
+ function duplicateResult(event,{inFlight=false}={}){return Object.freeze({event,delivered:0,failed:0,duplicate:true,inFlight,retry:false,pending:inFlight,errors:Object.freeze([])})}
  function handlersFor(event){return[...(subscriptions.get(event.name)||[]),...(subscriptions.get('*')||[])]}
  function report(error,event){try{onError(error,event)}catch{/* La telemetría no altera la entrega ni el reintento. */}}
  function enterHandler(eventId){activeHandlerCounts.set(eventId,(activeHandlerCounts.get(eventId)||0)+1)}
