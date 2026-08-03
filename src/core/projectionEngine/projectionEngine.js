@@ -39,15 +39,23 @@ async function runProjector(projector,event,context){
   const lease=createExecutionLease(projector.policy.timeoutMs)
   const attemptContext=Object.freeze({...context,projectorId:projector.id,projectorVersion:projector.version,attempt,signal:lease.signal,assertActive:lease.assertActive,commit:lease.commit})
   try{
-   const projection=Promise.resolve().then(()=>projector.project(event,attemptContext))
-   const output=lease.timeoutPromise?await Promise.race([projection,lease.timeoutPromise]):await projection
-   lease.assertActive();lease.complete();return {ok:true,output,attempts:attempt}
+   const operation=Promise.resolve().then(async()=>{
+    const supported=await projector.supports(event,attemptContext)
+    lease.assertActive()
+    if(!supported)return{supported:false,output:null}
+    const output=await projector.project(event,attemptContext)
+    return{supported:true,output}
+   })
+   const result=lease.timeoutPromise?await Promise.race([operation,lease.timeoutPromise]):await operation
+   lease.assertActive();lease.complete()
+   if(!result.supported)return{ok:true,supported:false,attempts:attempt}
+   return{ok:true,supported:true,output:result.output,attempts:attempt}
   }catch(error){lastError=error;lease.abort(error);if(attempt<projector.policy.maxAttempts)await sleep(projector.policy.retryDelayMs)}
  }
- return {ok:false,error:lastError,attempts:projector.policy.maxAttempts}
+ return{ok:false,error:lastError,attempts:projector.policy.maxAttempts}
 }
 
-function emptyMetrics(projector){return {projectorId:projector.id,version:projector.version,processed:0,succeeded:0,failed:0,blocked:0,skipped:0,retried:0,timedOut:0,totalDurationMs:0,avgDurationMs:0,maxDurationMs:0,lastExecution:null,lastSuccess:null,lastFailure:null}}
+function emptyMetrics(projector){return{projectorId:projector.id,version:projector.version,processed:0,succeeded:0,failed:0,blocked:0,skipped:0,retried:0,timedOut:0,totalDurationMs:0,avgDurationMs:0,maxDurationMs:0,lastExecution:null,lastSuccess:null,lastFailure:null}}
 
 export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}){
  if(!Number.isInteger(Number(historyLimit))||Number(historyLimit)<1)throw new Error('historyLimit debe ser un entero positivo')
@@ -95,14 +103,12 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
     else{
      const key=`${eventId}:${projector.id}:${projector.version}`
      if(!replayMode&&processed.has(key)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'already-processed'});statusByProjector.set(projector.id,'succeeded')}
-     else try{
-      if(!await projector.supports(event,executionContext)){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported'});statusByProjector.set(projector.id,'skipped')}
-      else{
-       const execution=await runProjector(projector,event,executionContext)
-       if(execution.ok){if(!replayMode)processed.add(key);result=Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',attempts:execution.attempts,output:execution.output});statusByProjector.set(projector.id,'succeeded')}
-       else{result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:execution.attempts,error:errorMessage(execution.error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
-      }
-     }catch(error){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:1,error:errorMessage(error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
+     else{
+      const execution=await runProjector(projector,event,executionContext)
+      if(execution.ok&&!execution.supported){result=Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason:'unsupported',attempts:execution.attempts});statusByProjector.set(projector.id,'skipped')}
+      else if(execution.ok){if(!replayMode)processed.add(key);result=Object.freeze({projectorId:projector.id,version:projector.version,status:'succeeded',attempts:execution.attempts,output:execution.output});statusByProjector.set(projector.id,'succeeded')}
+      else{result=Object.freeze({projectorId:projector.id,version:projector.version,status:'failed',attempts:execution.attempts,error:errorMessage(execution.error)});statusByProjector.set(projector.id,'failed');if(projector.policy.failStrategy==='stop-all')stopAll=true;if(projector.policy.failStrategy==='continue')statusByProjector.set(projector.id,'continued-failure')}
+     }
     }
    }
    results.push(result);record(eventId,projector,result,startedMs,now(),mode)
