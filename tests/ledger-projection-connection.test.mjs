@@ -16,6 +16,7 @@ test('proyecta en orden cada entrada nueva del Ledger y permite flush',async()=>
  assert.deepEqual(calls,[['evt-1',1],['evt-2',2]])
  assert.equal(status.processed,2)
  assert.equal(status.failed,0)
+ assert.equal(status.callbackFailed,0)
  assert.equal(status.pending,0)
  assert.equal(status.lastSequence,2)
 })
@@ -55,4 +56,56 @@ test('la idempotencia del Projection Engine se conserva frente a eventos repetid
  await connection.flush()
  assert.deepEqual(calls,['evt-1'])
  assert.equal(ledger.count(),1)
+})
+
+test('AUD-F033: una excepción síncrona de onResult no rechaza flush ni rompe eventos posteriores',async()=>{
+ const ledger=createMemoryLedgerRepository(),executed=[],callbackErrors=[]
+ const engine={execute:async value=>{executed.push(value.eventId);return{eventId:value.eventId}}}
+ const connection=connectLedgerToProjectionEngine(ledger,engine,{
+  onResult:result=>{if(result.eventId==='evt-1')throw new Error('observador result roto')},
+  onCallbackError:(error,details)=>callbackErrors.push([error.message,details.callback,details.entry.sequence])
+ })
+ ledger.append(event('1'))
+ ledger.append(event('2'))
+ const status=await connection.flush()
+ assert.deepEqual(executed,['evt-1','evt-2'])
+ assert.equal(status.processed,2)
+ assert.equal(status.failed,0)
+ assert.equal(status.callbackFailed,1)
+ assert.equal(status.lastCallbackError,'observador result roto')
+ assert.equal(status.pending,0)
+ assert.deepEqual(callbackErrors,[['observador result roto','onResult',1]])
+})
+
+test('AUD-F033: excepciones asíncronas de onError no envenenan la cola',async()=>{
+ const ledger=createMemoryLedgerRepository(),attempted=[]
+ const engine={execute:async value=>{attempted.push(value.eventId);if(value.eventId==='evt-1')throw new Error('fallo motor');return{eventId:value.eventId}}}
+ const connection=connectLedgerToProjectionEngine(ledger,engine,{onError:async()=>{await Promise.resolve();throw new Error('observador error roto')}})
+ ledger.append(event('1'))
+ ledger.append(event('2'))
+ const status=await connection.flush()
+ assert.deepEqual(attempted,['evt-1','evt-2'])
+ assert.equal(status.failed,1)
+ assert.equal(status.processed,1)
+ assert.equal(status.callbackFailed,1)
+ assert.equal(status.lastSequence,2)
+ assert.equal(status.lastError,null)
+ assert.equal(status.lastCallbackError,'observador error roto')
+ assert.equal(status.pending,0)
+})
+
+test('AUD-F033: el observador de fallos también queda aislado y la cola continúa',async()=>{
+ const ledger=createMemoryLedgerRepository(),executed=[]
+ const engine={execute:async value=>{executed.push(value.eventId);return{eventId:value.eventId}}}
+ const connection=connectLedgerToProjectionEngine(ledger,engine,{
+  onResult:()=>{throw new Error('resultado roto')},
+  onCallbackError:()=>{throw new Error('diagnóstico roto')}
+ })
+ ledger.append(event('1'))
+ ledger.append(event('2'))
+ const status=await connection.flush()
+ assert.deepEqual(executed,['evt-1','evt-2'])
+ assert.equal(status.processed,2)
+ assert.equal(status.callbackFailed,2)
+ assert.equal(status.pending,0)
 })
