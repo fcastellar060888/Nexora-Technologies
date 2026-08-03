@@ -79,6 +79,8 @@ test('recorta índices e historial de forma coherente',()=>{
 test('rechaza límites de retención inválidos',()=>{
  assert.throws(()=>createMemoryLedgerRepository({maxEntries:0}),/entero positivo/)
  assert.throws(()=>createMemoryLedgerRepository({maxEntries:1.5}),/entero positivo/)
+ assert.throws(()=>createMemoryLedgerRepository({errorHistoryLimit:0}),/errores del Ledger/)
+ assert.throws(()=>createMemoryLedgerRepository({onListenerError:'invalid'}),/debe ser una función/)
 })
 
 test('se conecta al Event Bus y puede desconectarse',async()=>{
@@ -94,7 +96,29 @@ test('se conecta al Event Bus y puede desconectarse',async()=>{
 test('reporta salud del repositorio',()=>{
  const ledger=createMemoryLedgerRepository()
  ledger.append(event())
- assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2,maxEntries:10000})
+ assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2,maxEntries:10000,listenerFailureCount:0,listenerErrorsRetained:0,lastListenerError:null})
+})
+
+test('conserva el append y hace observable un fallo de listener sin dejar que falle la telemetría',()=>{
+ const callbacks=[]
+ const ledger=createMemoryLedgerRepository({errorHistoryLimit:2,onListenerError:(error,entry,failure)=>{callbacks.push({message:error.message,entryId:entry.id,failureId:failure.id});throw new Error('telemetría defectuosa')}})
+ ledger.subscribe(()=>{throw new Error('persistencia secundaria caída')})
+ const stored=ledger.append(event())
+ assert.equal(stored.id,'event-1')
+ assert.equal(ledger.count(),1)
+ assert.equal(callbacks.length,1)
+ assert.equal(callbacks[0].entryId,'event-1')
+ const errors=ledger.getListenerErrors()
+ assert.equal(errors.length,1)
+ assert.equal(errors[0].message,'persistencia secundaria caída')
+ assert.equal(errors[0].entryId,'event-1')
+ assert.equal(Object.isFrozen(errors),true)
+ assert.equal(ledger.health().status,'degraded')
+ assert.equal(ledger.health().listenerFailureCount,1)
+ assert.equal(ledger.health().lastListenerError.id,errors[0].id)
+ assert.equal(ledger.clearListenerErrors(),true)
+ assert.equal(ledger.getListenerErrors().length,0)
+ assert.equal(ledger.health().listenerFailureCount,1)
 })
 
 test('el bridge reconcilia snapshots, persiste y limita el registro canónico',async()=>{
