@@ -5,6 +5,7 @@ import App from './App'
 import DomainEventAuditBridge from './core/audit/DomainEventAuditBridge.jsx'
 import OperationalLedgerBridge from './core/ledger/OperationalLedgerBridge.jsx'
 import DomainEventTimelineBridge from './core/timeline/DomainEventTimelineBridge.jsx'
+import PersistenceHealthBridge from './components/PersistenceHealthBridge.jsx'
 import { StoreProvider } from './services/store'
 import { RealtimeProvider } from './services/realtimeContext.jsx'
 import './styles/tokens.css'
@@ -20,4 +21,4 @@ import './styles/core-certification.css'
 import './styles/management.css'
 import './styles/timeline.css'
 import './styles/unified-cultivation-map.css'
-ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><OperationalLedgerBridge/><DomainEventAuditBridge/><DomainEventTimelineBridge/><RealtimeProvider><App/></RealtimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
+ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><OperationalLedgerBridge/><DomainEventAuditBridge/><DomainEventTimelineBridge/><PersistenceHealthBridge/><RealtimeProvider><App/></RealtimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
