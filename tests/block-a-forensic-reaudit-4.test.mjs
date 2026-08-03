@@ -20,6 +20,7 @@ test('reauditoría A4: clear rechaza limpiar mientras una publicación está act
  assert.equal(first.duplicate,false)
  assert.equal(second.duplicate,true)
  assert.equal(second.inFlight,true)
+ assert.equal(second.pending,true)
  assert.equal(bus.getHistory().length,1)
  bus.clear()
  assert.equal(bus.getHistory().length,0)
