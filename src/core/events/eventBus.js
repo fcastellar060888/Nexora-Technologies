@@ -11,6 +11,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  const completedEvents=new Map()
  const pendingFailures=new Map()
  const inFlight=new Map()
+ const activeDeliveries=new Set()
 
  function subscribe(eventName,handler){
   if(typeof handler!=='function')throw new Error('El suscriptor debe ser una función')
@@ -32,11 +33,15 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  function assertSameIdentity(event,storedFingerprint){
   if(storedFingerprint!==fingerprint(event))throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
  }
+ function duplicateResult(event,{inFlight=false}={}){return Object.freeze({event,delivered:0,failed:0,duplicate:true,inFlight,retry:false,pending:false,errors:Object.freeze([])})}
  function handlersFor(event){return[...(subscriptions.get(event.name)||[]),...(subscriptions.get('*')||[])]}
  function report(error,event){try{onError(error,event)}catch{/* La telemetría no altera la entrega ni el reintento. */}}
 
  async function deliver(event,handlers,{retry=false}={}){
-  const results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(()=>handler(event))))
+  let results
+  activeDeliveries.add(event.eventId)
+  try{results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(()=>handler(event))))}
+  finally{activeDeliveries.delete(event.eventId)}
   const failedHandlers=[]
   results.forEach((result,index)=>{
    if(result.status==='rejected'){
@@ -56,13 +61,11 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  async function publish(event){
   if(!isDomainEvent(event))throw new Error('No se puede publicar un evento inválido')
   const completedFingerprint=completedEvents.get(event.eventId)
-  if(completedFingerprint){
-   assertSameIdentity(event,completedFingerprint)
-   return Object.freeze({event,delivered:0,failed:0,duplicate:true,retry:false,pending:false,errors:Object.freeze([])})
-  }
+  if(completedFingerprint){assertSameIdentity(event,completedFingerprint);return duplicateResult(event)}
   const active=inFlight.get(event.eventId)
   if(active){
    assertSameIdentity(event,active.fingerprint)
+   if(activeDeliveries.has(event.eventId))return duplicateResult(event,{inFlight:true})
    return active.promise
   }
   const pending=pendingFailures.get(event.eventId)
@@ -73,7 +76,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
   return execution
  }
 
- function clear(){subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();inFlight.clear()}
+ function clear(){subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();inFlight.clear();activeDeliveries.clear()}
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
   return history.filter(event=>(!name||event.name===name)&&(!aggregateId||event.aggregate.id===aggregateId)).slice(-safeLimit)
