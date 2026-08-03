@@ -2,7 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{createDomainEvent}from'../src/core/events/index.js'
 import{createMemoryLedgerRepository}from'../src/core/ledger/index.js'
-import{createProjectionCheckpointStore,createReplaySessionManager}from'../src/core/projectionEngine/index.js'
+import{createProjectionCheckpointStore,createProjectionEngine,createProjector,createReplaySessionManager}from'../src/core/projectionEngine/index.js'
 
 const complete=(store,key)=>{const token=store.claim(key);assert.ok(token);store.complete(token)}
 const event=id=>createDomainEvent({eventId:id,name:'cultivation.plant.updated',aggregateType:'cultivation.plant',aggregateId:id,organizationId:'org-a',occurredAt:'2026-08-03T20:00:00.000Z',payload:{id}})
@@ -34,6 +34,15 @@ test('AUD-F037: hidratación que excede capacidad falla atómicamente',()=>{
  const store=createProjectionCheckpointStore({checkpoints:['checkpoint-1'],maxCompleted:2})
  assert.throws(()=>store.hydrate(['checkpoint-2','checkpoint-3']),/excede maxCompleted/)
  assert.deepEqual(store.snapshot().completed,['checkpoint-1'])
+})
+
+test('AUD-F037: saturación durante execute libera claims globales e individuales',async()=>{
+ const checkpointStore=createProjectionCheckpointStore({maxCompleted:1})
+ const engine=createProjectionEngine({checkpointStore})
+ engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>null}))
+ await assert.rejects(engine.execute(event('evt-capacity')),/alcanzó maxCompleted/)
+ assert.deepEqual(checkpointStore.snapshot().activeClaims,[])
+ assert.equal(checkpointStore.snapshot().completed.length,1)
 })
 
 test('AUD-F037: sesiones terminales antiguas se compactan y las activas se preservan',async()=>{
