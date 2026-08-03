@@ -44,7 +44,9 @@ export function createKnowledgeGraphRepository(){
   if(semanticId)return Object.freeze({inserted:false,edge:edges.get(semanticId),reason:'semantic'})
   const next=new Map(edges);next.set(edge.edgeId,edge);rebuild(new Map(nodes),next);return Object.freeze({inserted:true,edge})
  }
- function replaceAll({nodes:nodeValues=[],edges:edgeValues=[]}={}){
+ function replaceAll({nodes:nodeValues=[],edges:edgeValues=[],expectedVersion}={}){
+  if(!Number.isInteger(expectedVersion)||expectedVersion<0)throw new Error('replaceAll requiere expectedVersion válido')
+  if(expectedVersion!==version)throw new Error(`Conflicto de versión del Knowledge Graph: se esperaba ${expectedVersion} y la versión actual es ${version}`)
   const nextNodes=new Map(),nextEdges=new Map(),semantic=new Set()
   for(const value of list(nodeValues)){
    const node=normalizeNode(value)
