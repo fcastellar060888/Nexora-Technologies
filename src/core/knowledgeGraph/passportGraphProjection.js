@@ -9,7 +9,7 @@ const edgeIdFor=(passport,relationship)=>`${passport.passportId}:${relationType(
 
 function assertRepository(repository){
  const required=['snapshot','replaceAll']
- if(!repository||required.some(method=>typeof repository[method]!=='function')throw new Error('Se requiere un repositorio de Knowledge Graph válido')
+ if(!repository||required.some(method=>typeof repository[method]!=='function'))throw new Error('Se requiere un repositorio de Knowledge Graph válido')
 }
 
 function assertPassport(passport){
@@ -20,17 +20,7 @@ function assertPassport(passport){
 
 function objectNode(passport){
  const object=passport.object
- return createGraphNode({
-  nodeId:nodeIdFor(object),
-  nodeType:object.objectType,
-  organizationId:object.organizationId,
-  siteId:object.siteId,
-  label:object.label,
-  status:object.status,
-  createdAt:object.createdAt,
-  updatedAt:object.updatedAt,
-  metadata:{source:'passport',passportId:passport.passportId,objectVersion:object.version}
- })
+ return createGraphNode({nodeId:nodeIdFor(object),nodeType:object.objectType,organizationId:object.organizationId,siteId:object.siteId,label:object.label,status:object.status,createdAt:object.createdAt,updatedAt:object.updatedAt,metadata:{source:'passport',passportId:passport.passportId,objectVersion:object.version}})
 }
 
 function targetNode(passport,relationship,resolveTarget){
@@ -50,52 +40,14 @@ function projectedEdge(passport,relationship,sourceNodeId,targetNodeId){
  const type=relationType(relationship.type)
  if(!type)throw new Error('Cada relación del Passport requiere type')
  const timestamp=relationship.validFrom??relationship.createdAt??passport.generatedAt
- return createGraphEdge({
-  edgeId:edgeIdFor(passport,relationship),
-  relationType:type,
-  sourceNodeId,
-  targetNodeId,
-  organizationId:passport.object.organizationId,
-  source:'passport',
-  confidence:relationship.confidence??1,
-  validFrom:timestamp,
-  validTo:relationship.validTo??null,
-  createdAt:relationship.createdAt??timestamp,
-  metadata:{passportId:passport.passportId,relationshipSource:text(relationship.source)||null,relationship:{...relationship}}
- })
+ return createGraphEdge({edgeId:edgeIdFor(passport,relationship),relationType:type,sourceNodeId,targetNodeId,organizationId:passport.object.organizationId,source:'passport',confidence:relationship.confidence??1,validFrom:timestamp,validTo:relationship.validTo??null,createdAt:relationship.createdAt??timestamp,metadata:{passportId:passport.passportId,relationshipSource:text(relationship.source)||null,relationship:{...relationship}}})
 }
 
-function ownedByPassport(edge,passportId){
- return edge?.source==='passport'&&edge?.metadata?.passportId===passportId
-}
-
-function provisionalNode(node){
- return node?.metadata?.source==='passport-reference'
-}
-
-function preferredSourceNode(existing,incoming){
- return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo del Passport ya pertenece a otra empresa'})
-}
-
-function preferredTargetNode(existing,incoming){
- if(!existing)return incoming
- if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa')
- const existingProvisional=provisionalNode(existing),incomingProvisional=provisionalNode(incoming)
- if(!existingProvisional&&incomingProvisional)return existing
- if(existingProvisional&&!incomingProvisional)return incoming
- return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo destino ya pertenece a otra empresa'})
-}
-
-function removeOrphanPassportReferences(nodes,edges){
- const connected=new Set()
- for(const edge of edges.values()){
-  connected.add(edge.sourceNodeId)
-  connected.add(edge.targetNodeId)
- }
- for(const[nodeId,node]of nodes){
-  if(provisionalNode(node)&&!connected.has(nodeId))nodes.delete(nodeId)
- }
-}
+function ownedByPassport(edge,passportId){return edge?.source==='passport'&&edge?.metadata?.passportId===passportId}
+function provisionalNode(node){return node?.metadata?.source==='passport-reference'}
+function preferredSourceNode(existing,incoming){return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo del Passport ya pertenece a otra empresa'})}
+function preferredTargetNode(existing,incoming){if(!existing)return incoming;if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa');const existingProvisional=provisionalNode(existing),incomingProvisional=provisionalNode(incoming);if(!existingProvisional&&incomingProvisional)return existing;if(existingProvisional&&!incomingProvisional)return incoming;return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo destino ya pertenece a otra empresa'})}
+function removeOrphanPassportReferences(nodes,edges){const connected=new Set();for(const edge of edges.values()){connected.add(edge.sourceNodeId);connected.add(edge.targetNodeId)}for(const[nodeId,node]of nodes){if(provisionalNode(node)&&!connected.has(nodeId))nodes.delete(nodeId)}}
 
 export function projectPassportToGraph(repository,passport,{resolveTarget=null}={}){
  assertRepository(repository)
