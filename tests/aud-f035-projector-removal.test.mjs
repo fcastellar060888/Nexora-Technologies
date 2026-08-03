@@ -14,6 +14,7 @@ test('AUD-F035: reporta todos los dependientes directos de forma determinista y 
  assert.deepEqual(after.projectors,before.projectors)
  assert.deepEqual(after.metrics,before.metrics)
  assert.deepEqual(after.processed,before.processed)
+ assert.deepEqual(after.history,before.history)
  assert.equal(after.executionSequence,before.executionSequence)
 })
 
