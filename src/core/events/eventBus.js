@@ -11,7 +11,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  const completedEvents=new Map()
  const pendingFailures=new Map()
  const inFlight=new Map()
- const activeDeliveries=new Set()
+ const activeHandlerCounts=new Map()
 
  function subscribe(eventName,handler){
   if(typeof handler!=='function')throw new Error('El suscriptor debe ser una función')
@@ -36,12 +36,14 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  function duplicateResult(event,{inFlight=false}={}){return Object.freeze({event,delivered:0,failed:0,duplicate:true,inFlight,retry:false,pending:false,errors:Object.freeze([])})}
  function handlersFor(event){return[...(subscriptions.get(event.name)||[]),...(subscriptions.get('*')||[])]}
  function report(error,event){try{onError(error,event)}catch{/* La telemetría no altera la entrega ni el reintento. */}}
+ function enterHandler(eventId){activeHandlerCounts.set(eventId,(activeHandlerCounts.get(eventId)||0)+1)}
+ function leaveHandler(eventId){const remaining=(activeHandlerCounts.get(eventId)||1)-1;if(remaining>0)activeHandlerCounts.set(eventId,remaining);else activeHandlerCounts.delete(eventId)}
 
  async function deliver(event,handlers,{retry=false}={}){
-  let results
-  activeDeliveries.add(event.eventId)
-  try{results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(()=>handler(event))))}
-  finally{activeDeliveries.delete(event.eventId)}
+  const results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(async()=>{
+   enterHandler(event.eventId)
+   try{return await handler(event)}finally{leaveHandler(event.eventId)}
+  })))
   const failedHandlers=[]
   results.forEach((result,index)=>{
    if(result.status==='rejected'){
@@ -65,7 +67,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
   const active=inFlight.get(event.eventId)
   if(active){
    assertSameIdentity(event,active.fingerprint)
-   if(activeDeliveries.has(event.eventId))return duplicateResult(event,{inFlight:true})
+   if((activeHandlerCounts.get(event.eventId)||0)>0)return duplicateResult(event,{inFlight:true})
    return active.promise
   }
   const pending=pendingFailures.get(event.eventId)
@@ -76,7 +78,7 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
   return execution
  }
 
- function clear(){subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();inFlight.clear();activeDeliveries.clear()}
+ function clear(){subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();inFlight.clear();activeHandlerCounts.clear()}
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
   return history.filter(event=>(!name||event.name===name)&&(!aggregateId||event.aggregate.id===aggregateId)).slice(-safeLimit)
