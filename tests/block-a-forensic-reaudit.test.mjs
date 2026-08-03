@@ -2,6 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readdir,readFile}from'node:fs/promises'
 import{join}from'node:path'
+import{fileURLToPath}from'node:url'
 import{createDomainEvent,createEventBus,DomainEvents}from'../src/core/events/index.js'
 import{createMemoryLedgerRepository}from'../src/core/ledger/index.js'
 import{hydrateAuthoritativeState}from'../src/services/remoteBootstrap.js'
@@ -22,7 +23,7 @@ async function sourceFiles(directory){
 }
 
 test('reauditoría A: ningún consumidor productivo reemplaza destructivamente el Ledger',async()=>{
- const root=new URL('../src/',import.meta.url)
+ const root=fileURLToPath(new URL('../src/',import.meta.url))
  const files=await sourceFiles(root)
  const offenders=[]
  for(const file of files){
