@@ -7,7 +7,8 @@ const generatedAt='2026-08-01T18:00:00.000Z'
 
 function passport(relationships=[]){
  const object=createIntelligentObject({objectType:'cultivation.plant',objectId:'plant-1',organizationId:'org-1',siteId:'site-1',label:'Planta 1',status:'active',createdAt:'2026-07-01T00:00:00.000Z',updatedAt:generatedAt})
- return createPassport({object,relationships,generatedAt})
+ const scoped=relationships.map(item=>({targetOrganizationId:'org-1',...item}))
+ return createPassport({object,relationships:scoped,generatedAt})
 }
 
 test('proyecta el objeto y sus relaciones canónicas de forma atómica',()=>{
