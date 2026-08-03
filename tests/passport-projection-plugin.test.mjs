@@ -7,7 +7,7 @@ const object=createIntelligentObject({objectType:'cultivation.plant',objectId:'p
 test('proyecta las secciones comunes sin reimplementar el ensamblaje',()=>{
  const plugin=createProjectionPlugin({id:'test.projection'})
  const builder=createPassportBuilder({plugins:[plugin]})
- const projection={relationships:[{type:'located_in',targetType:'organization.site',targetId:'site-1'}],documents:[{id:'doc-1'}],indicators:[{key:'health',value:1}],risks:[{id:'risk-1'}],actions:[{id:'action-1'}],timeline:[{id:'event-1'}],decisionContext:{priority:'high'}}
+ const projection={relationships:[{type:'located_in',targetType:'organization.site',targetId:'site-1',targetOrganizationId:'company-1'}],documents:[{id:'doc-1'}],indicators:[{key:'health',value:1}],risks:[{id:'risk-1'}],actions:[{id:'action-1'}],timeline:[{id:'event-1'}],decisionContext:{priority:'high'}}
  const passport=builder.build({object,context:{projection}})
  assert.equal(passport.relationships[0].targetId,'site-1')
  assert.equal(passport.documents[0].id,'doc-1')
