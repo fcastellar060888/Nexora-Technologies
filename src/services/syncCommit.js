@@ -1,0 +1,32 @@
+import{overlayConcurrentChanges}from'./remoteBootstrap.js'
+
+const list=value=>Array.isArray(value)?value:[]
+
+function mergeById(processed=[],current=[],initial=[]){
+ const initialIds=new Set(list(initial).map(item=>item?.id).filter(Boolean))
+ const merged=new Map(list(processed).map(item=>[item?.id,item]).filter(([id])=>id))
+ for(const item of list(current)){
+  if(!item?.id)continue
+  if(!initialIds.has(item.id))merged.set(item.id,item)
+ }
+ return[...merged.values()]
+}
+
+export function commitIncrementalSyncResult(initialState,currentState,processedState){
+ const concurrent=overlayConcurrentChanges(initialState,currentState,processedState)
+ return{
+  ...concurrent,
+  currentContext:currentState.currentContext,
+  companies:list(currentState.companies),
+  users:list(currentState.users),
+  roles:list(currentState.roles),
+  memberships:list(currentState.memberships),
+  userSessions:list(currentState.userSessions),
+  auditLog:list(currentState.auditLog),
+  syncQueue:mergeById(processedState.syncQueue,currentState.syncQueue,initialState.syncQueue),
+  syncConflicts:mergeById(processedState.syncConflicts,currentState.syncConflicts,initialState.syncConflicts),
+  syncHealthEvents:list(currentState.syncHealthEvents),
+  syncDeviceHealth:list(currentState.syncDeviceHealth),
+  syncMeta:{...(currentState.syncMeta||{}),...(processedState.syncMeta||{})}
+ }
+}
