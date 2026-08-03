@@ -12,15 +12,23 @@ function immutableCopy(value,label){
   if(current===null||typeof current==='string'||typeof current==='boolean')return current
   if(typeof current==='number'){
    if(!Number.isFinite(current))throw new Error(`${path} debe contener números finitos`)
-   return current
+   return Object.is(current,-0)?0:current
   }
   if(typeof current!=='object')throw new Error(`${path} debe contener datos JSON serializables`)
   if(active.has(current))throw new Error(`${path} no puede contener referencias cíclicas`)
   active.add(current)
   try{
-   if(Array.isArray(current))return Object.freeze(current.map((item,index)=>copy(item,`${path}[${index}]`)))
+   if(Array.isArray(current)){
+    if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
+    for(let index=0;index<current.length;index+=1)if(!Object.hasOwn(current,index))throw new Error(`${path} no puede contener posiciones vacías`)
+    const extraKeys=Object.keys(current).filter(key=>!/^\d+$/.test(key)||Number(key)>=current.length)
+    if(extraKeys.length)throw new Error(`${path} no puede contener propiedades adicionales`)
+    return Object.freeze(current.map((item,index)=>copy(item,`${path}[${index}]`)))
+   }
    const prototype=Object.getPrototypeOf(current)
    if(prototype!==Object.prototype&&prototype!==null)throw new Error(`${path} debe contener únicamente objetos planos`)
+   if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
+   if(Object.getOwnPropertyNames(current).length!==Object.keys(current).length)throw new Error(`${path} no puede contener propiedades no enumerables`)
    const result={}
    for(const key of Object.keys(current))result[key]=copy(current[key],`${path}.${key}`)
    return Object.freeze(result)
