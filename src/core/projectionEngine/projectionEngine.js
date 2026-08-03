@@ -21,18 +21,63 @@ function orderedProjectors(projectors){
  return result
 }
 
-function withTimeout(promise,timeoutMs){
- if(!timeoutMs)return promise
- return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error(`Tiempo de espera agotado después de ${timeoutMs} ms`)),timeoutMs))])
+function timeoutError(timeoutMs){
+ const error=new Error(`Tiempo de espera agotado después de ${timeoutMs} ms`)
+ error.name='ProjectionTimeoutError'
+ return error
+}
+
+function createExecutionLease(timeoutMs){
+ const controller=new AbortController()
+ let active=true,timer=null
+ const assertActive=()=>{
+  if(!active||controller.signal.aborted)throw controller.signal.reason instanceof Error?controller.signal.reason:new Error('La ejecución del proyector ya no está activa')
+  return true
+ }
+ const commit=effect=>{
+  if(typeof effect!=='function')throw new Error('commit requiere una función de efecto')
+  assertActive()
+  return effect()
+ }
+ const abort=reason=>{
+  if(!active)return false
+  active=false
+  if(timer!==null)clearTimeout(timer)
+  controller.abort(reason)
+  return true
+ }
+ const complete=()=>{
+  if(!active)return false
+  active=false
+  if(timer!==null)clearTimeout(timer)
+  return true
+ }
+ const timeoutPromise=timeoutMs?new Promise((_,reject)=>{
+  timer=setTimeout(()=>{
+   const error=timeoutError(timeoutMs)
+   abort(error)
+   reject(error)
+  },timeoutMs)
+ }):null
+ return Object.freeze({signal:controller.signal,assertActive,commit,abort,complete,timeoutPromise})
 }
 
 async function runProjector(projector,event,context){
  let lastError=null
  for(let attempt=1;attempt<=projector.policy.maxAttempts;attempt++){
+  const lease=createExecutionLease(projector.policy.timeoutMs)
+  const attemptContext=Object.freeze({...context,projectorId:projector.id,projectorVersion:projector.version,attempt,signal:lease.signal,assertActive:lease.assertActive,commit:lease.commit})
   try{
-   const output=await withTimeout(Promise.resolve(projector.project(event,Object.freeze({...context,projectorId:projector.id,projectorVersion:projector.version,attempt}))),projector.policy.timeoutMs)
+   const projection=Promise.resolve().then(()=>projector.project(event,attemptContext))
+   const output=lease.timeoutPromise?await Promise.race([projection,lease.timeoutPromise]):await projection
+   lease.assertActive()
+   lease.complete()
    return {ok:true,output,attempts:attempt}
-  }catch(error){lastError=error;if(attempt<projector.policy.maxAttempts)await sleep(projector.policy.retryDelayMs)}
+  }catch(error){
+   lastError=error
+   lease.abort(error)
+   if(attempt<projector.policy.maxAttempts)await sleep(projector.policy.retryDelayMs)
+  }
  }
  return {ok:false,error:lastError,attempts:projector.policy.maxAttempts}
 }
