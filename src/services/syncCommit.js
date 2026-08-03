@@ -13,6 +13,10 @@ function mergeById(processed=[],current=[],initial=[]){
 }
 
 export function commitIncrementalSyncResult(initialState,currentState,processedState){
+ const startedFor=initialState?.currentContext?.companyId||''
+ const activeNow=currentState?.currentContext?.companyId||''
+ const processedFor=processedState?.currentContext?.companyId||startedFor
+ if(!startedFor||startedFor!==activeNow||processedFor!==startedFor)return currentState
  const concurrent=overlayConcurrentChanges(initialState,currentState,processedState)
  return{
   ...concurrent,
