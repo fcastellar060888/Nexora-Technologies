@@ -4,6 +4,8 @@ import{preferredProjectionCandidate}from'./conflictResolutionPolicy.js'
 
 const LEGACY_RELATION_TYPE_PATTERN=/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/
 const TYPE_PATTERN=/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/
+const RELATION_SCOPED='relation-scoped'
+const PERSISTENT='persistent'
 
 function requiredString(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio`);return normalized}
 function clone(value){try{return structuredClone(value??{})}catch{throw new Error('Los atributos deben ser serializables')}}
@@ -33,7 +35,7 @@ export function graphRelation({relationType,from,to,directed=true,attributes={},
  return deepFreeze({id:requiredString(relationId,'El identificador de la relación'),relationType:normalizedType,from:source,to:target,directed:Boolean(directed),attributes:clone(attributes),createdAt:validDate(createdAt,'La fecha de la relación')})
 }
 
-function canonicalNode(node){return createGraphNode({nodeId:node.id,nodeType:node.ref.objectType,organizationId:node.ref.organizationId,siteId:node.ref.siteId,label:node.label,status:node.status,createdAt:node.createdAt,updatedAt:node.updatedAt,metadata:{source:'legacy-api',legacyRef:node.ref,attributes:node.attributes}})}
+function canonicalNode(node,{retention=PERSISTENT}={}){return createGraphNode({nodeId:node.id,nodeType:node.ref.objectType,organizationId:node.ref.organizationId,siteId:node.ref.siteId,label:node.label,status:node.status,createdAt:node.createdAt,updatedAt:node.updatedAt,metadata:{source:'legacy-api',legacyRef:node.ref,attributes:node.attributes,retention}})}
 function canonicalEdge(relation){return createGraphEdge({edgeId:relation.id,relationType:canonicalRelationType(relation.relationType),sourceNodeId:nodeKey(relation.from),targetNodeId:nodeKey(relation.to),organizationId:relation.from.organizationId,source:'legacy-api',confidence:1,validFrom:relation.createdAt,createdAt:relation.createdAt,metadata:{legacyRelationType:relation.relationType,directed:relation.directed,attributes:relation.attributes,from:relation.from,to:relation.to}})}
 function legacyNode(node){if(!node)return null;const ref=node.metadata?.legacyRef||legacyNodeRef(node.nodeId,node.organizationId);return graphNode({ref,label:node.label,status:node.status,attributes:node.metadata?.attributes||{},createdAt:node.createdAt,updatedAt:node.updatedAt})}
 function legacyRelation(edge){if(!edge)return null;const metadata=edge.metadata||{},from=metadata.from||legacyNodeRef(edge.sourceNodeId,edge.organizationId),to=metadata.to||legacyNodeRef(edge.targetNodeId,edge.organizationId);return graphRelation({relationId:edge.edgeId,relationType:metadata.legacyRelationType||edge.relationType,from,to,directed:metadata.directed!==false,attributes:metadata.attributes||{},createdAt:edge.createdAt})}
@@ -43,9 +45,9 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
  if(!Number.isInteger(maxRelations)||maxRelations<1)throw new Error('maxRelations debe ser un entero positivo')
  const repository=createKnowledgeGraphRepository()
 
- function upsertNode(nodeInput){
+ function upsertNode(nodeInput,{retention=PERSISTENT}={}){
   const node=nodeInput?.ref?graphNode(nodeInput):graphNode({ref:nodeInput,label:nodeInput?.label,status:nodeInput?.status,attributes:nodeInput?.attributes,createdAt:nodeInput?.createdAt,updatedAt:nodeInput?.updatedAt})
-  const incoming=canonicalNode(node),existing=repository.getNode(node.id)
+  const incoming=canonicalNode(node,{retention}),existing=repository.getNode(node.id)
   if(!existing){repository.addNode(incoming);return node}
   const preferred=preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo heredado ya pertenece a otra empresa'})
   if(preferred!==existing){const snapshot=repository.snapshot();repository.replaceAll({nodes:snapshot.nodes.map(item=>item.nodeId===preferred.nodeId?preferred:item),edges:snapshot.edges,expectedVersion:snapshot.version})}
@@ -53,11 +55,17 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
  }
  function connect(relationInput){
   const relation=graphRelation(relationInput),fromId=nodeKey(relation.from),toId=nodeKey(relation.to)
-  if(!repository.getNode(fromId))upsertNode({ref:relation.from})
-  if(!repository.getNode(toId))upsertNode({ref:relation.to})
+  if(!repository.getNode(fromId))upsertNode({ref:relation.from},{retention:RELATION_SCOPED})
+  if(!repository.getNode(toId))upsertNode({ref:relation.to},{retention:RELATION_SCOPED})
   const result=repository.addEdge(canonicalEdge(relation));trimRelations();return legacyRelation(result.edge)
  }
- function trimRelations(){const snapshot=repository.snapshot();if(snapshot.edges.length<=maxRelations)return;const keep=snapshot.edges.slice(snapshot.edges.length-maxRelations);repository.replaceAll({nodes:snapshot.nodes,edges:keep,expectedVersion:snapshot.version})}
+ function trimRelations(){
+  const snapshot=repository.snapshot();if(snapshot.edges.length<=maxRelations)return
+  const keep=snapshot.edges.slice(snapshot.edges.length-maxRelations),connected=new Set()
+  for(const edge of keep){connected.add(edge.sourceNodeId);connected.add(edge.targetNodeId)}
+  const nodes=snapshot.nodes.filter(node=>node.metadata?.retention!==RELATION_SCOPED||connected.has(node.nodeId))
+  repository.replaceAll({nodes,edges:keep,expectedVersion:snapshot.version})
+ }
  function disconnect(relationId){const id=String(relationId??'').trim(),snapshot=repository.snapshot();if(!repository.getEdge(id))return false;repository.replaceAll({nodes:snapshot.nodes,edges:snapshot.edges.filter(edge=>edge.edgeId!==id),expectedVersion:snapshot.version});return true}
  function getNode(ref){return legacyNode(repository.getNode(nodeKey(objectRef(ref))))}
  function neighbors(ref,{relationType=null,direction='both'}={}){const canonicalType=relationType?canonicalRelationType(relationType):null;return repository.neighbors(nodeKey(objectRef(ref)),{relationType:canonicalType,direction}).map(item=>deepFreeze({relation:legacyRelation(item.edge),node:legacyNode(item.node),direction:item.direction}))}
