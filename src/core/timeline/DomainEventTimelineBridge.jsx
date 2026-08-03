@@ -2,6 +2,7 @@ import{useEffect}from'react'
 import{getOperationalLedgerForScope}from'../ledger/index.js'
 import{domainEventToTimelineEntry}from'./timelineProjection.js'
 import{getTimelineEngineForScope}from'./timelineEngine.js'
+import{timelineEntriesEqual}from'./timelineSnapshot.js'
 import{useStore}from'../../services/store.jsx'
 
 const projectLedgerEntry=ledgerEntry=>domainEventToTimelineEntry(ledgerEntry.event,{sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt,source:'operational-ledger'})
@@ -27,8 +28,7 @@ export default function DomainEventTimelineBridge(){
 
   const canonical=timeline.query({organizationId:companyId,order:'asc',limit:2000})
   const current=(state.timelineEntries||[]).filter(item=>item.organizationId===companyId)
-  const unchanged=current.length===canonical.length&&current.every((item,index)=>JSON.stringify(item)===JSON.stringify(canonical[index]))
-  if(!unchanged){
+  if(!timelineEntriesEqual(current,canonical)){
    update(value=>{
     const foreign=(value.timelineEntries||[]).filter(item=>item.organizationId!==companyId)
     return{...value,timelineEntries:[...foreign,...canonical]}
