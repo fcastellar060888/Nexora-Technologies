@@ -18,15 +18,30 @@ test('reintenta solo fallidos de la empresa activa',()=>{
 })
 
 test('resuelve un conflicto conservando la versión remota',()=>{
+ const companyId='company-a'
  const state={
+  currentContext:{companyId},
   products:[{id:'p1',name:'Local'}],
-  syncQueue:[{id:'m1',status:'conflict'}],
-  syncConflicts:[{id:'x1',mutationId:'m1',collection:'products',recordId:'p1',localPayload:{id:'p1',name:'Local'},remotePayload:{id:'p1',name:'Remoto'},localVersion:1,remoteVersion:2,status:'open'}]
+  syncQueue:[{id:'m1',companyId,status:'conflict'}],
+  syncConflicts:[{id:'x1',companyId,mutationId:'m1',collection:'products',recordId:'p1',localPayload:{id:'p1',name:'Local'},remotePayload:{id:'p1',name:'Remoto'},localVersion:1,remoteVersion:2,status:'open'}]
  }
  const next=applyConflictResolution(state,'x1',{strategy:'remote',resolvedBy:'Admin'})
  assert.equal(next.products[0].name,'Remoto')
  assert.equal(next.syncConflicts[0].status,'resolved')
  assert.equal(next.syncQueue[0].status,'completed')
+})
+
+test('AUD-F016: rechaza resolver un conflicto perteneciente a otra empresa',()=>{
+ const state={
+  currentContext:{companyId:'company-a'},
+  products:[{id:'p1',name:'Local'}],
+  syncQueue:[{id:'m1',companyId:'company-b',status:'conflict'}],
+  syncConflicts:[{id:'x1',companyId:'company-b',mutationId:'m1',collection:'products',recordId:'p1',localPayload:{id:'p1',name:'Local'},remotePayload:{id:'p1',name:'Remoto'},localVersion:1,remoteVersion:2,status:'open'}]
+ }
+ assert.throws(()=>applyConflictResolution(state,'x1',{strategy:'remote'}),/otra empresa/)
+ assert.equal(state.products[0].name,'Local')
+ assert.equal(state.syncConflicts[0].status,'open')
+ assert.equal(state.syncQueue[0].status,'conflict')
 })
 
 test('agrupa actividad por dispositivo',()=>{
