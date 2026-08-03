@@ -47,14 +47,31 @@ function validObjectShape(value){
   &&value.metadata!==null&&!Array.isArray(value.metadata)&&typeof value.metadata==='object')
 }
 
+function canonicalValue(value){
+ if(Array.isArray(value))return value.map(canonicalValue)
+ if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonicalValue(value[key])]))
+ return value
+}
+
+function fingerprint(value,label){
+ try{return JSON.stringify(canonicalValue(value))}catch{throw new Error(`${label} contiene datos no serializables`)}
+}
+
 function uniqueBy(items,keyFor,label){
- const seen=new Set()
- return items.map(item=>deepClone(item,label)).filter(item=>{
+ const accepted=[]
+ const fingerprints=new Map()
+ for(const source of items){
+  const item=deepClone(source,label)
   const key=keyFor(item)
-  if(seen.has(key))return false
-  seen.add(key)
-  return true
- })
+  const current=fingerprint(item,label)
+  if(!fingerprints.has(key)){
+   fingerprints.set(key,current)
+   accepted.push(item)
+   continue
+  }
+  if(fingerprints.get(key)!==current)throw new Error(`${label} contiene proyecciones contradictorias para ${key}`)
+ }
+ return accepted
 }
 
 function normalizeRelationships(relationships,object){
@@ -87,7 +104,7 @@ function normalizeIdentified(items,label,{required=false}={}){
   const identity=item.id??item.key??item.eventId
   if(identity===null||identity===undefined||String(identity).trim()===''){
    if(required)throw new Error(`Cada elemento de ${label.toLowerCase()} requiere identidad`)
-   return JSON.stringify(item)
+   return fingerprint(item,label)
   }
   return String(identity).trim()
  },label))
