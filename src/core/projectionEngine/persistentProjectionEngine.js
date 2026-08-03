@@ -12,7 +12,11 @@ function skippedResult(engine,eventId,reason){
  const results=engine.listProjectors().map(projector=>Object.freeze({projectorId:projector.id,version:projector.version,status:'skipped',reason}))
  return Object.freeze({eventId,mode:'live',executedAt:new Date().toISOString(),results:frozenList(results)})
 }
-function confirm(store,key){const claim=store.claim(key);if(claim)store.complete(claim)}
+function confirm(store,key){
+ const claim=store.claim(key)
+ if(!claim)return
+ try{store.complete(claim)}catch(error){store.release(claim);throw error}
+}
 
 export function createPersistentProjectionEngine({checkpointStore=createProjectionCheckpointStore(),...options}={}){
  if(!isProjectionCheckpointStore(checkpointStore))throw new Error('Se requiere un Projection Checkpoint Store válido')
