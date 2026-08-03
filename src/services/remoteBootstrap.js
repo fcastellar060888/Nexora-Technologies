@@ -7,6 +7,8 @@ const LOCAL_ONLY_COLLECTIONS=new Set([
 ])
 
 const list=value=>Array.isArray(value)?value:[]
+const recordKey=record=>String(record?.id||'')
+const serialize=value=>{try{return JSON.stringify(value)}catch{return String(value)}}
 
 export function operationalCollections(state={}){
  return Object.keys(state).filter(key=>Array.isArray(state[key])&&!LOCAL_ONLY_COLLECTIONS.has(key))
@@ -34,6 +36,32 @@ export function groupRemoteRecords(rows=[]){
  return grouped
 }
 
+function upsert(collection,record){
+ const id=recordKey(record)
+ if(!id)return collection
+ const index=collection.findIndex(candidate=>recordKey(candidate)===id)
+ if(index<0)return[...collection,record]
+ return collection.map((candidate,position)=>position===index?record:candidate)
+}
+
+export function overlayConcurrentChanges(initialState,currentState,base){
+ const next={...base}
+ const collections=new Set([...operationalCollections(initialState),...operationalCollections(currentState)])
+ for(const collection of collections){
+  const initial=list(initialState?.[collection]),current=list(currentState?.[collection])
+  const initialById=new Map(initial.map(record=>[recordKey(record),record]).filter(([id])=>id))
+  const currentById=new Map(current.map(record=>[recordKey(record),record]).filter(([id])=>id))
+  let merged=list(next[collection])
+  for(const[id,record]of currentById){
+   const previous=initialById.get(id)
+   if(!previous||serialize(previous)!==serialize(record))merged=upsert(merged,record)
+  }
+  for(const id of initialById.keys())if(!currentById.has(id))merged=merged.filter(record=>recordKey(record)!==id)
+  next[collection]=merged
+ }
+ return next
+}
+
 export function overlayPendingMutations(state,base){
  const next={...base}
  const queue=list(state?.syncQueue).filter(item=>['pending','failed','conflict'].includes(item.status))
@@ -50,12 +78,13 @@ export function overlayPendingMutations(state,base){
  return next
 }
 
-export function hydrateAuthoritativeState(localState,rows,{companyId='',hydratedAt=new Date().toISOString()}={}){
+export function hydrateAuthoritativeState(localState,rows,{companyId='',hydratedAt=new Date().toISOString(),initialState=localState}={}){
  const grouped=groupRemoteRecords(rows)
- const collections=operationalCollections(localState)
+ const collections=new Set([...operationalCollections(initialState),...operationalCollections(localState)])
  const authoritative={...localState}
  for(const collection of collections)authoritative[collection]=grouped[collection]||[]
- const reconciled=overlayPendingMutations(localState,authoritative)
+ const concurrent=overlayConcurrentChanges(initialState,localState,authoritative)
+ const reconciled=overlayPendingMutations(localState,concurrent)
  return migrateState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId:companyId||localState.currentContext?.companyId||''},
@@ -76,8 +105,11 @@ export async function loadAuthoritativeOrganization(companyId){
  return{skipped:false,rows:list(response)}
 }
 
-export async function bootstrapOrganization(localState,companyId){
+export async function bootstrapOrganization(initialState,companyId,{getCurrentState=()=>initialState}={}){
  const result=await loadAuthoritativeOrganization(companyId)
- if(result.skipped)return{state:localState,skipped:true,count:0}
- return{state:hydrateAuthoritativeState(localState,result.rows,{companyId}),skipped:false,count:result.rows.length}
+ if(result.skipped)return{state:getCurrentState(),skipped:true,count:0}
+ const currentState=getCurrentState()
+ const currentCompanyId=currentState?.currentContext?.companyId||''
+ if(currentCompanyId&&currentCompanyId!==companyId)return{state:currentState,skipped:true,reason:'stale-company-context',count:result.rows.length}
+ return{state:hydrateAuthoritativeState(currentState,result.rows,{companyId,initialState}),skipped:false,count:result.rows.length}
 }
