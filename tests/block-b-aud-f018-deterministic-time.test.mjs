@@ -4,6 +4,7 @@ import{createIntelligentObject,createPassport,DETERMINISTIC_TIMESTAMP}from'../sr
 import{createPassportBuilder}from'../src/core/passport/passportBuilder.js'
 import{createMaterialPlantPassportFromState}from'../src/core/passport/materialPlantPassport.js'
 import{createCultivationPlantPassportFromState}from'../src/core/passport/cultivationPlantPassport.js'
+import{createPlantPassportFromState}from'../src/core/passport/plantIdentity.js'
 import{replayLedger}from'../src/core/projectionEngine/replayLedger.js'
 
 test('AUD-F018: Passport deriva generatedAt del objeto y no del reloj actual',()=>{
@@ -45,6 +46,16 @@ test('AUD-F018: planta productiva sin fechas no cambia entre proyecciones',()=>{
  const second=createCultivationPlantPassportFromState(state,{plantId:'p-1'})
  assert.deepEqual(second,first)
  assert.equal(first.object.createdAt,DETERMINISTIC_TIMESTAMP)
+ assert.equal(first.generatedAt,DETERMINISTIC_TIMESTAMP)
+})
+
+test('AUD-F018: la fachada histórica no consulta el reloj al faltar fechas',()=>{
+ const state={grandmotherPlants:[{id:'legacy-lot',lotCode:'LEG-1',quantity:1,companyId:'org-1'}],motherPlants:[]}
+ const first=createPlantPassportFromState(state,{kind:'grandmother',individualId:'legacy-lot:001'})
+ const second=createPlantPassportFromState(state,{kind:'grandmother',individualId:'legacy-lot:001'})
+ assert.deepEqual(second,first)
+ assert.equal(first.object.createdAt,DETERMINISTIC_TIMESTAMP)
+ assert.equal(first.object.updatedAt,DETERMINISTIC_TIMESTAMP)
  assert.equal(first.generatedAt,DETERMINISTIC_TIMESTAMP)
 })
 
