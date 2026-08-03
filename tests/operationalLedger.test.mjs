@@ -60,6 +60,39 @@ test('appendMany confirma y notifica el lote completo solo después de validarlo
  assert.equal(ledger.append(event({eventId:'batch-3'})).sequence,3)
 })
 
+test('reconcilia snapshots atrasados sin borrar entradas canónicas ni reemitir historia',()=>{
+ const received=[],ledger=createMemoryLedgerRepository()
+ const first=ledger.append(event({eventId:'canonical-1'}),{sequence:1})
+ const second=ledger.append(event({eventId:'canonical-2'}),{sequence:2})
+ ledger.subscribe(entry=>received.push(entry.id))
+ const reconciled=ledger.reconcileMany([first])
+ assert.deepEqual(reconciled.map(item=>item.id),['canonical-1','canonical-2'])
+ assert.equal(ledger.getByEventId(second.id).sequence,2)
+ assert.deepEqual(received,[])
+})
+
+test('reconcilia entradas remotas nuevas de forma atómica y silenciosa',()=>{
+ const received=[],ledger=createMemoryLedgerRepository()
+ ledger.append(event({eventId:'local'}),{sequence:1})
+ ledger.subscribe(entry=>received.push(entry.id))
+ const remote=createLedgerEntry(event({eventId:'remote'}),{sequence:7,recordedAt:'2026-07-31T22:00:01.000Z'})
+ const reconciled=ledger.reconcileMany([remote])
+ assert.deepEqual(reconciled.map(item=>item.id),['local','remote'])
+ assert.equal(ledger.append(event({eventId:'next'})).sequence,8)
+ assert.deepEqual(received,['next'])
+})
+
+test('una reconciliación inválida no altera el Ledger vigente',()=>{
+ const ledger=createMemoryLedgerRepository()
+ ledger.append(event({eventId:'safe'}),{sequence:3})
+ const valid=createLedgerEntry(event({eventId:'valid'}),{sequence:7})
+ const collision=createLedgerEntry(event({eventId:'collision'}),{sequence:3})
+ assert.throws(()=>ledger.reconcileMany([valid,collision]),/secuencia 3 ya pertenece/)
+ assert.equal(ledger.count(),1)
+ assert.equal(ledger.getByEventId('safe').sequence,3)
+ assert.equal(ledger.getByEventId('valid'),null)
+})
+
 test('reemplaza el snapshot de forma atómica y sin notificar eventos históricos',()=>{
  const ledger=createMemoryLedgerRepository(),received=[]
  ledger.append(event({eventId:'original'}),{sequence:1})
@@ -106,6 +139,7 @@ test('rechaza límites de retención inválidos',()=>{
  assert.throws(()=>createMemoryLedgerRepository({errorHistoryLimit:0}),/errores del Ledger/)
  assert.throws(()=>createMemoryLedgerRepository({onListenerError:'invalid'}),/debe ser una función/)
  assert.throws(()=>createMemoryLedgerRepository().appendMany({}),/requiere una lista/)
+ assert.throws(()=>createMemoryLedgerRepository().reconcileMany({}),/requiere una lista/)
 })
 
 test('se conecta al Event Bus y puede desconectarse',async()=>{
@@ -146,13 +180,14 @@ test('conserva el append y hace observable un fallo de listener sin dejar que fa
  assert.equal(ledger.health().listenerFailureCount,1)
 })
 
-test('el bridge reconcilia snapshots, persiste y limita el registro canónico',async()=>{
+test('el bridge conserva al Ledger como autoridad y restaura snapshots atrasados',async()=>{
  const source=await readFile(new URL('../src/core/ledger/OperationalLedgerBridge.jsx',import.meta.url),'utf8')
- assert.match(source,/replaceMany\(state\.operationalLedgerEntries/)
- assert.doesNotMatch(source,/hydrated\.current/)
+ assert.match(source,/reconcileMany\(incoming\)/)
+ assert.doesNotMatch(source,/replaceMany\(state\.operationalLedgerEntries/)
+ assert.match(source,/canonicalEntries/)
+ assert.match(source,/sameSnapshot/)
  assert.match(source,/operationalLedger\.subscribe/)
  assert.match(source,/connectLedgerToEventBus/)
- assert.match(source,/operationalLedgerEntries:/)
- assert.match(source,/slice\(-10000\)/)
+ assert.match(source,/operationalLedgerEntries:canonical/)
  assert.match(source,/sync:false,audit:false/)
 })
