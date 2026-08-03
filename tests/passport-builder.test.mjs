@@ -39,6 +39,37 @@ test('AUD-F020: plugins contradictorios fallan sin producir un Passport parcial'
  assert.equal(completed,true)
 })
 
+test('AUD-F021: cada plugin recibe estado y contexto profundamente aislados',()=>{
+ const state={lots:[{id:'lot-1',metadata:{health:'good'}}]}
+ const context={actor:{id:'user-1',permissions:['read']}}
+ const observations=[]
+ const builder=createPassportBuilder({plugins:[
+  {id:'hostile',project:({state,context})=>{
+   observations.push(Object.isFrozen(state),Object.isFrozen(state.lots),Object.isFrozen(state.lots[0].metadata),Object.isFrozen(context.actor),Object.isFrozen(context.actor.permissions))
+   assert.throws(()=>{state.lots[0].metadata.health='altered'},TypeError)
+   assert.throws(()=>{context.actor.permissions.push('write')},TypeError)
+   return{}
+  }},
+  {id:'observer',project:({state,context})=>{
+   assert.equal(state.lots[0].metadata.health,'good')
+   assert.deepEqual(context.actor.permissions,['read'])
+   return{}
+  }}
+ ]})
+ builder.build({object,state,context})
+ assert.deepEqual(observations,[true,true,true,true,true])
+ assert.equal(state.lots[0].metadata.health,'good')
+ assert.deepEqual(context.actor.permissions,['read'])
+})
+
+test('AUD-F021: estado o contexto no clonable se rechaza antes de ejecutar plugins',()=>{
+ let executed=false
+ const builder=createPassportBuilder({plugins:[{id:'observer',project:()=>{executed=true;return{}}}]})
+ assert.throws(()=>builder.build({object,state:{callback(){}}}),/estado.*clonables/i)
+ assert.throws(()=>builder.build({object,context:{token:Symbol('x')}}),/contexto.*clonables/i)
+ assert.equal(executed,false)
+})
+
 test('rechaza plugins duplicados o proyecciones inválidas',()=>{
  const builder=createPassportBuilder()
  builder.use({id:'mipe',project:()=>({})})
