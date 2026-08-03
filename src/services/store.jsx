@@ -93,7 +93,8 @@ export function StoreProvider({children}){
   bootstrapLockRef.current=true
   setDataRuntime(value=>({...value,status:'loading',companyId,lastError:''}))
   try{
-   const result=await bootstrapOrganization(stateRef.current,companyId)
+   const initialState=stateRef.current
+   const result=await bootstrapOrganization(initialState,companyId,{getCurrentState:()=>stateRef.current})
    if(result.skipped){
     setDataRuntime(value=>({...value,status:'cache',source:'local-cache',companyId}))
     return result
