@@ -37,14 +37,23 @@ test('no resucita mutaciones iniciales completadas y conserva las creadas durant
  assert.deepEqual(committed.syncQueue.map(item=>[item.id,item.status]),[['initial','completed'],['concurrent','pending']])
 })
 
-test('preserva contexto y colecciones locales no procesadas desde el estado vigente',()=>{
- const initial=state({currentContext:{companyId:'company-1'},auditLog:[{id:'old'}]})
- const current=state({currentContext:{companyId:'company-2'},auditLog:[{id:'old'},{id:'new'}],syncHealthEvents:[{id:'health'}]})
- const processed=state({currentContext:{companyId:'company-1'},auditLog:[],syncHealthEvents:[]})
+test('AUD-F016: descarta íntegramente un resultado si cambió la empresa activa',()=>{
+ const initial=state({currentContext:{companyId:'company-1'},sites:[{id:'a',name:'Empresa 1'}]})
+ const current=state({currentContext:{companyId:'company-2'},sites:[{id:'b',name:'Empresa 2'}],auditLog:[{id:'new'}],syncHealthEvents:[{id:'health'}]})
+ const processed=state({currentContext:{companyId:'company-1'},sites:[{id:'remote-a',name:'Remoto empresa 1'}],syncQueue:[queue('processed','completed')],syncMeta:{lastSyncedAt:'2026-08-03T05:00:00.000Z'}})
  const committed=commitIncrementalSyncResult(initial,current,processed)
- assert.equal(committed.currentContext.companyId,'company-2')
- assert.deepEqual(committed.auditLog,[{id:'old'},{id:'new'}])
- assert.deepEqual(committed.syncHealthEvents,[{id:'health'}])
+ assert.strictEqual(committed,current)
+ assert.deepEqual(committed.sites,[{id:'b',name:'Empresa 2'}])
+ assert.equal(committed.syncMeta.lastSyncedAt,undefined)
+})
+
+test('AUD-F016: descarta resultados cuyo contexto procesado no coincide con el tenant inicial',()=>{
+ const initial=state({currentContext:{companyId:'company-1'}})
+ const current=state({currentContext:{companyId:'company-1'},sites:[{id:'local',name:'Local'}]})
+ const processed=state({currentContext:{companyId:'company-2'},sites:[{id:'foreign',name:'Foráneo'}]})
+ const committed=commitIncrementalSyncResult(initial,current,processed)
+ assert.strictEqual(committed,current)
+ assert.deepEqual(committed.sites,[{id:'local',name:'Local'}])
 })
 
 test('el Store confirma resultados de sync mediante receta funcional',async()=>{
