@@ -11,8 +11,10 @@ const entry=overrides=>({
  occurredAt:'2026-08-03T13:00:00.000Z',
  recordedAt:'2026-08-03T13:00:01.000Z',
  organizationId:'company-a',
+ siteId:undefined,
  aggregateType:'cultivation.plant',
  aggregateId:'plant-1',
+ correlationId:undefined,
  title:'Inspección',
  summary:'Sin novedad',
  payload:{health:{score:90,status:'healthy'}},
@@ -21,12 +23,12 @@ const entry=overrides=>({
 })
 
 test('AUD-F012: el orden de propiedades no altera la identidad de contenido',()=>{
- const left=entry()
+ const left=entry({siteId:'site-1',correlationId:'corr-1'})
  const right={
   metadata:{tone:'success',actorName:'Fer'},
   payload:{health:{status:'healthy',score:90}},
-  summary:'Sin novedad',title:'Inspección',aggregateId:'plant-1',aggregateType:'cultivation.plant',
-  organizationId:'company-a',recordedAt:'2026-08-03T13:00:01.000Z',occurredAt:'2026-08-03T13:00:00.000Z',
+  summary:'Sin novedad',title:'Inspección',correlationId:'corr-1',aggregateId:'plant-1',aggregateType:'cultivation.plant',
+  siteId:'site-1',organizationId:'company-a',recordedAt:'2026-08-03T13:00:01.000Z',occurredAt:'2026-08-03T13:00:00.000Z',
   sequence:7,source:'operational-ledger',eventName:'cultivation.plant.inspected',id:'event-1'
  }
  assert.equal(timelineEntryFingerprint(left),timelineEntryFingerprint(right))
@@ -53,6 +55,20 @@ test('AUD-F012: longitud y orden forman parte de la colección canónica',()=>{
  const second=entry({id:'event-2',sequence:8,aggregateId:'plant-2'})
  assert.equal(timelineEntriesEqual([first],[first,second]),false)
  assert.equal(timelineEntriesEqual([first,second],[second,first]),false)
+})
+
+test('AUD-F012: campos undefined convergen tras persistencia JSON sin escrituras repetidas',()=>{
+ const canonical=entry()
+ const persisted=JSON.parse(JSON.stringify(canonical))
+ assert.equal(Object.hasOwn(persisted,'siteId'),false)
+ assert.equal(Object.hasOwn(persisted,'correlationId'),false)
+ assert.equal(timelineEntriesEqual([canonical],[persisted]),true)
+})
+
+test('AUD-F012: null explícito sigue siendo distinto de una propiedad ausente',()=>{
+ const absent=JSON.parse(JSON.stringify(entry()))
+ const explicitNull={...absent,siteId:null}
+ assert.equal(timelineEntriesEqual([absent],[explicitNull]),false)
 })
 
 test('AUD-F012: el bridge usa comparación estructural y no JSON.stringify directo',async()=>{
