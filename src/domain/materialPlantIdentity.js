@@ -22,6 +22,7 @@ function unitCode(lot,type,index){
 }
 
 export const legacyMaterialPlantId=({lot,plantType,unitIndex})=>`material-plant:${plantType}:${lot.id}:${unitIndex+1}`
+export const materialPlantRegistryKey=(lotId,plantType)=>`${plantType}:${lotId}`
 
 function defaultId(){
  if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID()
@@ -52,16 +53,17 @@ function normalizeUnit(unit,lot){
  })
 }
 
-export function materializeLotPlantUnits(lot,{plantType,existingUnits=[],idFactory=defaultId,createdAt}={}){
+export function materializeLotPlantUnits(lot,{plantType,existingUnits=[],idFactory=defaultId,createdAt,completeMissing=false}={}){
  if(!lot?.id)throw new Error('El lote necesita un identificador estable.')
  if(!Object.values(MATERIAL_PLANT_TYPES).includes(plantType))throw new Error('Tipo de planta de material vegetal inválido.')
  if(typeof idFactory!=='function')throw new TypeError('idFactory debe ser una función.')
  const current=list(existingUnits)
  const owned=current.filter(item=>item?.lotId===lot.id&&item?.plantType===plantType)
- if(owned.length)return current
+ if(owned.length&&!completeMissing)return current
  const quantity=Math.max(1,positiveInteger(lot.quantity||1))
  const timestamp=createdAt||lot.createdAt||lot.cycleStartedAt||new Date().toISOString()
- const created=Array.from({length:quantity},(_,unitIndex)=>({
+ const occupiedIndexes=new Set(owned.map(item=>positiveInteger(item.unitIndex)))
+ const created=Array.from({length:quantity},(_,unitIndex)=>unitIndex).filter(unitIndex=>!occupiedIndexes.has(unitIndex)).map(unitIndex=>({
   id:text(idFactory({lot,plantType,unitIndex})),
   code:unitCode(lot,plantType,unitIndex),
   plantType,
@@ -80,14 +82,15 @@ export function materializeLotPlantUnits(lot,{plantType,existingUnits=[],idFacto
   retiredAt:null
  }))
  if(created.some(item=>!item.id))throw new Error('Cada planta materializada necesita una identidad estable.')
- if(new Set(created.map(item=>item.id)).size!==created.length)throw new Error('El generador produjo identidades duplicadas.')
- return[...current,...created]
+ const allIds=[...current.map(item=>item?.id).filter(Boolean),...created.map(item=>item.id)]
+ if(new Set(allIds).size!==allIds.length)throw new Error('El generador produjo identidades duplicadas.')
+ return created.length?[...current,...created]:current
 }
 
-export function projectLotPlantUnits(lot,{plantType,units=[],overrides=units}={}){
+export function projectLotPlantUnits(lot,{plantType,units=[],overrides=units,completeMissing=false}={}){
  if(!lot?.id)throw new Error('El lote necesita un identificador estable.')
  if(!Object.values(MATERIAL_PLANT_TYPES).includes(plantType))throw new Error('Tipo de planta de material vegetal inválido.')
- const materialized=materializeLotPlantUnits(lot,{plantType,existingUnits:overrides,idFactory:legacyMaterialPlantId})
+ const materialized=materializeLotPlantUnits(lot,{plantType,existingUnits:overrides,idFactory:legacyMaterialPlantId,completeMissing})
  return Object.freeze(materialized
   .filter(item=>item?.lotId===lot.id&&item?.plantType===plantType)
   .sort((a,b)=>positiveInteger(a.unitIndex)-positiveInteger(b.unitIndex)||text(a.id).localeCompare(text(b.id)))
@@ -96,14 +99,15 @@ export function projectLotPlantUnits(lot,{plantType,units=[],overrides=units}={}
 
 export function projectMaterialPlantUnits(state){
  let units=list(state?.materialPlantUnits)
+ const registry=state?.materialPlantIdentityRegistry||{}
  const lots=[]
  for(const lot of list(state?.grandmotherPlants)){
   lots.push([MATERIAL_PLANT_TYPES.GRANDMOTHER,lot])
-  units=materializeLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,existingUnits:units,idFactory:legacyMaterialPlantId})
+  units=materializeLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,existingUnits:units,idFactory:legacyMaterialPlantId,completeMissing:!registry[materialPlantRegistryKey(lot.id,MATERIAL_PLANT_TYPES.GRANDMOTHER)]})
  }
  for(const lot of list(state?.motherPlants)){
   lots.push([MATERIAL_PLANT_TYPES.MOTHER,lot])
-  units=materializeLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,existingUnits:units,idFactory:legacyMaterialPlantId})
+  units=materializeLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,existingUnits:units,idFactory:legacyMaterialPlantId,completeMissing:!registry[materialPlantRegistryKey(lot.id,MATERIAL_PLANT_TYPES.MOTHER)]})
  }
  const lotMap=new Map(lots.map(([type,lot])=>[`${type}:${lot.id}`,lot]))
  return Object.freeze(units.map(unit=>normalizeUnit(unit,lotMap.get(`${unit.plantType}:${unit.lotId}`))))
