@@ -94,6 +94,31 @@ test('aplica timeout y no marca el proyector como procesado',async()=>{
  assert.equal(engine.hasProcessed('evt-timeout','slow',1),false)
 })
 
+test('AUD-F032: el timeout aborta la señal antes de devolver el fallo',async()=>{
+ const engine=createProjectionEngine();let observedAbort=false
+ engine.registerProjector(createProjector({id:'abort-aware',supports:()=>true,policy:{timeoutMs:5},project:(_,context)=>new Promise(resolve=>{
+  context.signal.addEventListener('abort',()=>{observedAbort=true;resolve('aborted')},{once:true})
+ })}))
+ const result=await engine.execute({...event,eventId:'evt-abort-aware'})
+ assert.equal(result.results[0].status,'failed')
+ assert.equal(observedAbort,true)
+ assert.equal(engine.hasProcessed('evt-abort-aware','abort-aware',1),false)
+})
+
+test('AUD-F032: un commit tardío queda invalidado después del timeout',async()=>{
+ const engine=createProjectionEngine(),writes=[];let lateError=null
+ engine.registerProjector(createProjector({id:'late-writer',supports:()=>true,policy:{timeoutMs:5},project:(_,context)=>new Promise(resolve=>setTimeout(()=>{
+  try{context.commit(()=>writes.push('corrupt'))}catch(error){lateError=error}
+  resolve('late')
+ },25))}))
+ const result=await engine.execute({...event,eventId:'evt-late-writer'})
+ assert.equal(result.results[0].status,'failed')
+ await new Promise(resolve=>setTimeout(resolve,35))
+ assert.deepEqual(writes,[])
+ assert.match(lateError?.message??'',/Tiempo de espera|ya no está activa/)
+ assert.equal(engine.hasProcessed('evt-late-writer','late-writer',1),false)
+})
+
 test('continue permite ejecutar dependientes pese al fallo',async()=>{
  const engine=createProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'optional',supports:()=>true,policy:{failStrategy:'continue'},project:()=>{throw new Error('optional failed')}}))
