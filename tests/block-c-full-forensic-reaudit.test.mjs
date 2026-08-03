@@ -5,7 +5,7 @@ import{join,relative}from'node:path'
 import{fileURLToPath}from'node:url'
 import{createDomainEvent,getEventBusForScope,releaseEventBusScope}from'../src/core/events/index.js'
 import{getOperationalLedgerForScope,releaseOperationalLedgerScope}from'../src/core/ledger/index.js'
-import{getTimelineEngineForScope,releaseTimelineEngineScope}from'../src/core/timeline/timelineEngine.js'
+import{getTimelineEngineForScope,releaseTimelineScope}from'../src/core/timeline/timelineEngine.js'
 import{getKnowledgeGraphForScope,releaseKnowledgeGraphScope,clearKnowledgeGraphRuntimes}from'../src/core/knowledgeGraph/index.js'
 import{createGraphNode}from'../src/core/knowledgeGraph/graphContract.js'
 
@@ -53,13 +53,13 @@ test('reauditoría C: los cuatro motores comparten scope lógico pero no estado 
  const domainEvent=event('company-a','user-1','event-c-1')
  await busA.publish(domainEvent)
  ledgerA.append(domainEvent)
- timelineA.record({eventId:domainEvent.eventId,eventName:domainEvent.name,organizationId:'company-a',aggregateType:domainEvent.aggregate.type,aggregateId:domainEvent.aggregate.id,occurredAt:domainEvent.occurredAt,recordedAt:domainEvent.occurredAt,source:'operational-ledger',sequence:1,title:'Inspección',summary:'Prueba',payload:{},metadata:{}})
+ timelineA.record({id:domainEvent.eventId,eventName:domainEvent.name,organizationId:'company-a',aggregateType:domainEvent.aggregate.type,aggregateId:domainEvent.aggregate.id,occurredAt:domainEvent.occurredAt,recordedAt:domainEvent.occurredAt,source:'operational-ledger',sequence:1,title:'Inspección',summary:'Prueba',payload:{},metadata:{}})
  graphA.addNode(createGraphNode({nodeId:'company-a:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'company-a',label:'Plant A',createdAt:domainEvent.occurredAt,updatedAt:domainEvent.occurredAt,metadata:{source:'ledger'}}))
  assert.equal(busB.getHistory().length,0)
  assert.equal(ledgerB.getEntries().length,0)
  assert.equal(timelineB.query({organizationId:'company-b'}).length,0)
  assert.equal(graphB.snapshot().nodes.length,0)
- releaseEventBusScope(a);releaseEventBusScope(b);releaseOperationalLedgerScope(a);releaseOperationalLedgerScope(b);releaseTimelineEngineScope(a);releaseTimelineEngineScope(b);releaseKnowledgeGraphScope(a);releaseKnowledgeGraphScope(b)
+ releaseEventBusScope(a);releaseEventBusScope(b);releaseOperationalLedgerScope(a);releaseOperationalLedgerScope(b);releaseTimelineScope(a);releaseTimelineScope(b);releaseKnowledgeGraphScope(a);releaseKnowledgeGraphScope(b)
 })
 
 test('reauditoría C: liberar un Graph scope no contamina otro y recrea limpio',()=>{
