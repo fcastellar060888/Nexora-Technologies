@@ -1,5 +1,6 @@
 import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{migrateState}from'./stateMigration.js'
+import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
@@ -90,7 +91,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  for(const collection of collections)authoritative[collection]=grouped[collection]||[]
  const concurrent=overlayConcurrentChanges(initialState,localState,authoritative)
  const reconciled=overlayPendingMutations(localState,concurrent)
- return migrateState({
+ return migrateMaterialPlantIdentity(migrateState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId},
   syncQueue:list(localState.syncQueue),
@@ -100,7 +101,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
   auditLog:list(localState.auditLog),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId}
- })
+ }))
 }
 
 export async function loadAuthoritativeOrganization(companyId){
