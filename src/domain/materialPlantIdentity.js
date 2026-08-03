@@ -29,8 +29,21 @@ function defaultId(){
  throw new Error('No existe un generador seguro de identidad para materializar plantas.')
 }
 
+function latestTimestamp(...values){
+ let latest=null
+ for(const value of values){
+  if(value===null||value===undefined||value==='')continue
+  const time=Date.parse(value)
+  if(Number.isNaN(time))continue
+  if(latest===null||time>latest)latest=time
+ }
+ return latest===null?null:new Date(latest).toISOString()
+}
+
 function normalizeUnit(unit,lot){
  const unitIndex=positiveInteger(unit.unitIndex)
+ const createdAt=latestTimestamp(unit.createdAt,lot?.createdAt,lot?.cycleStartedAt)
+ const updatedAt=latestTimestamp(unit.updatedAt,unit.createdAt,lot?.updatedAt,lot?.createdAt,lot?.cycleStartedAt)||createdAt
  return Object.freeze({
   ...unit,
   id:text(unit.id),
@@ -46,8 +59,8 @@ function normalizeUnit(unit,lot){
   operationalAvailability:unit.operationalAvailability||lot?.operationalAvailability||MATERIAL_PLANT_AVAILABILITY.AVAILABLE,
   location:unit.location||null,
   notes:unit.notes||'',
-  createdAt:unit.createdAt||lot?.createdAt||lot?.cycleStartedAt||null,
-  updatedAt:unit.updatedAt||unit.createdAt||lot?.updatedAt||lot?.createdAt||null,
+  createdAt,
+  updatedAt,
   retiredAt:unit.retiredAt||null,
   sourceLot:lot||null
  })
