@@ -45,5 +45,6 @@ test('AUD-F016: mutaciones pendientes de otro tenant no se superponen al bootstr
   ]
  }
  const result=overlayPendingMutations(state,{products:[]})
- assert.deepEqual(result.products,[{id:'a-1',name:'A'}])
+ assert.equal(result.products.length,1)
+ assert.deepEqual(result.products[0],{id:'a-1',name:'A',_organizationId:'company-a'})
 })
