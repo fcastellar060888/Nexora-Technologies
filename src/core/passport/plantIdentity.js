@@ -1,4 +1,4 @@
-import{createIntelligentObject,createPassport}from'./passportContract.js'
+import{createIntelligentObject,createPassport,DETERMINISTIC_TIMESTAMP}from'./passportContract.js'
 
 const COLLECTION_BY_KIND=Object.freeze({grandmother:'grandmotherPlants',mother:'motherPlants'})
 const OBJECT_TYPE_BY_KIND=Object.freeze({grandmother:'cultivation.grandmother',mother:'cultivation.mother'})
@@ -62,6 +62,8 @@ export function createPlantPassportFromState(state,{kind,individualId,timeline=[
  const relationships=[]
  if(grandmotherLot)relationships.push({type:'descends_from',targetType:OBJECT_TYPE_BY_KIND.grandmother,targetId:grandmotherLot.id,label:grandmotherLot.lotCode||grandmotherLot.id})
  relationships.push({type:'member_of_lot',targetType:`${OBJECT_TYPE_BY_KIND[normalizedKind]}.lot`,targetId:plant.lotId,label:lot.lotCode||lot.id})
+ const createdAt=plant.createdAt||text(lot.createdAt)||DETERMINISTIC_TIMESTAMP
+ const updatedAt=text(lot.updatedAt)||createdAt
 
  const object=createIntelligentObject({
   objectType:OBJECT_TYPE_BY_KIND[normalizedKind],
@@ -70,8 +72,8 @@ export function createPlantPassportFromState(state,{kind,individualId,timeline=[
   siteId:plant.siteId,
   label:plant.code,
   status:plant.status,
-  createdAt:plant.createdAt||new Date().toISOString(),
-  updatedAt:lot.updatedAt||plant.createdAt||new Date().toISOString(),
+  createdAt,
+  updatedAt,
   identity:{code:plant.code,kind:normalizedKind,lotId:plant.lotId,lotCode:lot.lotCode||'',individualIndex:plant.index,totalInLot:plant.total},
   attributes:{geneticId:plant.geneticId,healthStatus:plant.healthStatus,cycleStartedAt:plant.cycleStartedAt,renewalDays:lot.renewalDays??null,alertDays:lot.alertDays??null,notes:lot.notes||'',source:lot.source||''},
   metadata:{compatibilityMode:'virtual-individual-from-lot-v1',sourceCollection:COLLECTION_BY_KIND[normalizedKind]}
