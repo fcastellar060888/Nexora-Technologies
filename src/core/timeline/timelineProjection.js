@@ -22,10 +22,13 @@ function summaryFor(event){
  return String(event.payload?.summary||event.payload?.label||event.payload?.name||event.aggregate.id||'')
 }
 
-export function domainEventToTimelineEntry(event,{sequence=null,recordedAt=null}={}){
+export function domainEventToTimelineEntry(event,{sequence=null,recordedAt=null,source}={}){
  const presentation=LABELS[event.name]||{title:event.name,category:'Sistema',tone:'neutral'}
+ const canonicalSource=source||((Number.isInteger(sequence)&&sequence>=0)||recordedAt?'operational-ledger':'event-bus')
+ if(!['operational-ledger','event-bus'].includes(canonicalSource))throw new Error('La fuente del Timeline no es válida')
  return Object.freeze({
   id:event.eventId,
+  source:canonicalSource,
   eventName:event.name,
   version:event.version,
   occurredAt:event.occurredAt,
