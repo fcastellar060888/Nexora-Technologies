@@ -116,4 +116,19 @@ export function createTimelineEngine({maxEntries=2000}={}){
  return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,getVersion,getById,health,subscribe})
 }
 
-export const timelineEngine=createTimelineEngine()
+const scopedTimelines=new Map()
+function scopePart(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio para resolver el runtime`);return normalized}
+export function timelineRuntimeKey({organizationId,actorId='system'}={}){return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`}
+export function getTimelineEngineForScope(scope){
+ const key=timelineRuntimeKey(scope)
+ if(!scopedTimelines.has(key))scopedTimelines.set(key,createTimelineEngine())
+ return scopedTimelines.get(key)
+}
+export function releaseTimelineScope(scope){
+ const key=timelineRuntimeKey(scope),timeline=scopedTimelines.get(key)
+ if(!timeline)return false
+ timeline.disconnect();timeline.clear();scopedTimelines.delete(key);return true
+}
+export function timelineScopeCount(){return scopedTimelines.size}
+
+export const timelineEngine=getTimelineEngineForScope({organizationId:'local-installation',actorId:'system'})
