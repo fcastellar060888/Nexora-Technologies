@@ -80,6 +80,31 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   prepared.forEach(notify)
   return results
  }
+ function reconcileMany(values=[]){
+  if(!Array.isArray(values))throw new Error('La reconciliación del Ledger requiere una lista')
+  const candidateById=new Map(entriesById),candidateBySequence=new Map(entriesBySequence),prepared=[]
+  let candidateNextSequence=nextSequence
+  for(const value of values){
+   const event=isLedgerEntry(value)?value.event:value
+   const options=isLedgerEntry(value)?{sequence:value.sequence,recordedAt:value.recordedAt}:{}
+   if(candidateById.has(event?.eventId))continue
+   const sequence=options.sequence??candidateNextSequence
+   const sequenceOwner=candidateBySequence.get(sequence)
+   if(sequenceOwner)throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
+   const entry=createLedgerEntry(event,{...options,sequence})
+   prepared.push(entry)
+   candidateById.set(entry.id,entry);candidateBySequence.set(entry.sequence,entry)
+   candidateNextSequence=Math.max(candidateNextSequence,entry.sequence+1)
+  }
+  if(prepared.length){
+   entries.push(...prepared)
+   entries.sort((a,b)=>a.sequence-b.sequence)
+   nextSequence=candidateNextSequence
+   rebuildIndexes()
+   trim()
+  }
+  return entries.slice()
+ }
  function replaceMany(values=[]){
   if(!Array.isArray(values))throw new Error('La rehidratación del Ledger requiere una lista')
   const prepared=[]
@@ -134,7 +159,7 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   const lastListenerError=listenerErrors.at(-1)||null
   return Object.freeze({status:listenerFailureCount?'degraded':'ready',driver:'memory',entries:entries.length,nextSequence,maxEntries,listenerFailureCount,listenerErrorsRetained:listenerErrors.length,lastListenerError})
  }
- return Object.freeze({append,appendMany,replaceMany,find,getByEventId,getBySequence,count,subscribe,getListenerErrors,clearListenerErrors,clear,health})
+ return Object.freeze({append,appendMany,reconcileMany,replaceMany,find,getByEventId,getBySequence,count,subscribe,getListenerErrors,clearListenerErrors,clear,health})
 }
 
 export const operationalLedger=createMemoryLedgerRepository()
