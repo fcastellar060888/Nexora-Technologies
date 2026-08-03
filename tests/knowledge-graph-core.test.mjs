@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createKnowledgeGraph,graphNode,graphRelation,passportRelationships}from'../src/core/knowledgeGraph/index.js'
+import{createKnowledgeGraph,graphNode,graphRelation,passportRelationships}from'../src/core/knowledgeGraph/legacy.js'
 import{createIntelligentObject,createPassport}from'../src/core/passport/index.js'
 
 const organizationId='org-1'
