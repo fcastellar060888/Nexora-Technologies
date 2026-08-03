@@ -2,12 +2,12 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{DEFAULT_SOURCE_PRIORITY,stableFingerprint,sourcePriority,objectVersion,compareProjectionCandidates,preferredProjectionCandidate}from'../src/core/knowledgeGraph/index.js'
 
-const node=({label='Nodo',updatedAt='2026-08-02T10:00:00.000Z',source='passport',version=1,organizationId='org-1'}={})=>({
+const node=({label='Nodo',updatedAt='2026-08-02T10:00:00.000Z',source='passport',version=1,organizationId='org-1',metadata={}}={})=>({
  nodeId:'org-1:test.node:1',
  organizationId,
  label,
  updatedAt,
- metadata:{source,objectVersion:version}
+ metadata:{source,objectVersion:version,...metadata}
 })
 
 test('expone prioridades de fuente inmutables y aplica fallback',()=>{
@@ -27,17 +27,25 @@ test('la huella estable no depende del orden de las propiedades',()=>{
  assert.equal(stableFingerprint(left),stableFingerprint(right))
 })
 
-test('compara por fecha, fuente, versión y finalmente huella',()=>{
- assert.equal(compareProjectionCandidates(node({updatedAt:'2026-08-02T11:00:00.000Z'}),node()),1)
- assert.equal(compareProjectionCandidates(node({source:'ledger'}),node({source:'passport'})),1)
- assert.equal(compareProjectionCandidates(node({version:2}),node({version:1})),1)
+test('compara por autoridad, versión, tiempo y finalmente huella',()=>{
+ const authoritativeOld=node({source:'ledger',updatedAt:'2026-01-01T00:00:00.000Z'})
+ const weakFuture=node({source:'passport',updatedAt:'2099-01-01T00:00:00.000Z'})
+ assert.equal(compareProjectionCandidates(authoritativeOld,weakFuture),1)
+ assert.equal(compareProjectionCandidates(node({source:'passport',version:2}),node({source:'passport',version:1,updatedAt:'2099-01-01T00:00:00.000Z'})),1)
+ assert.equal(compareProjectionCandidates(node({source:'passport',version:1,updatedAt:'2026-08-02T11:00:00.000Z'}),node({source:'passport',version:1})),1)
  const a=node({label:'A'}),b=node({label:'B'})
  assert.equal(compareProjectionCandidates(a,b),-compareProjectionCandidates(b,a))
 })
 
+test('recordedAt autoritativo desempata antes de updatedAt cuando la autoridad y versión coinciden',()=>{
+ const newerRecorded=node({updatedAt:'2026-01-01T00:00:00.000Z',metadata:{recordedAt:'2026-08-03T10:00:00.000Z'}})
+ const newerUpdated=node({updatedAt:'2026-08-04T00:00:00.000Z',metadata:{recordedAt:'2026-08-03T09:00:00.000Z'}})
+ assert.equal(compareProjectionCandidates(newerRecorded,newerUpdated),1)
+})
+
 test('selecciona el mismo ganador sin importar el orden de llegada',()=>{
- const weak=node({label:'Passport',source:'passport',version:1})
- const strong=node({label:'Ledger',source:'ledger',version:1})
+ const weak=node({label:'Passport futuro',source:'passport',version:99,updatedAt:'2099-01-01T00:00:00.000Z'})
+ const strong=node({label:'Ledger histórico',source:'ledger',version:1,updatedAt:'2020-01-01T00:00:00.000Z'})
  assert.deepEqual(preferredProjectionCandidate(weak,strong),strong)
  assert.deepEqual(preferredProjectionCandidate(strong,weak),strong)
 })
