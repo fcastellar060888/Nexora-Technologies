@@ -48,6 +48,7 @@ test('publica a suscriptores específicos y universales',async()=>{
  assert.equal(result.delivered,2)
  assert.equal(result.failed,0)
  assert.equal(result.duplicate,false)
+ assert.equal(result.pending,false)
  assert.deepEqual(received,['specific:company-1','all:organization.company.created'])
 })
 
@@ -68,7 +69,7 @@ test('conserva historia filtrable por evento y objeto',async()=>{
  assert.equal(bus.getHistory({aggregateId:'company-1'}).length,1)
 })
 
-test('ignora la republicación del mismo eventId',async()=>{
+test('ignora la republicación del mismo eventId después de una entrega completa',async()=>{
  const bus=createEventBus(),received=[]
  const event=createDomainEvent({...base,eventId:'event-duplicate'})
  bus.subscribe('*',item=>received.push(item.eventId))
@@ -79,6 +80,58 @@ test('ignora la republicación del mismo eventId',async()=>{
  assert.equal(second.delivered,0)
  assert.deepEqual(received,['event-duplicate'])
  assert.equal(bus.getHistory().length,1)
+})
+
+test('reintenta solo los suscriptores fallidos antes de confirmar la deduplicación',async()=>{
+ const reported=[],calls={stable:0,transient:0}
+ let fail=true
+ const bus=createEventBus({onError:(error,event)=>{reported.push(`${event.eventId}:${error.message}`);throw new Error('telemetría caída')}})
+ bus.subscribe('*',()=>{calls.stable+=1})
+ bus.subscribe('*',()=>{calls.transient+=1;if(fail)throw new Error('Ledger temporalmente indisponible')})
+ const event=createDomainEvent({...base,eventId:'event-retry'})
+ const first=await bus.publish(event)
+ assert.equal(first.failed,1)
+ assert.equal(first.pending,true)
+ assert.equal(first.retry,false)
+ assert.equal(bus.getHistory().length,0)
+ assert.equal(bus.getPendingFailures()[0].failedHandlers,1)
+ assert.deepEqual(calls,{stable:1,transient:1})
+ fail=false
+ const second=await bus.publish(event)
+ assert.equal(second.failed,0)
+ assert.equal(second.pending,false)
+ assert.equal(second.retry,true)
+ assert.equal(second.delivered,1)
+ assert.deepEqual(calls,{stable:1,transient:2})
+ assert.equal(bus.getHistory().length,1)
+ assert.equal(bus.getPendingFailures().length,0)
+ const duplicate=await bus.publish(event)
+ assert.equal(duplicate.duplicate,true)
+ assert.deepEqual(calls,{stable:1,transient:2})
+ assert.deepEqual(reported,['event-retry:Ledger temporalmente indisponible'])
+})
+
+test('comparte una sola ejecución para publicaciones concurrentes del mismo evento',async()=>{
+ const bus=createEventBus(),event=createDomainEvent({...base,eventId:'event-concurrent'})
+ let calls=0,release
+ const gate=new Promise(resolve=>{release=resolve})
+ bus.subscribe('*',async()=>{calls+=1;await gate})
+ const first=bus.publish(event)
+ const second=bus.publish(event)
+ release()
+ const[a,b]=await Promise.all([first,second])
+ assert.equal(calls,1)
+ assert.deepEqual(a,b)
+ assert.equal(bus.getHistory().length,1)
+})
+
+test('rechaza reutilizar un eventId pendiente con contenido diferente',async()=>{
+ const bus=createEventBus({onError:()=>{}})
+ bus.subscribe('*',()=>{throw new Error('fallo persistente')})
+ const first=createDomainEvent({...base,eventId:'event-collision'})
+ await bus.publish(first)
+ const altered=createDomainEvent({...base,eventId:'event-collision',aggregateId:'company-2'})
+ await assert.rejects(()=>bus.publish(altered),/contenido diferente/)
 })
 
 test('limita la historia y la ventana de deduplicación',async()=>{
@@ -93,8 +146,9 @@ test('limita la historia y la ventana de deduplicación',async()=>{
  assert.deepEqual(bus.getHistory({limit:10}).map(item=>item.eventId),['event-3','event-1'])
 })
 
-test('valida el límite de historial y permite desactivarlo',async()=>{
+test('valida configuración y permite desactivar el historial',async()=>{
  assert.throws(()=>createEventBus({maxHistory:-1}),/límite de historial/)
+ assert.throws(()=>createEventBus({onError:'invalid'}),/onError debe ser una función/)
  const bus=createEventBus({maxHistory:0})
  await bus.publish(createDomainEvent({...base,eventId:'event-without-history'}))
  assert.equal(bus.getHistory().length,0)
