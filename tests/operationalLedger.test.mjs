@@ -36,6 +36,30 @@ test('rehidrata entradas preservando secuencia y avanza el contador',()=>{
  assert.equal(next.sequence,13)
 })
 
+test('appendMany valida el lote completo antes de modificar el Ledger',()=>{
+ const received=[],ledger=createMemoryLedgerRepository()
+ ledger.append(event({eventId:'safe'}),{sequence:3})
+ ledger.subscribe(entry=>received.push(entry.id))
+ const valid=createLedgerEntry(event({eventId:'first'}),{sequence:7})
+ const collision=createLedgerEntry(event({eventId:'collision'}),{sequence:3})
+ assert.throws(()=>ledger.appendMany([valid,collision]),/secuencia 3 ya pertenece/)
+ assert.equal(ledger.count(),1)
+ assert.equal(ledger.getByEventId('safe').sequence,3)
+ assert.equal(ledger.getByEventId('first'),null)
+ assert.deepEqual(received,[])
+ assert.equal(ledger.append(event({eventId:'next'})).sequence,4)
+})
+
+test('appendMany confirma y notifica el lote completo solo después de validarlo',()=>{
+ const received=[],ledger=createMemoryLedgerRepository()
+ ledger.subscribe(entry=>received.push(`${entry.id}:${ledger.count()}`))
+ const result=ledger.appendMany([event({eventId:'batch-1'}),event({eventId:'batch-2'}),event({eventId:'batch-1'})])
+ assert.deepEqual(result.map(item=>item.id),['batch-1','batch-2','batch-1'])
+ assert.deepEqual(ledger.find({order:'asc'}).map(item=>item.id),['batch-1','batch-2'])
+ assert.deepEqual(received,['batch-1:2','batch-2:2'])
+ assert.equal(ledger.append(event({eventId:'batch-3'})).sequence,3)
+})
+
 test('reemplaza el snapshot de forma atómica y sin notificar eventos históricos',()=>{
  const ledger=createMemoryLedgerRepository(),received=[]
  ledger.append(event({eventId:'original'}),{sequence:1})
@@ -81,6 +105,7 @@ test('rechaza límites de retención inválidos',()=>{
  assert.throws(()=>createMemoryLedgerRepository({maxEntries:1.5}),/entero positivo/)
  assert.throws(()=>createMemoryLedgerRepository({errorHistoryLimit:0}),/errores del Ledger/)
  assert.throws(()=>createMemoryLedgerRepository({onListenerError:'invalid'}),/debe ser una función/)
+ assert.throws(()=>createMemoryLedgerRepository().appendMany({}),/requiere una lista/)
 })
 
 test('se conecta al Event Bus y puede desconectarse',async()=>{
