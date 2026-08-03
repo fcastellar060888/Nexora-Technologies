@@ -11,8 +11,8 @@ function buildPassport({label='Planta Passport',status='vegetative',updatedAt=ti
  return createPassport({object,relationships:scoped,generatedAt:updatedAt})
 }
 
-function targetResolver({label,source,version=0}){
- return ref=>({label,status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt:timestamp,metadata:{source,objectVersion:version},siteId:ref.siteId})
+function targetResolver({label,source,version=0,updatedAt=timestamp,recordedAt}={}){
+ return ref=>({label,status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt,metadata:{source,objectVersion:version,...(recordedAt?{recordedAt}:{})},siteId:ref.siteId})
 }
 
 test('un Passport antiguo no degrada el nodo principal pero sí reconcilia sus relaciones',()=>{
@@ -30,34 +30,52 @@ test('un Passport antiguo no degrada el nodo principal pero sí reconcilia sus r
  assert.equal(snapshot.nodes.some(item=>item.nodeId==='org-1:cultivation.bed:bed-1'),false)
 })
 
-test('una fuente Ledger prevalece sobre Passport con el mismo updatedAt',()=>{
+test('una fuente Ledger prevalece sobre Passport incluso si Passport tiene fecha futura y versión inflada',()=>{
  const repository=createKnowledgeGraphRepository()
- repository.addNode(createGraphNode({nodeId:'org-1:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'org-1',siteId:'site-1',label:'Planta Ledger',status:'flowering',createdAt:'2026-07-01T00:00:00.000Z',updatedAt:timestamp,metadata:{source:'ledger',objectVersion:4}}))
- projectPassportToGraph(repository,buildPassport())
+ repository.addNode(createGraphNode({nodeId:'org-1:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'org-1',siteId:'site-1',label:'Planta Ledger',status:'flowering',createdAt:'2026-07-01T00:00:00.000Z',updatedAt:'2020-01-01T00:00:00.000Z',metadata:{source:'ledger',objectVersion:1}}))
+ projectPassportToGraph(repository,buildPassport({label:'Passport futuro',status:'deleted',updatedAt:'2099-01-01T00:00:00.000Z'}))
  const node=repository.getNode('org-1:cultivation.plant:plant-1')
  assert.equal(node.label,'Planta Ledger')
  assert.equal(node.status,'flowering')
  assert.equal(node.metadata.source,'ledger')
 })
 
-test('la prioridad de fuente converge sin depender del orden de llegada',()=>{
+test('una referencia Passport futura no desplaza un destino resuelto por una fuente autoritativa',()=>{
+ const repository=createKnowledgeGraphRepository(),passport=buildPassport({updatedAt:'2099-01-01T00:00:00.000Z',relationships:[{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1',targetLabel:'Referencia futura'}]})
+ repository.addNode(createGraphNode({nodeId:'org-1:cultivation.bed:bed-1',nodeType:'cultivation.bed',organizationId:'org-1',siteId:'site-1',label:'Cama certificada',status:'active',createdAt:'2020-01-01T00:00:00.000Z',updatedAt:'2020-01-01T00:00:00.000Z',metadata:{source:'iot-certified',objectVersion:1}}))
+ projectPassportToGraph(repository,passport)
+ const target=repository.getNode('org-1:cultivation.bed:bed-1')
+ assert.equal(target.label,'Cama certificada')
+ assert.equal(target.metadata.source,'iot-certified')
+})
+
+test('la prioridad de fuente converge sin depender del orden de llegada ni de fechas hostiles',()=>{
  const a=createKnowledgeGraphRepository(),b=createKnowledgeGraphRepository(),passport=buildPassport({relationships:[{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}]})
- projectPassportToGraph(a,passport,{resolveTarget:targetResolver({label:'Cama IoT',source:'iot'})})
- projectPassportToGraph(a,passport,{resolveTarget:targetResolver({label:'Cama Usuario',source:'user'})})
- projectPassportToGraph(b,passport,{resolveTarget:targetResolver({label:'Cama Usuario',source:'user'})})
- projectPassportToGraph(b,passport,{resolveTarget:targetResolver({label:'Cama IoT',source:'iot'})})
+ const iot=targetResolver({label:'Cama IoT',source:'iot',updatedAt:'2020-01-01T00:00:00.000Z'})
+ const userFuture=targetResolver({label:'Cama Usuario futura',source:'user',version:99,updatedAt:'2099-01-01T00:00:00.000Z'})
+ projectPassportToGraph(a,passport,{resolveTarget:iot})
+ projectPassportToGraph(a,passport,{resolveTarget:userFuture})
+ projectPassportToGraph(b,passport,{resolveTarget:userFuture})
+ projectPassportToGraph(b,passport,{resolveTarget:iot})
  assert.deepEqual(a.getNode('org-1:cultivation.bed:bed-1'),b.getNode('org-1:cultivation.bed:bed-1'))
  assert.equal(a.getNode('org-1:cultivation.bed:bed-1').label,'Cama IoT')
 })
 
-test('la versión desempata fuentes iguales con la misma fecha',()=>{
+test('la versión desempata fuentes iguales antes de la fecha',()=>{
  const repository=createKnowledgeGraphRepository(),passport=buildPassport({relationships:[{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}]})
- projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Cama v2',source:'facility',version:2})})
- projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Cama v1',source:'facility',version:1})})
- assert.equal(repository.getNode('org-1:cultivation.bed:bed-1').label,'Cama v2')
+ projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Cama v2 histórica',source:'facility',version:2,updatedAt:'2020-01-01T00:00:00.000Z'})})
+ projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Cama v1 futura',source:'facility',version:1,updatedAt:'2099-01-01T00:00:00.000Z'})})
+ assert.equal(repository.getNode('org-1:cultivation.bed:bed-1').label,'Cama v2 histórica')
 })
 
-test('la huella canónica produce convergencia cuando fecha, fuente y versión empatan',()=>{
+test('recordedAt desempata fuentes y versiones equivalentes antes de updatedAt',()=>{
+ const repository=createKnowledgeGraphRepository(),passport=buildPassport({relationships:[{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}]})
+ projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Registrada después',source:'facility',version:2,updatedAt:'2020-01-01T00:00:00.000Z',recordedAt:'2026-08-03T12:00:00.000Z'})})
+ projectPassportToGraph(repository,passport,{resolveTarget:targetResolver({label:'Actualizada después',source:'facility',version:2,updatedAt:'2099-01-01T00:00:00.000Z',recordedAt:'2026-08-03T11:00:00.000Z'})})
+ assert.equal(repository.getNode('org-1:cultivation.bed:bed-1').label,'Registrada después')
+})
+
+test('la huella canónica produce convergencia cuando autoridad, versión y tiempo empatan',()=>{
  const a=createKnowledgeGraphRepository(),b=createKnowledgeGraphRepository(),passport=buildPassport({relationships:[{type:'located.in',targetType:'cultivation.bed',targetId:'bed-1'}]})
  const alpha=targetResolver({label:'Cama Alfa',source:'facility',version:2}),omega=targetResolver({label:'Cama Omega',source:'facility',version:2})
  projectPassportToGraph(a,passport,{resolveTarget:alpha})
