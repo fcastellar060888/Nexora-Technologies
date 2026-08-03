@@ -102,15 +102,38 @@ function reconcileEntry(existing,incoming){
  return incoming
 }
 
-export function createTimelineEngine({maxEntries=2000}={}){
+function observerFailure(error,version){
+ const normalized=error instanceof Error?error:new Error(String(error))
+ return Object.freeze({
+  name:normalized.name||'Error',
+  message:normalized.message||String(normalized),
+  version,
+  occurredAt:new Date().toISOString()
+ })
+}
+
+export function createTimelineEngine({maxEntries=2000,maxObserverErrors=50,onObserverError=null}={}){
  if(!Number.isInteger(maxEntries)||maxEntries<1)throw new Error('El límite del Timeline debe ser un entero positivo')
+ if(!Number.isInteger(maxObserverErrors)||maxObserverErrors<1)throw new Error('El límite de errores de observadores debe ser un entero positivo')
+ if(onObserverError!==null&&typeof onObserverError!=='function')throw new Error('El manejador de errores de observadores debe ser una función')
  const entries=[]
  const entriesById=new Map()
  const listeners=new Set()
- let unsubscribe=null
+ const observerErrors=[]
  let version=0
+ let observerFailureCount=0
 
- function notify(){version+=1;listeners.forEach(listener=>{try{listener()}catch{/* Un observador visual no bloquea el Timeline. */}})}
+ function reportObserverError(error){
+  observerFailureCount+=1
+  const failure=observerFailure(error,version)
+  observerErrors.push(failure)
+  if(observerErrors.length>maxObserverErrors)observerErrors.splice(0,observerErrors.length-maxObserverErrors)
+  if(onObserverError){try{onObserverError(failure)}catch{/* El diagnóstico no rompe el Timeline. */}}
+ }
+ function notify(){
+  version+=1
+  listeners.forEach(listener=>{try{listener()}catch(error){reportObserverError(error)}})
+ }
  function subscribe(listener){
   if(typeof listener!=='function')throw new Error('El observador del Timeline debe ser una función')
   listeners.add(listener)
@@ -166,7 +189,7 @@ export function createTimelineEngine({maxEntries=2000}={}){
   notify()
   return entries.length
  }
- function recordEvent(event){return record(domainEventToTimelineEntry(event))}
+ function recordEvent(){throw new Error('La escritura directa desde Event Bus está deprecada; proyecte desde Operational Ledger')}
  function query({organizationId,siteId,aggregateType,aggregateId,eventName,category,actorId,correlationId,from,to,search,order='desc',limit=100}={}){
   const fromTime=from?Date.parse(from):null
   const toTime=to?Date.parse(to):null
@@ -188,20 +211,27 @@ export function createTimelineEngine({maxEntries=2000}={}){
   result.sort((a,b)=>(order==='asc'?1:-1)*compareEntries(a,b))
   return result.slice(0,Math.max(0,limit))
  }
- function connect(bus){
-  if(!bus?.subscribe)throw new Error('El Timeline requiere un Event Bus válido')
-  disconnect()
-  unsubscribe=bus.subscribe('*',recordEvent)
-  return disconnect
- }
- function disconnect(){if(unsubscribe){unsubscribe();unsubscribe=null}}
+ function connect(){throw new Error('La conexión directa Event Bus → Timeline está deprecada; use Operational Ledger')}
+ function disconnect(){return false}
  function clear(){if(entries.length){entries.length=0;entriesById.clear();notify()}}
+ function clearObserverErrors(){observerErrors.length=0}
+ function getObserverErrors({limit=maxObserverErrors}={}){return observerErrors.slice(-Math.max(0,limit))}
  function size(){return entries.length}
  function getVersion(){return version}
  function getById(id){return entriesById.get(id)||null}
- function health(){return Object.freeze({status:'ready',entries:entries.length,maxEntries,connected:Boolean(unsubscribe),version})}
+ function health(){return Object.freeze({
+  status:observerFailureCount?'degraded':'ready',
+  entries:entries.length,
+  maxEntries,
+  connected:false,
+  authority:'operational-ledger',
+  version,
+  observerFailures:observerFailureCount,
+  retainedObserverErrors:observerErrors.length,
+  lastObserverError:observerErrors.at(-1)||null
+ })}
 
- return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,getVersion,getById,health,subscribe})
+ return Object.freeze({record,recordEvent,hydrate,query,connect,disconnect,clear,size,getVersion,getById,health,subscribe,getObserverErrors,clearObserverErrors})
 }
 
 const scopedTimelines=new Map()
@@ -215,7 +245,7 @@ export function getTimelineEngineForScope(scope){
 export function releaseTimelineScope(scope){
  const key=timelineRuntimeKey(scope),timeline=scopedTimelines.get(key)
  if(!timeline)return false
- timeline.disconnect();timeline.clear();scopedTimelines.delete(key);return true
+ timeline.clear();scopedTimelines.delete(key);return true
 }
 export function timelineScopeCount(){return scopedTimelines.size}
 
