@@ -24,8 +24,9 @@ export function passportIndicator(key,value,unit,extra={}){
  return Object.freeze({key:normalizedKey,value,unit:String(unit||'').trim(),...extra})
 }
 
-export function passportRelationship(type,targetType,targetId,label,extra={}){
- const normalizedType=String(type||'').trim(),normalizedTargetType=String(targetType||'').trim(),normalizedTargetId=String(targetId||'').trim()
+export function passportRelationship(type,targetType,targetId,label,{targetOrganizationId,...extra}={}){
+ const normalizedType=String(type||'').trim(),normalizedTargetType=String(targetType||'').trim(),normalizedTargetId=String(targetId||'').trim(),normalizedOrganizationId=String(targetOrganizationId||'').trim()
  if(!normalizedType||!normalizedTargetType||!normalizedTargetId)throw new Error('La relación requiere tipo, tipo de destino e identificador')
- return Object.freeze({type:normalizedType,targetType:normalizedTargetType,targetId:normalizedTargetId,label:label||normalizedTargetId,...extra})
+ if(!normalizedOrganizationId)throw new Error('La relación requiere la empresa explícita del destino')
+ return Object.freeze({type:normalizedType,targetType:normalizedTargetType,targetId:normalizedTargetId,targetOrganizationId:normalizedOrganizationId,label:label||normalizedTargetId,...extra})
 }
