@@ -1,2 +1,3 @@
 export{domainEventToTimelineEntry}from'./timelineProjection.js'
 export{createTimelineEngine,timelineEngine,timelineRuntimeKey,getTimelineEngineForScope,releaseTimelineScope,timelineScopeCount}from'./timelineEngine.js'
+export{timelineEntryFingerprint,timelineEntriesEqual}from'./timelineSnapshot.js'
