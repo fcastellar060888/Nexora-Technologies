@@ -12,7 +12,7 @@ function buildPassport({label='Planta Passport',status='vegetative',updatedAt=ti
 }
 
 function targetResolver({label,source,version=0,updatedAt=timestamp,recordedAt}={}){
- return ref=>({label,status:'active',createdAt:'2026-01-01T00:00:00.000Z',updatedAt,metadata:{source,objectVersion:version,...(recordedAt?{recordedAt}:{})},siteId:ref.siteId})
+ return ref=>({label,status:'active',createdAt:'2010-01-01T00:00:00.000Z',updatedAt,metadata:{source,objectVersion:version,...(recordedAt?{recordedAt}:{})},siteId:ref.siteId})
 }
 
 test('un Passport antiguo no degrada el nodo principal pero sí reconcilia sus relaciones',()=>{
@@ -32,7 +32,7 @@ test('un Passport antiguo no degrada el nodo principal pero sí reconcilia sus r
 
 test('una fuente Ledger prevalece sobre Passport incluso si Passport tiene fecha futura y versión inflada',()=>{
  const repository=createKnowledgeGraphRepository()
- repository.addNode(createGraphNode({nodeId:'org-1:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'org-1',siteId:'site-1',label:'Planta Ledger',status:'flowering',createdAt:'2026-07-01T00:00:00.000Z',updatedAt:'2020-01-01T00:00:00.000Z',metadata:{source:'ledger',objectVersion:1}}))
+ repository.addNode(createGraphNode({nodeId:'org-1:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'org-1',siteId:'site-1',label:'Planta Ledger',status:'flowering',createdAt:'2010-01-01T00:00:00.000Z',updatedAt:'2020-01-01T00:00:00.000Z',metadata:{source:'ledger',objectVersion:1}}))
  projectPassportToGraph(repository,buildPassport({label:'Passport futuro',status:'deleted',updatedAt:'2099-01-01T00:00:00.000Z'}))
  const node=repository.getNode('org-1:cultivation.plant:plant-1')
  assert.equal(node.label,'Planta Ledger')
