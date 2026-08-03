@@ -1,5 +1,5 @@
 import{createDomainEvent}from'./eventContract.js'
-import{eventBus}from'./eventBus.js'
+import{getEventBusForScope}from'./eventBus.js'
 
 export function activeActor(state){
  const user=(state.users||[]).find(item=>item.activeSession)
@@ -8,15 +8,16 @@ export function activeActor(state){
 
 export function publishDomainEvent(state,{name,aggregateType,aggregateId,organizationId,siteId=null,payload={},metadata={}}){
  const actor=activeActor(state)
+ const resolvedOrganizationId=organizationId||state.currentContext?.companyId||'local-installation'
  const event=createDomainEvent({
   name,
   aggregateType,
   aggregateId,
-  organizationId:organizationId||state.currentContext?.companyId||'local-installation',
+  organizationId:resolvedOrganizationId,
   siteId,
   actorId:actor.id,
   payload,
   metadata:{...metadata,actorName:actor.name}
  })
- return eventBus.publish(event)
+ return getEventBusForScope({organizationId:resolvedOrganizationId,actorId:actor.id}).publish(event)
 }
