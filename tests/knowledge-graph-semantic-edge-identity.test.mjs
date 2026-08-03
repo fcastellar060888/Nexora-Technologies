@@ -45,13 +45,13 @@ test('deduplica copias semánticamente idénticas aunque cambie el edgeId y el o
 })
 
 test('replaceAll rechaza duplicados equivalentes atómicamente pero acepta afirmaciones distintas',()=>{
- const graph=repository(),nodes=graph.snapshot().nodes
+ const graph=repository(),initial=graph.snapshot(),nodes=initial.nodes
  const distinct=[edge({edgeId:'edge-a',source:'passport'}),edge({edgeId:'edge-b',source:'iot',metadata:{sensorId:'sensor-1'}})]
- graph.replaceAll({nodes,edges:distinct})
+ graph.replaceAll({nodes,edges:distinct,expectedVersion:initial.version})
  const before=graph.snapshot()
  assert.equal(before.edges.length,2)
  const duplicate=edge({edgeId:'edge-c',source:'passport'})
- assert.throws(()=>graph.replaceAll({nodes,edges:[...distinct,duplicate]}),/Relación semántica duplicada/)
+ assert.throws(()=>graph.replaceAll({nodes,edges:[...distinct,duplicate],expectedVersion:before.version}),/Relación semántica duplicada/)
  const after=graph.snapshot()
  assert.deepEqual(after.edges,before.edges)
  assert.equal(after.version,before.version)
