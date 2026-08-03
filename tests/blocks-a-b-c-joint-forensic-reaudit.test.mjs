@@ -10,6 +10,7 @@ import{getKnowledgeGraphForScope,releaseKnowledgeGraphScope,createGraphNode}from
 const at='2026-08-03T15:00:00.000Z'
 const scope=(organizationId,actorId)=>({organizationId,actorId})
 const event=({organizationId='company-a',actorId='user-1',eventId='event-abc-1',payload={status:'healthy'}}={})=>createDomainEvent({eventId,name:'cultivation.plant.inspected',aggregateType:'cultivation.plant',aggregateId:'plant-1',organizationId,actorId,occurredAt:at,payload})
+const timelineState=timeline=>timeline.query({organizationId:'company-a',order:'asc',limit:2000})
 
 function release(value){
  releaseEventBusScope(value)
@@ -41,10 +42,10 @@ test('reauditoría A+B+C: reutilizar eventId con contenido distinto no altera Le
  const ledgerEntry=ledger.append(original,{recordedAt:at})
  timeline.record(domainEventToTimelineEntry(ledgerEntry.event,{sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt,source:'operational-ledger'}))
  graph.addNode(createGraphNode({nodeId:'company-a:cultivation.plant:plant-1',nodeType:'cultivation.plant',organizationId:'company-a',label:'Plant 1',createdAt:at,updatedAt:at,metadata:{source:'ledger'}}))
- const before={ledger:ledger.count(),timeline:timeline.snapshot(),graph:graph.snapshot()}
+ const before={ledger:ledger.count(),timeline:timelineState(timeline),graph:graph.snapshot()}
  await assert.rejects(bus.publish(event({payload:{status:'corrupt'}})),/contenido diferente/)
  assert.equal(ledger.count(),before.ledger)
- assert.deepEqual(timeline.snapshot(),before.timeline)
+ assert.deepEqual(timelineState(timeline),before.timeline)
  assert.deepEqual(graph.snapshot(),before.graph)
  release(active)
 })
