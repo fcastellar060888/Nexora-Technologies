@@ -26,9 +26,11 @@ export function mapBootstrapRow(row){
  }
 }
 
-export function groupRemoteRecords(rows=[]){
+export function groupRemoteRecords(rows=[],{companyId=''}={}){
+ const mapped=list(rows).map(mapBootstrapRow)
+ if(companyId&&mapped.some(row=>row.companyId!==companyId))throw new Error('La hidratación remota contiene registros de otra empresa')
  const grouped={}
- for(const row of list(rows).map(mapBootstrapRow)){
+ for(const row of mapped){
   if(!row.collection||!row.recordId||row.deletedAt)continue
   if(!grouped[row.collection])grouped[row.collection]=[]
   grouped[row.collection].push({...row.payload,id:row.payload?.id||row.recordId,_serverVersion:row.version,_serverUpdatedAt:row.updatedAt})
@@ -64,7 +66,8 @@ export function overlayConcurrentChanges(initialState,currentState,base){
 
 export function overlayPendingMutations(state,base){
  const next={...base}
- const queue=list(state?.syncQueue).filter(item=>['pending','failed','conflict'].includes(item.status))
+ const companyId=state?.currentContext?.companyId||''
+ const queue=list(state?.syncQueue).filter(item=>item.companyId===companyId&&['pending','failed','conflict'].includes(item.status))
  for(const item of queue){
   if(!item.collection||!Array.isArray(next[item.collection]))continue
   if(item.operation==='delete')next[item.collection]=next[item.collection].filter(record=>String(record.id)!==String(item.recordId))
@@ -79,7 +82,9 @@ export function overlayPendingMutations(state,base){
 }
 
 export function hydrateAuthoritativeState(localState,rows,{companyId='',hydratedAt=new Date().toISOString(),initialState=localState}={}){
- const grouped=groupRemoteRecords(rows)
+ if(!companyId)throw new Error('Se requiere empresa para hidratar el estado autoritativo')
+ if(localState.currentContext?.companyId&&localState.currentContext.companyId!==companyId)throw new Error('La empresa de hidratación no coincide con el contexto activo')
+ const grouped=groupRemoteRecords(rows,{companyId})
  const collections=new Set([...operationalCollections(initialState),...operationalCollections(localState)])
  const authoritative={...localState}
  for(const collection of collections)authoritative[collection]=grouped[collection]||[]
@@ -87,14 +92,14 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  const reconciled=overlayPendingMutations(localState,concurrent)
  return migrateState({
   ...reconciled,
-  currentContext:{...(localState.currentContext||{}),companyId:companyId||localState.currentContext?.companyId||''},
+  currentContext:{...(localState.currentContext||{}),companyId},
   syncQueue:list(localState.syncQueue),
   syncConflicts:list(localState.syncConflicts),
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
   companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
   auditLog:list(localState.auditLog),
-  syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId||localState.currentContext?.companyId||''}
+  syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId}
  })
 }
 
