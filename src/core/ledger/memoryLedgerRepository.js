@@ -29,10 +29,14 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   if(onListenerError){try{onListenerError(error,entry,failure)}catch{/* La telemetría tampoco bloquea el Ledger. */}}
  }
  function notify(entry){listeners.forEach(listener=>{try{listener(entry)}catch(error){reportListenerError(error,entry)}})}
+ function rebuildIndexes(){
+  entriesById.clear();entriesBySequence.clear()
+  entries.forEach(entry=>{entriesById.set(entry.id,entry);entriesBySequence.set(entry.sequence,entry)})
+ }
  function trim(){
   if(entries.length<=maxEntries)return
-  const removed=entries.splice(0,entries.length-maxEntries)
-  removed.forEach(entry=>{entriesById.delete(entry.id);entriesBySequence.delete(entry.sequence)})
+  entries.splice(0,entries.length-maxEntries)
+  rebuildIndexes()
  }
  function append(event,options={}){
   const existing=entriesById.get(event?.eventId)
@@ -50,7 +54,32 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   notify(entry)
   return entry
  }
- function appendMany(values=[]){return values.map(value=>isLedgerEntry(value)?append(value.event,{sequence:value.sequence,recordedAt:value.recordedAt}):append(value))}
+ function appendMany(values=[]){
+  if(!Array.isArray(values))throw new Error('La escritura por lote del Ledger requiere una lista')
+  const candidateById=new Map(entriesById),candidateBySequence=new Map(entriesBySequence),prepared=[],results=[]
+  let candidateNextSequence=nextSequence
+  for(const value of values){
+   const event=isLedgerEntry(value)?value.event:value
+   const options=isLedgerEntry(value)?{sequence:value.sequence,recordedAt:value.recordedAt}:{}
+   const existing=candidateById.get(event?.eventId)
+   if(existing){results.push(existing);continue}
+   const sequence=options.sequence??candidateNextSequence
+   const sequenceOwner=candidateBySequence.get(sequence)
+   if(sequenceOwner)throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
+   const entry=createLedgerEntry(event,{...options,sequence})
+   prepared.push(entry);results.push(entry)
+   candidateById.set(entry.id,entry);candidateBySequence.set(entry.sequence,entry)
+   candidateNextSequence=Math.max(candidateNextSequence,entry.sequence+1)
+  }
+  if(!prepared.length)return results
+  entries.push(...prepared)
+  entries.sort((a,b)=>a.sequence-b.sequence)
+  nextSequence=candidateNextSequence
+  rebuildIndexes()
+  trim()
+  prepared.forEach(notify)
+  return results
+ }
  function replaceMany(values=[]){
   if(!Array.isArray(values))throw new Error('La rehidratación del Ledger requiere una lista')
   const prepared=[]
@@ -75,9 +104,7 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   const retained=prepared.slice(-maxEntries)
   entries.length=0
   entries.push(...retained)
-  entriesById.clear()
-  entriesBySequence.clear()
-  retained.forEach(entry=>{entriesById.set(entry.id,entry);entriesBySequence.set(entry.sequence,entry)})
+  rebuildIndexes()
   nextSequence=Math.max(1,...retained.map(entry=>entry.sequence+1))
   return retained.slice()
  }
