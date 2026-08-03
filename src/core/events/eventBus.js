@@ -1,7 +1,34 @@
 import{isDomainEvent}from'./eventContract.js'
 
 const errorText=error=>String(error?.message||error||'Error de suscriptor no identificado')
-const fingerprint=event=>JSON.stringify(event)
+
+function fingerprint(value){
+ const seen=new WeakMap()
+ let nextReference=0
+ function encode(current){
+  if(current===null)return'null'
+  const type=typeof current
+  if(type==='string')return`s:${JSON.stringify(current)}`
+  if(type==='boolean')return`b:${current}`
+  if(type==='number')return Number.isNaN(current)?'n:NaN':Object.is(current,-0)?'n:-0':`n:${current}`
+  if(type==='bigint')return`i:${current}`
+  if(type==='undefined')return'u:'
+  if(type!=='object')throw new Error('El evento contiene un valor no serializable para identidad')
+  if(seen.has(current))return`r:${seen.get(current)}`
+  const reference=nextReference++
+  seen.set(current,reference)
+  if(current instanceof Date)return`d:${current.toISOString()}`
+  if(Array.isArray(current))return`a:${reference}:[${current.map(encode).join(',')}]`
+  if(current instanceof Map){
+   const entries=[...current.entries()].map(([key,item])=>`${encode(key)}=>${encode(item)}`).sort()
+   return`m:${reference}:{${entries.join(',')}}`
+  }
+  if(current instanceof Set)return`t:${reference}:{${[...current].map(encode).sort().join(',')}}`
+  const entries=Object.keys(current).sort().map(key=>`${JSON.stringify(key)}:${encode(current[key])}`)
+  return`o:${reference}:{${entries.join(',')}}`
+ }
+ return encode(value)
+}
 
 export function createEventBus({onError=console.error,maxHistory=1000}={}){
  if(!Number.isInteger(maxHistory)||maxHistory<0)throw new Error('El límite de historial debe ser un entero no negativo')
@@ -62,23 +89,27 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
 
  async function publish(event){
   if(!isDomainEvent(event))throw new Error('No se puede publicar un evento inválido')
+  const eventFingerprint=fingerprint(event)
   const completedFingerprint=completedEvents.get(event.eventId)
   if(completedFingerprint){assertSameIdentity(event,completedFingerprint);return duplicateResult(event)}
   const active=inFlight.get(event.eventId)
   if(active){
-   assertSameIdentity(event,active.fingerprint)
+   if(active.fingerprint!==eventFingerprint)throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
    if((activeHandlerCounts.get(event.eventId)||0)>0)return duplicateResult(event,{inFlight:true})
    return active.promise
   }
   const pending=pendingFailures.get(event.eventId)
-  if(pending)assertSameIdentity(event,pending.fingerprint)
+  if(pending&&pending.fingerprint!==eventFingerprint)throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
   const handlers=pending?[...pending.handlers]:handlersFor(event)
   const execution=deliver(event,handlers,{retry:Boolean(pending)}).finally(()=>inFlight.delete(event.eventId))
-  inFlight.set(event.eventId,{fingerprint:fingerprint(event),promise:execution})
+  inFlight.set(event.eventId,{fingerprint:eventFingerprint,promise:execution})
   return execution
  }
 
- function clear(){subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();inFlight.clear();activeHandlerCounts.clear()}
+ function clear(){
+  if(inFlight.size>0)throw new Error('No se puede limpiar el Event Bus mientras existen publicaciones activas')
+  subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();activeHandlerCounts.clear()
+ }
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
   return history.filter(event=>(!name||event.name===name)&&(!aggregateId||event.aggregate.id===aggregateId)).slice(-safeLimit)
