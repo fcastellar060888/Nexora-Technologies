@@ -46,6 +46,21 @@ test('reauditoría A2: Event Bus rechaza colisiones después del éxito y durant
  await assert.rejects(()=>bus.publish(altered),/contenido diferente/)
 })
 
+test('reauditoría A2: una republicación reentrante no se espera a sí misma',async()=>{
+ const bus=createEventBus()
+ const event=makeEvent('event-reentrant')
+ let nested
+ bus.subscribe('*',async item=>{nested=await bus.publish(item)})
+ const completed=await Promise.race([
+  bus.publish(event),
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error('deadlock reentrante')),100))
+ ])
+ assert.equal(completed.duplicate,false)
+ assert.equal(nested.duplicate,true)
+ assert.equal(nested.inFlight,true)
+ assert.equal(bus.getHistory().length,1)
+})
+
 test('reauditoría A2: Ledger rechaza colisiones en append y lotes sin alterar estado',()=>{
  const ledger=createMemoryLedgerRepository()
  const first=makeEvent('ledger-collision')
