@@ -97,7 +97,13 @@ export function createProjectionEngine({historyLimit=1000,now=()=>Date.now()}={}
   if(!metrics.has(projector.id))metrics.set(projector.id,emptyMetrics(projector))
   return projector
  }
- function unregisterProjector(projectorId){return projectors.delete(text(projectorId))}
+ function unregisterProjector(projectorId){
+  const id=text(projectorId)
+  if(!projectors.has(id))return false
+  const dependents=[...projectors.values()].filter(projector=>projector.dependencies.includes(id)).map(projector=>projector.id).sort()
+  if(dependents.length)throw new Error(`No se puede retirar el proyector ${id}; todavía es requerido por: ${dependents.join(', ')}`)
+  return projectors.delete(id)
+ }
  function getProjector(projectorId){return projectors.get(text(projectorId))??null}
  function listProjectors(){return frozenList(orderedProjectors([...projectors.values()]))}
  function record(eventId,projector,result,startedMs,finishedMs,mode){
