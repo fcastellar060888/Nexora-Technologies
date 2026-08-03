@@ -1,16 +1,34 @@
 import{createLedgerEntry,isLedgerEntry}from'./ledgerEntry.js'
 
 const text=value=>String(value||'').toLocaleLowerCase('es')
+const errorText=error=>String(error?.message||error||'Error de listener no identificado')
 
-export function createMemoryLedgerRepository({maxEntries=10000}={}){
+export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit=100,onListenerError=null}={}){
  if(!Number.isInteger(maxEntries)||maxEntries<1)throw new Error('El límite del Ledger debe ser un entero positivo')
+ if(!Number.isInteger(errorHistoryLimit)||errorHistoryLimit<1)throw new Error('El límite de errores del Ledger debe ser un entero positivo')
+ if(onListenerError!==null&&typeof onListenerError!=='function')throw new Error('onListenerError debe ser una función')
  const entries=[]
  const entriesById=new Map()
  const entriesBySequence=new Map()
  const listeners=new Set()
+ const listenerErrors=[]
  let nextSequence=1
+ let listenerFailureCount=0
 
- function notify(entry){listeners.forEach(listener=>{try{listener(entry)}catch{/* Un consumidor no bloquea el Ledger. */}})}
+ function reportListenerError(error,entry){
+  listenerFailureCount+=1
+  const failure=Object.freeze({
+   id:`ledger-listener-error:${listenerFailureCount}`,
+   entryId:entry.id,
+   sequence:entry.sequence,
+   occurredAt:new Date().toISOString(),
+   message:errorText(error)
+  })
+  listenerErrors.push(failure)
+  if(listenerErrors.length>errorHistoryLimit)listenerErrors.splice(0,listenerErrors.length-errorHistoryLimit)
+  if(onListenerError){try{onListenerError(error,entry,failure)}catch{/* La telemetría tampoco bloquea el Ledger. */}}
+ }
+ function notify(entry){listeners.forEach(listener=>{try{listener(entry)}catch(error){reportListenerError(error,entry)}})}
  function trim(){
   if(entries.length<=maxEntries)return
   const removed=entries.splice(0,entries.length-maxEntries)
@@ -82,9 +100,14 @@ export function createMemoryLedgerRepository({maxEntries=10000}={}){
  function getBySequence(sequence){return entriesBySequence.get(sequence)||null}
  function count(filters={}){return find({...filters,limit:Number.MAX_SAFE_INTEGER}).length}
  function subscribe(listener){if(typeof listener!=='function')throw new Error('El observador del Ledger debe ser una función');listeners.add(listener);return()=>listeners.delete(listener)}
+ function getListenerErrors({limit=errorHistoryLimit}={}){return Object.freeze(listenerErrors.slice(-Math.max(0,Number(limit)||0)))}
+ function clearListenerErrors(){listenerErrors.length=0;return true}
  function clear(){entries.length=0;entriesById.clear();entriesBySequence.clear();nextSequence=1}
- function health(){return Object.freeze({status:'ready',driver:'memory',entries:entries.length,nextSequence,maxEntries})}
- return Object.freeze({append,appendMany,replaceMany,find,getByEventId,getBySequence,count,subscribe,clear,health})
+ function health(){
+  const lastListenerError=listenerErrors.at(-1)||null
+  return Object.freeze({status:listenerFailureCount?'degraded':'ready',driver:'memory',entries:entries.length,nextSequence,maxEntries,listenerFailureCount,listenerErrorsRetained:listenerErrors.length,lastListenerError})
+ }
+ return Object.freeze({append,appendMany,replaceMany,find,getByEventId,getBySequence,count,subscribe,getListenerErrors,clearListenerErrors,clear,health})
 }
 
 export const operationalLedger=createMemoryLedgerRepository()
