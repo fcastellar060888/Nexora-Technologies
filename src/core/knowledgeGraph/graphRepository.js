@@ -2,7 +2,8 @@ import{createGraphNode,createGraphEdge,isGraphNode,isGraphEdge}from'./graphContr
 
 const list=value=>Array.isArray(value)?value:[]
 const freeze=value=>Object.freeze([...value])
-const semanticEdgeKey=edge=>[edge.organizationId,edge.relationType,edge.sourceNodeId,edge.targetNodeId,edge.validFrom,edge.validTo||''].join('|')
+function canonical(value){if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]));return value}
+const semanticEdgeKey=edge=>JSON.stringify(canonical({organizationId:edge.organizationId,relationType:edge.relationType,sourceNodeId:edge.sourceNodeId,targetNodeId:edge.targetNodeId,source:edge.source,confidence:edge.confidence,validFrom:edge.validFrom,validTo:edge.validTo,metadata:edge.metadata}))
 
 export function createKnowledgeGraphRepository(){
  let nodes=new Map(),edges=new Map(),outgoing=new Map(),incoming=new Map(),byOrganization=new Map(),byRelation=new Map(),semanticEdges=new Map(),version=0
