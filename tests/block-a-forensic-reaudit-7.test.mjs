@@ -48,3 +48,24 @@ test('reauditoría A7: múltiples roundtrips JSON conservan identidad y deduplic
  assert.equal((await bus.publish(restored)).duplicate,true)
  assert.equal(calls,1)
 })
+
+test('reauditoría A7: rechaza coerción silenciosa de identificadores',()=>{
+ const invalid=[
+  {eventId:{}},
+  {aggregateId:['company-1']},
+  {organizationId:42},
+  {actorId:Symbol('user')},
+  {siteId:{}},
+  {correlationId:99},
+  {causationId:[]}
+ ]
+ for(const [index,overrides]of invalid.entries())assert.throws(()=>createDomainEvent({...base,eventId:`strict-${index}`,...overrides}),/debe ser texto/)
+})
+
+test('reauditoría A7: normaliza únicamente texto contractual',()=>{
+ const event=createDomainEvent({...base,eventId:'  event-trimmed  ',siteId:'  site-1  ',correlationId:'  corr-1  ',causationId:'  cause-1  '})
+ assert.equal(event.eventId,'event-trimmed')
+ assert.equal(event.context.siteId,'site-1')
+ assert.equal(event.correlationId,'corr-1')
+ assert.equal(event.causationId,'cause-1')
+})
