@@ -1,9 +1,15 @@
 const EVENT_NAME_PATTERN=/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){2,}$/
 
 function requiredString(value,label){
- const normalized=String(value||'').trim()
+ if(typeof value!=='string')throw new Error(`${label} debe ser texto`)
+ const normalized=value.trim()
  if(!normalized)throw new Error(`${label} es obligatorio`)
  return normalized
+}
+
+function optionalString(value,label){
+ if(value===null||value===undefined)return null
+ return requiredString(value,label)
 }
 
 function immutableCopy(value,label){
@@ -80,12 +86,12 @@ export function createDomainEvent({
   }),
   context:Object.freeze({
    organizationId:requiredString(organizationId,'La empresa'),
-   siteId:siteId?String(siteId):null,
+   siteId:optionalString(siteId,'La sede'),
    actorId:requiredString(actorId,'El actor')
   }),
   occurredAt:new Date(occurredAt).toISOString(),
-  correlationId:correlationId?String(correlationId):null,
-  causationId:causationId?String(causationId):null,
+  correlationId:optionalString(correlationId,'El correlationId'),
+  causationId:optionalString(causationId,'El causationId'),
   payload:immutableCopy(payload,'El payload del evento'),
   metadata:immutableCopy(metadata,'La metadata del evento')
  })
