@@ -3,6 +3,16 @@ import{createPassport,isIntelligentObject}from'./passportContract.js'
 const SECTION_KEYS=Object.freeze(['relationships','documents','indicators','risks','actions','timeline'])
 const list=value=>Array.isArray(value)?value:[]
 
+function deepFreeze(value){
+ if(!value||typeof value!=='object'||Object.isFrozen(value))return value
+ Object.values(value).forEach(deepFreeze)
+ return Object.freeze(value)
+}
+
+function isolatedValue(value,label){
+ try{return deepFreeze(structuredClone(value??{}))}catch{throw new Error(`${label} del Passport debe contener datos clonables`)}
+}
+
 function normalizePlugin(plugin,index){
  if(typeof plugin==='function')return Object.freeze({id:`plugin-${index+1}`,project:plugin})
  if(!plugin||typeof plugin!=='object'||typeof plugin.project!=='function')throw new Error('Cada plugin del Passport debe exponer una función project')
@@ -27,14 +37,15 @@ export function createPassportBuilder({plugins=[]}={}){
   if(!isIntelligentObject(object))throw new Error('El builder requiere un Objeto Inteligente válido')
   const projectionTime=base.generatedAt??context.projectionTime??object.updatedAt??object.createdAt
   if(Number.isNaN(Date.parse(projectionTime)))throw new Error('El builder requiere una fecha de proyección determinista')
-  const projectionContext=Object.freeze({...context,projectionTime:new Date(projectionTime).toISOString()})
+  const isolatedState=isolatedValue(state,'El estado')
+  const projectionContext=isolatedValue({...context,projectionTime:new Date(projectionTime).toISOString()},'El contexto')
   const output={
    relationships:[...list(base.relationships)],documents:[...list(base.documents)],indicators:[...list(base.indicators)],
    risks:[...list(base.risks)],actions:[...list(base.actions)],timeline:[...list(base.timeline)],
    decisionContext:{...(base.decisionContext||{})}
   }
   for(const plugin of registry){
-   const projection=plugin.project(Object.freeze({object,state,context:projectionContext}))||{}
+   const projection=plugin.project(Object.freeze({object,state:isolatedState,context:projectionContext}))||{}
    if(typeof projection!=='object'||Array.isArray(projection))throw new Error(`El plugin ${plugin.id} devolvió una proyección inválida`)
    for(const key of SECTION_KEYS)output[key].push(...list(projection[key]))
    if(projection.decisionContext){
