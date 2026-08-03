@@ -66,24 +66,39 @@ test('compone un Passport profundamente inmutable',()=>{
  assert.throws(()=>{passport.relationships[0].metadata.confidence=0},TypeError)
 })
 
-test('deduplica relaciones, indicadores y colecciones identificadas',()=>{
+test('deduplica únicamente proyecciones estructuralmente idénticas',()=>{
  const relationship={type:'descends_from',targetType:'propagation.mother',targetId:'mother-1',targetOrganizationId:'company-001'}
+ const indicator={key:'days_in_phase',value:18}
  const passport=createPassport({
   object:plant,
-  relationships:[relationship,relationship],
-  documents:[{id:'photo-1'},{id:'photo-1'}],
-  indicators:[{key:'days_in_phase',value:18},{key:'days_in_phase',value:19}],
-  risks:[{id:'risk-1'},{id:'risk-1'}],
-  actions:[{id:'action-1'},{id:'action-1'}],
-  timeline:[{eventId:'event-1'},{eventId:'event-1'}]
+  relationships:[relationship,{...relationship}],
+  documents:[{id:'photo-1',type:'image'},{type:'image',id:'photo-1'}],
+  indicators:[indicator,{...indicator}],
+  risks:[{id:'risk-1',severity:'high'},{severity:'high',id:'risk-1'}],
+  actions:[{id:'action-1',label:'Acción'},{label:'Acción',id:'action-1'}],
+  timeline:[{eventId:'event-1',name:'inspected'},{name:'inspected',eventId:'event-1'}]
  })
  assert.equal(passport.relationships.length,1)
  assert.equal(passport.documents.length,1)
  assert.equal(passport.indicators.length,1)
- assert.equal(passport.indicators[0].value,18)
  assert.equal(passport.risks.length,1)
  assert.equal(passport.actions.length,1)
  assert.equal(passport.timeline.length,1)
+})
+
+test('AUD-F020: rechaza proyecciones contradictorias con la misma identidad',()=>{
+ const cases=[
+  {indicators:[{key:'days_in_phase',value:18},{key:'days_in_phase',value:19}]},
+  {documents:[{id:'photo-1',type:'image'},{id:'photo-1',type:'pdf'}]},
+  {risks:[{id:'risk-1',severity:'low'},{id:'risk-1',severity:'high'}]},
+  {actions:[{id:'action-1',label:'Uno'},{id:'action-1',label:'Dos'}]},
+  {timeline:[{eventId:'event-1',name:'created'},{eventId:'event-1',name:'updated'}]},
+  {relationships:[
+   {type:'located_in',targetType:'facility.site',targetId:'site-1',targetOrganizationId:'company-001',metadata:{source:'a'}},
+   {type:'located_in',targetType:'facility.site',targetId:'site-1',targetOrganizationId:'company-001',metadata:{source:'b'}}
+  ]}
+ ]
+ for(const value of cases)assert.throws(()=>createPassport({object:plant,...value}),/proyecciones contradictorias/)
 })
 
 test('impide relaciones cruzadas entre empresas',()=>{
