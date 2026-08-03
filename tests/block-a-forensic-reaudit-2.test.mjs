@@ -34,7 +34,8 @@ test('reauditoría A2: desactivar historial no desactiva deduplicación',async()
 })
 
 test('reauditoría A2: Event Bus rechaza colisiones después del éxito y durante vuelo',async()=>{
- const bus=createEventBus(),release
+ const bus=createEventBus()
+ let release
  const gate=new Promise(resolve=>{release=resolve})
  bus.subscribe('*',()=>gate)
  const first=makeEvent('event-collision')
