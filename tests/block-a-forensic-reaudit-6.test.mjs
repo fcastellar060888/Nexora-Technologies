@@ -18,6 +18,9 @@ test('reauditoría A6: el contrato copia y congela profundamente datos JSON',()=
 
 test('reauditoría A6: rechaza mutabilidad oculta y valores que divergen al persistir',()=>{
  const cycle={};cycle.self=cycle
+ const sparse=[];sparse.length=1
+ const symbolPayload={value:'visible'};symbolPayload[Symbol('hidden')]='secret'
+ const arrayWithExtra=[1];arrayWithExtra.extra='hidden'
  const invalid=[
   {payload:{value:new Map()}},
   {payload:{value:new Set()}},
@@ -25,16 +28,20 @@ test('reauditoría A6: rechaza mutabilidad oculta y valores que divergen al pers
   {payload:{value:undefined}},
   {payload:{value:Number.NaN}},
   {payload:{value:Number.POSITIVE_INFINITY}},
-  {payload:cycle}
+  {payload:cycle},
+  {payload:{value:sparse}},
+  {payload:symbolPayload},
+  {payload:{value:arrayWithExtra}}
  ]
  for(const [index,overrides]of invalid.entries())assert.throws(()=>createDomainEvent({...base,eventId:`invalid-${index}`,...overrides}))
 })
 
-test('reauditoría A6: todo evento aceptado conserva identidad tras roundtrip JSON',async()=>{
+test('reauditoría A6: normaliza menos cero y conserva identidad tras roundtrip JSON',async()=>{
  const bus=createEventBus()
  let calls=0
  bus.subscribe('*',()=>{calls+=1})
- const original=createDomainEvent({...base,eventId:'json-roundtrip',payload:{name:'Nexora',nested:[1,true,null,{site:'Villeta'}]}})
+ const original=createDomainEvent({...base,eventId:'json-roundtrip',payload:{value:-0,name:'Nexora',nested:[1,true,null,{site:'Villeta'}]}})
+ assert.equal(Object.is(original.payload.value,-0),false)
  const serialized=JSON.parse(JSON.stringify(original))
  await bus.publish(original)
  const replay=await bus.publish(serialized)
