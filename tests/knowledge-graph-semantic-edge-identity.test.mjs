@@ -1,6 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createGraphNode,createGraphEdge,createKnowledgeGraphRepository,createKnowledgeGraph}from'../src/core/knowledgeGraph/index.js'
+import{createGraphNode,createGraphEdge,createKnowledgeGraphRepository}from'../src/core/knowledgeGraph/index.js'
+import{createKnowledgeGraph}from'../src/core/knowledgeGraph/legacy.js'
 
 const time='2026-08-03T12:00:00.000Z'
 function repository(){
@@ -45,9 +46,9 @@ test('deduplica copias semánticamente idénticas aunque cambie el edgeId y el o
 })
 
 test('replaceAll rechaza duplicados equivalentes atómicamente pero acepta afirmaciones distintas',()=>{
- const graph=repository(),initial=graph.snapshot(),nodes=initial.nodes
+ const graph=repository(),nodes=graph.snapshot().nodes
  const distinct=[edge({edgeId:'edge-a',source:'passport'}),edge({edgeId:'edge-b',source:'iot',metadata:{sensorId:'sensor-1'}})]
- graph.replaceAll({nodes,edges:distinct,expectedVersion:initial.version})
+ graph.replaceAll({nodes,edges:distinct,expectedVersion:graph.getVersion()})
  const before=graph.snapshot()
  assert.equal(before.edges.length,2)
  const duplicate=edge({edgeId:'edge-c',source:'passport'})
