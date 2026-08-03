@@ -12,7 +12,8 @@ function isTimelineEntry(entry){
   &&required(entry.organizationId)
   &&required(entry.aggregateType)
   &&required(entry.aggregateId)
-  &&(entry.sequence===null||entry.sequence===undefined||(Number.isInteger(entry.sequence)&&entry.sequence>=0)))
+  &&(entry.sequence===null||entry.sequence===undefined||(Number.isInteger(entry.sequence)&&entry.sequence>=0))
+  &&(entry.recordedAt===null||entry.recordedAt===undefined||(required(entry.recordedAt)&&!Number.isNaN(Date.parse(entry.recordedAt)))))
 }
 
 function compareEntries(a,b){
@@ -21,6 +22,22 @@ function compareEntries(a,b){
  const left=Number.isInteger(a.sequence)?a.sequence:Number.MAX_SAFE_INTEGER
  const right=Number.isInteger(b.sequence)?b.sequence:Number.MAX_SAFE_INTEGER
  if(left!==right)return left-right
+ return String(a.id).localeCompare(String(b.id))
+}
+
+function compareRetention(a,b){
+ const leftSequence=Number.isInteger(a.sequence)?a.sequence:null
+ const rightSequence=Number.isInteger(b.sequence)?b.sequence:null
+ if(leftSequence!==null&&rightSequence!==null&&leftSequence!==rightSequence)return leftSequence-rightSequence
+ if(leftSequence!==null&&rightSequence===null)return 1
+ if(leftSequence===null&&rightSequence!==null)return-1
+ const leftRecorded=a.recordedAt?Date.parse(a.recordedAt):null
+ const rightRecorded=b.recordedAt?Date.parse(b.recordedAt):null
+ if(leftRecorded!==null&&rightRecorded!==null&&leftRecorded!==rightRecorded)return leftRecorded-rightRecorded
+ if(leftRecorded!==null&&rightRecorded===null)return 1
+ if(leftRecorded===null&&rightRecorded!==null)return-1
+ const occurred=Date.parse(a.occurredAt)-Date.parse(b.occurredAt)
+ if(occurred)return occurred
  return String(a.id).localeCompare(String(b.id))
 }
 
@@ -40,8 +57,12 @@ export function createTimelineEngine({maxEntries=2000}={}){
  }
  function trim(){
   if(entries.length<=maxEntries)return
-  const removed=entries.splice(0,entries.length-maxEntries)
-  removed.forEach(entry=>entriesById.delete(entry.id))
+  const retainedIds=new Set([...entries].sort(compareRetention).slice(-maxEntries).map(entry=>entry.id))
+  for(let index=entries.length-1;index>=0;index-=1){
+   if(retainedIds.has(entries[index].id))continue
+   entriesById.delete(entries[index].id)
+   entries.splice(index,1)
+  }
  }
  function normalize(entry){
   if(!isTimelineEntry(entry))throw new Error('La entrada del Timeline no cumple el contrato requerido')
@@ -52,9 +73,9 @@ export function createTimelineEngine({maxEntries=2000}={}){
   const existing=entriesById.get(normalized.id)
   if(existing)return existing
   entries.push(normalized)
-  entries.sort(compareEntries)
   entriesById.set(normalized.id,normalized)
   trim()
+  entries.sort(compareEntries)
   if(!silent)notify()
   return normalized
  }
@@ -69,8 +90,7 @@ export function createTimelineEngine({maxEntries=2000}={}){
    next.push(entry)
    nextById.set(entry.id,entry)
   }
-  next.sort(compareEntries)
-  const retained=next.slice(-maxEntries)
+  const retained=[...next].sort(compareRetention).slice(-maxEntries).sort(compareEntries)
   entries.length=0
   entries.push(...retained)
   entriesById.clear()
