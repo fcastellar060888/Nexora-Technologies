@@ -110,14 +110,18 @@ test('migra Timeline y Operational Ledger al esquema persistente actual',()=>{
  assert.equal(state.operationalLedgerEntries[0].sequence,4)
 })
 
-test('el Timeline se reconcilia y proyecta desde el Operational Ledger',async()=>{
+test('el Timeline se reconcilia desde el Ledger del workspace activo',async()=>{
  const source=await readFile(new URL('../src/core/timeline/DomainEventTimelineBridge.jsx',import.meta.url),'utf8')
- assert.match(source,/operationalLedger\.subscribe/)
- assert.match(source,/operationalLedgerEntries/)
+ assert.match(source,/getOperationalLedgerForScope\(scope\)/)
+ assert.match(source,/getTimelineEngineForScope\(scope\)/)
+ assert.match(source,/ledger\.subscribe/)
+ assert.match(source,/timeline\.hydrate/)
+ assert.match(source,/organizationId===companyId/)
+ assert.match(source,/timelineEntries:\[\.\.\.foreign,\.\.\.canonical\]/)
  assert.match(source,/projectLedgerEntry/)
  assert.match(source,/sequence:ledgerEntry\.sequence/)
- assert.match(source,/timelineEngine\.hydrate/)
- assert.doesNotMatch(source,/hydrated=useRef/)
+ assert.doesNotMatch(source,/import\{[^}]*operationalLedger[^}]*\}/)
+ assert.doesNotMatch(source,/import\{[^}]*timelineEngine[^}]*\}/)
  assert.doesNotMatch(source,/eventBus\.subscribe/)
  assert.match(source,/sync:false,audit:false/)
  assert.match(source,/limit:2000/)
