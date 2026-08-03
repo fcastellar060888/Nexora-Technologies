@@ -1,6 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createKnowledgeGraph,createGraphNode}from'../src/core/knowledgeGraph/index.js'
+import{createGraphNode}from'../src/core/knowledgeGraph/index.js'
+import{createKnowledgeGraph}from'../src/core/knowledgeGraph/legacy.js'
 
 const ref={objectType:'cultivation.bed',objectId:'bed-1',organizationId:'org-1',siteId:'site-1'}
 const createdAt='2026-01-01T00:00:00.000Z'
