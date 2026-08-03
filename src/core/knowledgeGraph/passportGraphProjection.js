@@ -9,7 +9,7 @@ const edgeIdFor=(passport,relationship)=>`${passport.passportId}:${relationType(
 
 function assertRepository(repository){
  const required=['snapshot','replaceAll']
- if(!repository||required.some(method=>typeof repository[method]!=='function'))throw new Error('Se requiere un repositorio de Knowledge Graph válido')
+ if(!repository||required.some(method=>typeof repository[method]!=='function')throw new Error('Se requiere un repositorio de Knowledge Graph válido')
 }
 
 function assertPassport(passport){
@@ -35,7 +35,8 @@ function objectNode(passport){
 
 function targetNode(passport,relationship,resolveTarget){
  const object=passport.object
- const targetOrganizationId=text(relationship.targetOrganizationId??relationship.organizationId??object.organizationId)
+ const targetOrganizationId=text(relationship.targetOrganizationId)
+ if(!targetOrganizationId)throw new Error('Cada relación del Passport requiere la empresa explícita del destino')
  if(targetOrganizationId!==object.organizationId)throw new Error('El Passport no puede proyectar relaciones hacia otra empresa')
  const ref={organizationId:targetOrganizationId,objectType:text(relationship.targetType),objectId:text(relationship.targetId),siteId:relationship.targetSiteId??object.siteId}
  if(!ref.objectType||!ref.objectId)throw new Error('Cada relación del Passport requiere destino completo')
