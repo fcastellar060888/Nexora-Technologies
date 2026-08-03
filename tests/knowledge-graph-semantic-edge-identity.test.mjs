@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createGraphNode,createGraphEdge,createKnowledgeGraphRepository}from'../src/core/knowledgeGraph/index.js'
+import{createGraphNode,createGraphEdge,createKnowledgeGraphRepository,createKnowledgeGraph}from'../src/core/knowledgeGraph/index.js'
 
 const time='2026-08-03T12:00:00.000Z'
 function repository(){
@@ -55,4 +55,15 @@ test('replaceAll rechaza duplicados equivalentes atómicamente pero acepta afirm
  const after=graph.snapshot()
  assert.deepEqual(after.edges,before.edges)
  assert.equal(after.version,before.version)
+})
+
+test('la API heredada conserva relaciones con atributos distintos entre los mismos objetos',()=>{
+ const graph=createKnowledgeGraph()
+ const from={organizationId:'org-1',objectType:'cultivation.plant',objectId:'plant-1'}
+ const to={organizationId:'org-1',objectType:'cultivation.bed',objectId:'bed-1'}
+ graph.connect({relationId:'legacy-a',relationType:'located.in',from,to,createdAt:time,attributes:{evidence:'inspection-a'}})
+ graph.connect({relationId:'legacy-b',relationType:'located.in',from,to,createdAt:time,attributes:{evidence:'inspection-b'}})
+ const relations=graph.snapshot().relations
+ assert.equal(relations.length,2)
+ assert.deepEqual(relations.map(item=>item.attributes.evidence),['inspection-a','inspection-b'])
 })
