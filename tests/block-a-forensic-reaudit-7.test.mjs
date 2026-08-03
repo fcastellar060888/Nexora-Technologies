@@ -69,3 +69,11 @@ test('reauditoría A7: normaliza únicamente texto contractual',()=>{
  assert.equal(event.correlationId,'corr-1')
  assert.equal(event.causationId,'cause-1')
 })
+
+test('reauditoría A7: la fecha del evento no ejecuta coerciones implícitas',()=>{
+ let conversions=0
+ const disguisedDate={toString(){conversions+=1;return'2026-08-03T07:00:00.000Z'}}
+ assert.throws(()=>createDomainEvent({...base,eventId:'coerced-date',occurredAt:disguisedDate}),/debe ser texto/)
+ assert.equal(conversions,0)
+ assert.throws(()=>createDomainEvent({...base,eventId:'numeric-date',occurredAt:0}),/debe ser texto/)
+})
