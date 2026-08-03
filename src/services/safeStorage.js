@@ -2,11 +2,27 @@ import { initialState } from './storage'
 import { CURRENT_SCHEMA_VERSION, migrateState } from './stateMigration'
 import { getPersistenceDriver } from './persistenceDriver'
 import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
+import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 
 let lastObservedAuditId=''
+let persistenceRuntime=createPersistenceRuntime()
+const persistenceListeners=new Set()
 
 function cloneInitialState(){
  return migrateState(structuredClone(initialState))
+}
+
+function publishPersistenceResult(result){
+ persistenceRuntime=recordPersistenceResult(persistenceRuntime,result)
+ persistenceListeners.forEach(listener=>{try{listener()}catch(error){console.error('Falló un observador de persistencia.',error)}})
+ return result
+}
+
+export function getPersistenceRuntime(){return persistenceRuntime}
+export function subscribePersistenceRuntime(listener){
+ if(typeof listener!=='function')throw new Error('El observador de persistencia debe ser una función')
+ persistenceListeners.add(listener)
+ return()=>persistenceListeners.delete(listener)
 }
 
 function readLegacyState(){
@@ -63,10 +79,10 @@ export function saveState(state){
   const normalized=migrateState(state)
   const result=writeLightweightCache({...normalized,schemaVersion:CURRENT_SCHEMA_VERSION,persistedAt:new Date().toISOString()})
   emitOperationalChange(normalized)
-  return{ok:true,...result}
+  return publishPersistenceResult({ok:true,...result})
  }catch(error){
   console.error('No fue posible guardar la caché offline.',error)
-  return{ok:false,error:error instanceof Error?error.message:'Error desconocido de almacenamiento'}
+  return publishPersistenceResult({ok:false,error:error instanceof Error?error.message:'Error desconocido de almacenamiento'})
  }
 }
 
