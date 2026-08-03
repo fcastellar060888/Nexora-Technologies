@@ -59,9 +59,10 @@ export function createPlantPassportFromState(state,{kind,individualId,timeline=[
  if(!plant)throw new Error('No se encontró la planta individual solicitada')
  const lot=plant.sourceLot
  const grandmotherLot=normalizedKind==='mother'?(state?.grandmotherPlants||[]).find(item=>item.id===lot.grandmotherPlantId):null
+ const relationshipTenant={targetOrganizationId:plant.organizationId}
  const relationships=[]
- if(grandmotherLot)relationships.push({type:'descends_from',targetType:OBJECT_TYPE_BY_KIND.grandmother,targetId:grandmotherLot.id,label:grandmotherLot.lotCode||grandmotherLot.id})
- relationships.push({type:'member_of_lot',targetType:`${OBJECT_TYPE_BY_KIND[normalizedKind]}.lot`,targetId:plant.lotId,label:lot.lotCode||lot.id})
+ if(grandmotherLot)relationships.push({type:'descends_from',targetType:OBJECT_TYPE_BY_KIND.grandmother,targetId:grandmotherLot.id,targetOrganizationId:plant.organizationId,label:grandmotherLot.lotCode||grandmotherLot.id})
+ relationships.push({type:'member_of_lot',targetType:`${OBJECT_TYPE_BY_KIND[normalizedKind]}.lot`,targetId:plant.lotId,targetOrganizationId:relationshipTenant.targetOrganizationId,label:lot.lotCode||lot.id})
  const createdAt=plant.createdAt||text(lot.createdAt)||DETERMINISTIC_TIMESTAMP
  const updatedAt=text(lot.updatedAt)||createdAt
 
