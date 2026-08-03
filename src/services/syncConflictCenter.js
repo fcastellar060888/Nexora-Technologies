@@ -33,14 +33,17 @@ export function conflictRecord(conflict,strategy,mergedPayload){
 export function applyConflictResolution(state,conflictId,{strategy='remote',mergedPayload=null,resolvedBy=''}={}){
  const conflict=list(state.syncConflicts).find(item=>item.id===conflictId)
  if(!conflict)throw new Error('Conflicto no encontrado')
+ const companyId=conflict.companyId||state.currentContext?.companyId||''
+ if(!companyId)throw new Error('El conflicto no tiene empresa asociada')
+ if(state.currentContext?.companyId&&state.currentContext.companyId!==companyId)throw new Error('El conflicto pertenece a otra empresa')
  const record=conflictRecord(conflict,strategy,mergedPayload)
  let next=state
  if(record){
   next=applyRemoteRecords(state,[{
-   collection:conflict.collection,recordId:conflict.recordId,payload:record,
+   companyId,collection:conflict.collection,recordId:conflict.recordId,payload:record,
    version:strategy==='local'?conflict.localVersion:conflict.remoteVersion,
    updatedAt:now(),deletedAt:null
-  }])
+  }],{companyId})
  }
  return{
   ...next,
