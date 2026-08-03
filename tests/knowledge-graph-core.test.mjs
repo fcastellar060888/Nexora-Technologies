@@ -26,8 +26,9 @@ test('deduplica relaciones y consulta vecinos por dirección',()=>{
  const graph=createKnowledgeGraph()
  graph.upsertNode({ref:refs.plant,label:'Planta 1'})
  graph.upsertNode({ref:refs.bed,label:'Cama 1'})
- const first=graph.connect({relationType:'located.in',from:refs.plant,to:refs.bed})
- const duplicate=graph.connect({relationType:'located.in',from:refs.plant,to:refs.bed})
+ const relation={relationId:'plant-bed-location',relationType:'located.in',from:refs.plant,to:refs.bed}
+ const first=graph.connect(relation)
+ const duplicate=graph.connect(relation)
  assert.equal(first.id,duplicate.id)
  assert.equal(graph.neighbors(refs.plant,{direction:'out'}).length,1)
  assert.equal(graph.neighbors(refs.bed,{direction:'in'}).length,1)
