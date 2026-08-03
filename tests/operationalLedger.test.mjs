@@ -180,14 +180,16 @@ test('conserva el append y hace observable un fallo de listener sin dejar que fa
  assert.equal(ledger.health().listenerFailureCount,1)
 })
 
-test('el bridge conserva al Ledger como autoridad y restaura snapshots atrasados',async()=>{
+test('el bridge conserva autoridad y aislamiento mediante runtime por workspace',async()=>{
  const source=await readFile(new URL('../src/core/ledger/OperationalLedgerBridge.jsx',import.meta.url),'utf8')
- assert.match(source,/reconcileMany\(incoming\)/)
+ assert.match(source,/getOperationalLedgerForScope\(scope\)/)
+ assert.match(source,/getEventBusForScope\(scope\)/)
+ assert.match(source,/ledger\.reconcileMany\(incoming\)/)
+ assert.match(source,/ledger\.subscribe/)
+ assert.match(source,/connectLedgerToEventBus\(ledger,bus\)/)
+ assert.match(source,/entryOrganizationId\(entry\)!==companyId/)
+ assert.match(source,/operationalLedgerEntries:\[\.\.\.foreign,\.\.\.canonical\]/)
  assert.doesNotMatch(source,/replaceMany\(state\.operationalLedgerEntries/)
- assert.match(source,/canonicalEntries/)
- assert.match(source,/sameSnapshot/)
- assert.match(source,/operationalLedger\.subscribe/)
- assert.match(source,/connectLedgerToEventBus/)
- assert.match(source,/operationalLedgerEntries:canonical/)
+ assert.doesNotMatch(source,/import\{[^}]*operationalLedger[^}]*\}/)
  assert.match(source,/sync:false,audit:false/)
 })
