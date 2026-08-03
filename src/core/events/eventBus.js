@@ -119,4 +119,19 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  return Object.freeze({subscribe,publish,getHistory,getPendingFailures,clear})
 }
 
-export const eventBus=createEventBus()
+const scopedEventBuses=new Map()
+function scopePart(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio para resolver el runtime`);return normalized}
+export function eventRuntimeKey({organizationId,actorId='system'}={}){return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`}
+export function getEventBusForScope(scope){
+ const key=eventRuntimeKey(scope)
+ if(!scopedEventBuses.has(key))scopedEventBuses.set(key,createEventBus())
+ return scopedEventBuses.get(key)
+}
+export function releaseEventBusScope(scope){
+ const key=eventRuntimeKey(scope),bus=scopedEventBuses.get(key)
+ if(!bus)return false
+ bus.clear();scopedEventBuses.delete(key);return true
+}
+export function eventBusScopeCount(){return scopedEventBuses.size}
+
+export const eventBus=getEventBusForScope({organizationId:'local-installation',actorId:'system'})
