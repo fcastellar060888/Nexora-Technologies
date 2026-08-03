@@ -1,12 +1,13 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
-import{createDomainEvent,createEventBus,DomainEvents}from'../src/core/events/index.js'
+import{createDomainEvent,DomainEvents}from'../src/core/events/index.js'
 import{createLedgerEntry}from'../src/core/ledger/index.js'
 import{createTimelineEngine,domainEventToTimelineEntry}from'../src/core/timeline/index.js'
 import{migrateState,CURRENT_SCHEMA_VERSION}from'../src/services/stateMigration.js'
 
 const event=(overrides={})=>createDomainEvent({name:DomainEvents.SITE_CREATED,aggregateType:'site',aggregateId:'site-1',organizationId:'company-1',siteId:'site-1',actorId:'user-1',occurredAt:'2026-07-31T21:00:00.000Z',eventId:'event-1',payload:{label:'Canapa · Villeta'},metadata:{actorName:'Fer'},...overrides})
+const ledgerTimelineEntry=(domainEvent,sequence=1)=>domainEventToTimelineEntry(domainEvent,{sequence,recordedAt:new Date(Date.parse(domainEvent.occurredAt)+1000).toISOString(),source:'operational-ledger'})
 
 test('proyecta eventos a entradas legibles del timeline',()=>{
  const entry=domainEventToTimelineEntry(event(),{sequence:4,recordedAt:'2026-07-31T21:00:01.000Z'})
@@ -20,18 +21,18 @@ test('proyecta eventos a entradas legibles del timeline',()=>{
  assert.ok(Object.isFrozen(entry))
 })
 
-test('registra eventos sin duplicar por eventId',()=>{
- const timeline=createTimelineEngine()
- timeline.recordEvent(event())
- timeline.recordEvent(event())
+test('registra entradas del Ledger sin duplicar por eventId',()=>{
+ const timeline=createTimelineEngine(),entry=ledgerTimelineEntry(event())
+ timeline.record(entry)
+ timeline.record(entry)
  assert.equal(timeline.size(),1)
  assert.equal(timeline.getById('event-1').id,'event-1')
 })
 
 test('consulta por empresa, sede, objeto, texto y rango de fechas',()=>{
  const timeline=createTimelineEngine()
- timeline.recordEvent(event())
- timeline.recordEvent(event({eventId:'event-2',aggregateId:'site-2',siteId:'site-2',occurredAt:'2026-08-01T10:00:00.000Z',payload:{label:'Canapa · Villa de Leyva'}}))
+ timeline.record(ledgerTimelineEntry(event(),1))
+ timeline.record(ledgerTimelineEntry(event({eventId:'event-2',aggregateId:'site-2',siteId:'site-2',occurredAt:'2026-08-01T10:00:00.000Z',payload:{label:'Canapa · Villa de Leyva'}}),2))
  assert.equal(timeline.query({organizationId:'company-1'}).length,2)
  assert.equal(timeline.query({siteId:'site-1'}).length,1)
  assert.equal(timeline.query({aggregateId:'site-2'}).length,1)
@@ -47,16 +48,12 @@ test('ordena por fecha y usa secuencia como desempate estable',()=>{
  assert.equal(timeline.query({limit:1})[0].id,'event-1')
 })
 
-test('mantiene compatibilidad con conexión directa del motor',async()=>{
- const bus=createEventBus(),timeline=createTimelineEngine()
- const disconnect=timeline.connect(bus)
- await bus.publish(event())
- assert.equal(timeline.size(),1)
- assert.equal(timeline.health().connected,true)
- disconnect()
- await bus.publish(event({eventId:'event-2'}))
- assert.equal(timeline.size(),1)
+test('rechaza la conexión directa y declara autoridad del Ledger',()=>{
+ const timeline=createTimelineEngine()
+ assert.throws(()=>timeline.connect({subscribe(){}}),/deprecada/)
+ assert.throws(()=>timeline.recordEvent(event()),/deprecada/)
  assert.equal(timeline.health().connected,false)
+ assert.equal(timeline.health().authority,'operational-ledger')
 })
 
 test('rehidrata entradas persistidas sin duplicados y de forma atómica',()=>{
@@ -94,6 +91,8 @@ test('recorta historial e índice de forma coherente',()=>{
 
 test('rechaza límites y entradas inválidas',()=>{
  assert.throws(()=>createTimelineEngine({maxEntries:0}),/entero positivo/)
+ assert.throws(()=>createTimelineEngine({maxObserverErrors:0}),/entero positivo/)
+ assert.throws(()=>createTimelineEngine({onObserverError:'invalid'}),/debe ser una función/)
  const timeline=createTimelineEngine()
  assert.throws(()=>timeline.record({id:'event-x'}),/contrato requerido/)
 })
