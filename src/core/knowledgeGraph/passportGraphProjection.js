@@ -16,11 +16,40 @@ function assertPassport(passport){
  if(!passport?.object||!text(passport.passportId)||!Array.isArray(passport.relationships))throw new Error('Se requiere un Passport válido')
  const object=passport.object
  for(const field of['objectType','objectId','organizationId','label','status','createdAt','updatedAt'])if(!text(object[field]))throw new Error(`El objeto del Passport requiere ${field}`)
+ for(const field of['identity','attributes','metadata'])if(!object[field]||typeof object[field]!=='object'||Array.isArray(object[field]))throw new Error(`El objeto del Passport requiere ${field}`)
+}
+
+function intelligentObjectEvidence(object){
+ return{
+  objectType:object.objectType,
+  objectId:object.objectId,
+  organizationId:object.organizationId,
+  siteId:object.siteId??null,
+  version:object.version,
+  identity:object.identity,
+  attributes:object.attributes,
+  metadata:object.metadata
+ }
 }
 
 function objectNode(passport){
  const object=passport.object
- return createGraphNode({nodeId:nodeIdFor(object),nodeType:object.objectType,organizationId:object.organizationId,siteId:object.siteId,label:object.label,status:object.status,createdAt:object.createdAt,updatedAt:object.updatedAt,metadata:{source:'passport',passportId:passport.passportId,objectVersion:object.version}})
+ return createGraphNode({
+  nodeId:nodeIdFor(object),
+  nodeType:object.objectType,
+  organizationId:object.organizationId,
+  siteId:object.siteId,
+  label:object.label,
+  status:object.status,
+  createdAt:object.createdAt,
+  updatedAt:object.updatedAt,
+  metadata:{
+   source:'passport',
+   passportId:passport.passportId,
+   objectVersion:object.version,
+   intelligentObject:intelligentObjectEvidence(object)
+  }
+ })
 }
 
 function targetNode(passport,relationship,resolveTarget){
