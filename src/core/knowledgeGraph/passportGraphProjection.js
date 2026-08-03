@@ -76,12 +76,18 @@ function ownedByPassport(edge,passportId){return edge?.source==='passport'&&edge
 function provisionalNode(node){return node?.metadata?.source==='passport-reference'}
 function preferredSourceNode(existing,incoming){return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo del Passport ya pertenece a otra empresa'})}
 function preferredTargetNode(existing,incoming){if(!existing)return incoming;if(existing.organizationId!==incoming.organizationId)throw new Error('El nodo destino ya pertenece a otra empresa');const existingProvisional=provisionalNode(existing),incomingProvisional=provisionalNode(incoming);if(!existingProvisional&&incomingProvisional)return existing;if(existingProvisional&&!incomingProvisional)return incoming;return preferredProjectionCandidate(existing,incoming,{organizationError:'El nodo destino ya pertenece a otra empresa'})}
-function removeOrphanPassportReferences(nodes,edges){const connected=new Set();for(const edge of edges.values()){connected.add(edge.sourceNodeId);connected.add(edge.targetNodeId)}for(const[nodeId,node]of nodes){if(provisionalNode(node)&&!connected.has(nodeId))nodes.delete(nodeId)}}
+function removeOrphanPassportReferences(nodes,edges,candidateNodeIds){
+ const connected=new Set()
+ for(const edge of edges.values()){connected.add(edge.sourceNodeId);connected.add(edge.targetNodeId)}
+ for(const nodeId of candidateNodeIds){const node=nodes.get(nodeId);if(node&&provisionalNode(node)&&!connected.has(nodeId))nodes.delete(nodeId)}
+}
 
 export function projectPassportToGraph(repository,passport,{resolveTarget=null}={}){
  assertRepository(repository)
  assertPassport(passport)
  const current=repository.snapshot(),nodes=new Map(current.nodes.map(node=>[node.nodeId,node]))
+ const removedEdges=current.edges.filter(edge=>ownedByPassport(edge,passport.passportId))
+ const cleanupCandidates=new Set(removedEdges.map(edge=>edge.targetNodeId))
  const edges=new Map(current.edges.filter(edge=>!ownedByPassport(edge,passport.passportId)).map(edge=>[edge.edgeId,edge]))
  const source=objectNode(passport)
  nodes.set(source.nodeId,preferredSourceNode(nodes.get(source.nodeId),source))
@@ -93,7 +99,7 @@ export function projectPassportToGraph(repository,passport,{resolveTarget=null}=
   edges.set(edge.edgeId,edge)
   projectedEdges.push(edge)
  }
- removeOrphanPassportReferences(nodes,edges)
+ removeOrphanPassportReferences(nodes,edges,cleanupCandidates)
  repository.replaceAll({nodes:[...nodes.values()],edges:[...edges.values()]})
  return Object.freeze({node:repository.getNode?.(source.nodeId)??source,edges:Object.freeze(projectedEdges),version:repository.getVersion?.()??repository.snapshot().version})
 }
