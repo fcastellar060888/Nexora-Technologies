@@ -141,9 +141,13 @@ export function StoreProvider({children}){
   const companyId=current.currentContext?.companyId||''
   const currentDeviceId=deviceId()
   setRuntime(value=>({...value,online:true,running:true,status:'syncing',reason,lastAttemptAt:attemptedAt,lastError:''}))
-  coordinatorRef.current?.broadcast('sync-started',{reason})
+  coordinatorRef.current?.broadcast('sync-started',{companyId,reason})
   try{
    const result=await runIncrementalSync(current)
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{...result,state:stateRef.current,skipped:true,reason:'stale-company-context'}
+   }
    const completedAt=new Date().toISOString()
    let next=result.state
    if(!result.skipped){
@@ -154,13 +158,21 @@ export function StoreProvider({children}){
      await reportDeviceHealth(healthPayload)
      next={...next,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
     }catch{/* La sincronización operativa no falla por telemetría. */}
+    if(stateRef.current.currentContext?.companyId!==companyId){
+     setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+     return{...result,state:stateRef.current,skipped:true,reason:'stale-company-context'}
+    }
     const committed=next
     update(prev=>commitIncrementalSyncResult(current,prev,committed),{sync:false,audit:false})
    }
    setRuntime(value=>({...value,running:false,status:result.skipped?'idle':'success',lastSuccessAt:result.skipped?value.lastSuccessAt:completedAt,lastError:''}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
+   coordinatorRef.current?.broadcast('sync-result',{companyId,completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
    return{...result,state:next}
   }catch(error){
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{skipped:true,reason:'stale-company-context',error}
+   }
    const message=error instanceof Error?error.message:'Error de sincronización'
    const healthPayload={companyId,deviceId:currentDeviceId,status:'error',reason,durationMs:Date.now()-started,error:message}
    let failed=appendHealthEvent(stateRef.current,healthPayload)
@@ -168,9 +180,13 @@ export function StoreProvider({children}){
     await reportDeviceHealth(healthPayload)
     failed={...failed,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
    }catch{/* Conserva el error operativo original. */}
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{skipped:true,reason:'stale-company-context',error}
+   }
    update(failed,{sync:false,audit:false})
    setRuntime(value=>({...value,running:false,status:'error',lastError:message}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents,syncDeviceHealth:failed.syncDeviceHealth}})
+   coordinatorRef.current?.broadcast('sync-result',{companyId,completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents,syncDeviceHealth:failed.syncDeviceHealth}})
    return{skipped:false,error}
   }finally{
    lockRef.current=false
