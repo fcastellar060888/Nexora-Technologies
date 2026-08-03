@@ -29,12 +29,26 @@ function defaultId(){
  throw new Error('No existe un generador seguro de identidad para materializar plantas.')
 }
 
+function normalizedTimestamp(value){
+ if(value===null||value===undefined||value==='')return null
+ const time=Date.parse(value)
+ return Number.isNaN(time)?null:new Date(time).toISOString()
+}
+
+function firstTimestamp(...values){
+ for(const value of values){
+  const normalized=normalizedTimestamp(value)
+  if(normalized)return normalized
+ }
+ return null
+}
+
 function latestTimestamp(...values){
  let latest=null
  for(const value of values){
-  if(value===null||value===undefined||value==='')continue
-  const time=Date.parse(value)
-  if(Number.isNaN(time))continue
+  const normalized=normalizedTimestamp(value)
+  if(!normalized)continue
+  const time=Date.parse(normalized)
   if(latest===null||time>latest)latest=time
  }
  return latest===null?null:new Date(latest).toISOString()
@@ -42,7 +56,7 @@ function latestTimestamp(...values){
 
 function normalizeUnit(unit,lot){
  const unitIndex=positiveInteger(unit.unitIndex)
- const createdAt=latestTimestamp(unit.createdAt,lot?.createdAt,lot?.cycleStartedAt)
+ const createdAt=firstTimestamp(unit.createdAt,lot?.createdAt,lot?.cycleStartedAt)
  const updatedAt=latestTimestamp(unit.updatedAt,unit.createdAt,lot?.updatedAt,lot?.createdAt,lot?.cycleStartedAt)||createdAt
  return Object.freeze({
   ...unit,
