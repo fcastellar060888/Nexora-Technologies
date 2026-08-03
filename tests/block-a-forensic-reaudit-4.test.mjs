@@ -38,13 +38,13 @@ test('reauditoría A4: identidad canónica no depende del orden de propiedades',
  assert.equal(calls,1)
 })
 
-test('reauditoría A4: identidad distingue tipos y valores especiales',async()=>{
+test('reauditoría A4: identidad distingue tipos y rechaza estructuras no persistibles',async()=>{
  const bus=createEventBus()
  await bus.publish(event('typed-identity',{value:1}))
  await assert.rejects(()=>bus.publish(event('typed-identity',{value:'1'})),/contenido diferente/)
- const bigintEvent=event('bigint-identity',{value:10n})
- await bus.publish(bigintEvent)
- assert.equal((await bus.publish(bigintEvent)).duplicate,true)
+ assert.throws(()=>event('bigint-identity',{value:10n}),/JSON serializables/)
+ assert.throws(()=>event('map-identity',{value:new Map([['key','value']])}),/objetos planos/)
+ assert.throws(()=>event('set-identity',{value:new Set(['value'])}),/objetos planos/)
 })
 
 test('reauditoría A4: una limpieza válida elimina deduplicación y suscripciones',async()=>{
