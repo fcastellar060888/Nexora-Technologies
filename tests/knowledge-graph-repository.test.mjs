@@ -38,10 +38,11 @@ test('deduplica por edgeId y por identidad semántica',()=>{
 test('rehidrata de forma atómica y conserva el estado anterior ante errores',()=>{
  const graph=createKnowledgeGraphRepository()
  graph.addNode(node('original'))
- assert.throws(()=>graph.replaceAll({nodes:[node('a')],edges:[edge('bad','a','missing')]}),/ambos nodos existan/)
+ const expectedVersion=graph.getVersion()
+ assert.throws(()=>graph.replaceAll({nodes:[node('a')],edges:[edge('bad','a','missing')],expectedVersion}),/ambos nodos existan/)
  assert.equal(graph.getNode('original').nodeId,'original')
  assert.equal(graph.health().nodes,1)
- const snapshot=graph.replaceAll({nodes:[node('mother','cultivation.materialplant'),node('plant')],edges:[edge('edge-1','plant','mother')]})
+ const snapshot=graph.replaceAll({nodes:[node('mother','cultivation.materialplant'),node('plant')],edges:[edge('edge-1','plant','mother')],expectedVersion})
  assert.equal(snapshot.nodes.length,2)
  assert.equal(snapshot.edges.length,1)
  assert.equal(graph.getNode('original'),null)
@@ -58,7 +59,7 @@ test('recorre descendencia por niveles sin repetir nodos en ciclos',()=>{
 
 test('mantiene índices por organización y tipo de relación',()=>{
  const graph=createKnowledgeGraphRepository()
- graph.replaceAll({nodes:[node('a'),node('b'),node('c','cultivation.plant','company-2')],edges:[edge('e1','a','b')]})
+ graph.replaceAll({nodes:[node('a'),node('b'),node('c','cultivation.plant','company-2')],edges:[edge('e1','a','b')],expectedVersion:graph.getVersion()})
  assert.deepEqual(graph.nodesForOrganization('company-1').map(item=>item.nodeId),['a','b'])
  assert.deepEqual(graph.nodesForOrganization('company-2').map(item=>item.nodeId),['c'])
  assert.deepEqual(graph.edgesByRelation('descends_from').map(item=>item.edgeId),['e1'])
