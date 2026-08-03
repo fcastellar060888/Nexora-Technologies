@@ -52,7 +52,10 @@ export function resolveConflict({local,remote,strategy='remote'}){
  return{winner:'remote',record:remote}
 }
 
-export function applyRemoteRecords(state,records=[]){
+export function applyRemoteRecords(state,records=[],{companyId=state.currentContext?.companyId||''}={}){
+ if(!companyId)throw new Error('Se requiere empresa activa para aplicar registros remotos')
+ const foreign=list(records).filter(row=>row.companyId!==companyId)
+ if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
