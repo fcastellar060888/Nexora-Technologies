@@ -13,9 +13,9 @@ const baseState=overrides=>({
  ...overrides
 })
 
-const row=({collection='sites',recordId='site-1',payload={id:'site-1',name:'Remoto'},version=2}={})=>({
- organization_id:'company-1',collection,record_id:recordId,payload,version,
- updated_at:'2026-08-03T04:00:00.000Z',deleted_at:null
+const row=({companyId='company-1',collection='sites',recordId='site-1',payload={id:'site-1',name:'Remoto'},version=2,deletedAt=null}={})=>({
+ organization_id:companyId,collection,record_id:recordId,payload,version,
+ updated_at:'2026-08-03T04:00:00.000Z',deleted_at:deletedAt
 })
 
 test('superpone una actualización local ocurrida mientras se cargaba PostgreSQL',()=>{
@@ -45,6 +45,49 @@ test('hidrata datos remotos sin sobrescribir el delta local posterior al inicio'
  assert.equal(hydrated.sites.find(item=>item.id==='site-1').name,'Cambio local concurrente')
  assert.equal(hydrated.syncMeta.hydratedCompanyId,'company-1')
  assert.equal(hydrated.syncMeta.lastHydratedAt,'2026-08-03T04:01:00.000Z')
+})
+
+test('AUD-F045: hidratar una empresa conserva íntegra la partición operativa de otra',()=>{
+ const foreign={id:'site-shared',name:'Empresa B',_organizationId:'company-2'}
+ const local=baseState({sites:[
+  {id:'site-old',name:'Empresa A antigua',_organizationId:'company-1'},
+  foreign
+ ]})
+ const hydrated=hydrateAuthoritativeState(local,[row({recordId:'site-new',payload:{id:'site-new',name:'Empresa A remota'}})],{companyId:'company-1',initialState:local})
+ assert.deepEqual(hydrated.sites.find(item=>item._organizationId==='company-2'),foreign)
+ assert.equal(hydrated.sites.some(item=>item.id==='site-old'),false)
+ assert.equal(hydrated.sites.find(item=>item.id==='site-new')._organizationId,'company-1')
+})
+
+test('AUD-F045: IDs iguales permanecen aislados por organización durante bootstrap',()=>{
+ const local=baseState({sites:[
+  {id:'site-shared',name:'Empresa A local',_organizationId:'company-1'},
+  {id:'site-shared',name:'Empresa B intacta',_organizationId:'company-2'}
+ ]})
+ const hydrated=hydrateAuthoritativeState(local,[row({recordId:'site-shared',payload:{id:'site-shared',name:'Empresa A remota'}})],{companyId:'company-1',initialState:local})
+ assert.equal(hydrated.sites.length,2)
+ assert.equal(hydrated.sites.find(item=>item._organizationId==='company-1').name,'Empresa A remota')
+ assert.equal(hydrated.sites.find(item=>item._organizationId==='company-2').name,'Empresa B intacta')
+})
+
+test('AUD-F045: un snapshot remoto vacío elimina solo la partición activa',()=>{
+ const local=baseState({houses:[
+  {id:'house-a',name:'A',_organizationId:'company-1'},
+  {id:'house-b',name:'B',_organizationId:'company-2'}
+ ]})
+ const hydrated=hydrateAuthoritativeState(local,[],{companyId:'company-1',initialState:local})
+ assert.deepEqual(hydrated.houses,[{id:'house-b',name:'B',_organizationId:'company-2'}])
+})
+
+test('AUD-F045: mutaciones pendientes del tenant activo no colisionan con el mismo ID extranjero',()=>{
+ const local=baseState({
+  sites:[{id:'site-shared',name:'Empresa B',_organizationId:'company-2'}],
+  syncQueue:[{id:'q-1',companyId:'company-1',collection:'sites',recordId:'site-shared',operation:'upsert',status:'pending',payload:{id:'site-shared',name:'Empresa A pendiente'}}]
+ })
+ const hydrated=hydrateAuthoritativeState(local,[],{companyId:'company-1',initialState:local})
+ assert.equal(hydrated.sites.length,2)
+ assert.equal(hydrated.sites.find(item=>item._organizationId==='company-1').name,'Empresa A pendiente')
+ assert.equal(hydrated.sites.find(item=>item._organizationId==='company-2').name,'Empresa B')
 })
 
 test('el Store entrega al bootstrap un lector del estado vigente',async()=>{
