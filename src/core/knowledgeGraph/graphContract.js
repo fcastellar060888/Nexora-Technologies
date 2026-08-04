@@ -9,7 +9,45 @@ function iso(value,field,{nullable=false}={}){
  return date.toISOString()
 }
 function serializable(value,field){
- try{return structuredClone(value??{})}catch{throw new Error(`${field} debe ser serializable`)}
+ const active=new WeakSet()
+ function copy(current,path){
+  if(current===null||typeof current==='string'||typeof current==='boolean')return current
+  if(typeof current==='number'){
+   if(!Number.isFinite(current))throw new Error(`${path} debe contener números finitos`)
+   return Object.is(current,-0)?0:current
+  }
+  if(typeof current!=='object')throw new Error(`${path} debe contener datos JSON serializables`)
+  if(active.has(current))throw new Error(`${path} no puede contener referencias cíclicas`)
+  active.add(current)
+  try{
+   if(Array.isArray(current)){
+    if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
+    for(let index=0;index<current.length;index+=1){
+     if(!Object.hasOwn(current,index))throw new Error(`${path} no puede contener posiciones vacías`)
+     const descriptor=Object.getOwnPropertyDescriptor(current,String(index))
+     if(!descriptor||!Object.hasOwn(descriptor,'value'))throw new Error(`${path}[${index}] no puede ser una propiedad accesora`)
+    }
+    const extraKeys=Object.keys(current).filter(key=>!/^\d+$/.test(key)||Number(key)>=current.length)
+    if(extraKeys.length)throw new Error(`${path} no puede contener propiedades adicionales`)
+    return Object.freeze(current.map((item,index)=>copy(item,`${path}[${index}]`)))
+   }
+   const prototype=Object.getPrototypeOf(current)
+   if(prototype!==Object.prototype&&prototype!==null)throw new Error(`${path} debe contener únicamente objetos planos JSON`)
+   if(Object.getOwnPropertySymbols(current).length)throw new Error(`${path} no puede contener propiedades Symbol`)
+   if(Object.getOwnPropertyNames(current).length!==Object.keys(current).length)throw new Error(`${path} no puede contener propiedades no enumerables`)
+   const result={}
+   for(const key of Object.keys(current)){
+    const descriptor=Object.getOwnPropertyDescriptor(current,key)
+    if(!descriptor||!Object.hasOwn(descriptor,'value'))throw new Error(`${path}.${key} no puede ser una propiedad accesora`)
+    Object.defineProperty(result,key,{value:copy(descriptor.value,`${path}.${key}`),enumerable:true,writable:false,configurable:false})
+   }
+   return Object.freeze(result)
+  }finally{active.delete(current)}
+ }
+ try{return copy(value??{},field)}catch(error){
+  if(error instanceof Error&&error.message.startsWith(field))throw error
+  throw new Error(`${field} debe contener datos JSON serializables`)
+ }
 }
 function deepFreeze(value){
  if(!value||typeof value!=='object'||Object.isFrozen(value))return value
