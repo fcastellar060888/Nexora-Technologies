@@ -98,7 +98,7 @@ test('reemplaza el snapshot de forma atómica y sin notificar eventos histórico
  ledger.append(event({eventId:'original'}),{sequence:1})
  ledger.subscribe(entry=>received.push(entry.id))
  const stored=createLedgerEntry(event({eventId:'stored'}),{sequence:9,recordedAt:'2026-07-31T22:00:01.000Z'})
- ledger.replaceMany([stored])
+ ledger.replaceMany([stored],{authoritative:true})
  assert.equal(ledger.getByEventId('original'),null)
  assert.equal(ledger.getByEventId('stored').sequence,9)
  assert.deepEqual(received,[])
