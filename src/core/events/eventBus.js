@@ -57,6 +57,8 @@ export function createEventBus({
  const activeHandlerCounts=new Map()
  const publicationWaiters=[]
  let activePublications=0
+ let reservedCompleted=0
+ let reservedFailures=0
 
  function subscribe(eventName,handler){
   if(typeof handler!=='function')throw new Error('El suscriptor debe ser una función')
@@ -94,6 +96,25 @@ export function createEventBus({
   activePublications-=1
  }
 
+ function reserveRetention({pending,handlers}){
+  const needsCompleted=true
+  const needsFailure=!pending&&handlers.length>0
+  if(needsCompleted&&completedEvents.size+reservedCompleted>=maxCompletedEvents)throw new Error('El Event Bus alcanzó la capacidad de eventos completados; compacte o persista checkpoints antes de continuar')
+  if(needsFailure&&pendingFailures.size+reservedFailures>=maxPendingFailures)throw new Error('El Event Bus alcanzó la capacidad de fallos pendientes; resuelva o compacte fallos antes de continuar')
+  if(needsCompleted)reservedCompleted+=1
+  if(needsFailure)reservedFailures+=1
+  let completedReserved=needsCompleted
+  let failureReserved=needsFailure
+  return Object.freeze({
+   consumeCompleted(){if(completedReserved){reservedCompleted-=1;completedReserved=false}},
+   consumeFailure(){if(failureReserved){reservedFailures-=1;failureReserved=false}},
+   release(){
+    if(completedReserved){reservedCompleted-=1;completedReserved=false}
+    if(failureReserved){reservedFailures-=1;failureReserved=false}
+   }
+  })
+ }
+
  async function runHandler(handler,event){
   const controller=new AbortController()
   const context=Object.freeze({signal:controller.signal,timeoutMs:handlerTimeoutMs})
@@ -110,7 +131,7 @@ export function createEventBus({
   finally{clearTimeout(timer)}
  }
 
- async function deliver(event,handlers,{retry=false}={}){
+ async function deliver(event,handlers,{retry=false,reservation}={}){
   const results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(async()=>{
    enterHandler(event.eventId)
    try{return await runHandler(handler,event)}finally{leaveHandler(event.eventId)}
@@ -123,17 +144,16 @@ export function createEventBus({
    }
   })
   if(failedHandlers.length){
+   reservation?.consumeFailure()
+   reservation?.consumeCompleted()
    pendingFailures.set(event.eventId,Object.freeze({event,handlers:Object.freeze(failedHandlers),fingerprint:fingerprint(event)}))
   }else{
+   reservation?.consumeCompleted()
+   reservation?.consumeFailure()
    pendingFailures.delete(event.eventId)
    remember(event)
   }
   return Object.freeze({event,delivered:handlers.length,failed:failedHandlers.length,duplicate:false,retry,pending:failedHandlers.length>0,errors:Object.freeze(results.filter(result=>result.status==='rejected').map(result=>errorText(result.reason)))})
- }
-
- function assertRetentionCapacity(pending){
-  if(!pending&&completedEvents.size>=maxCompletedEvents)throw new Error('El Event Bus alcanzó la capacidad de eventos completados; compacte o persista checkpoints antes de continuar')
-  if(!pending&&pendingFailures.size>=maxPendingFailures)throw new Error('El Event Bus alcanzó la capacidad de fallos pendientes; resuelva o compacte fallos antes de continuar')
  }
 
  async function publish(event){
@@ -149,11 +169,11 @@ export function createEventBus({
   }
   const pending=pendingFailures.get(event.eventId)
   if(pending&&pending.fingerprint!==eventFingerprint)throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
-  assertRetentionCapacity(pending)
   const handlers=pending?[...pending.handlers]:handlersFor(event)
+  const reservation=reserveRetention({pending:Boolean(pending),handlers})
   const waiting=acquirePublicationSlot()
-  const work=waiting?waiting.then(()=>deliver(event,handlers,{retry:Boolean(pending)})):deliver(event,handlers,{retry:Boolean(pending)})
-  const execution=work.finally(()=>{releasePublicationSlot();inFlight.delete(event.eventId)})
+  const work=waiting?waiting.then(()=>deliver(event,handlers,{retry:Boolean(pending),reservation})):deliver(event,handlers,{retry:Boolean(pending),reservation})
+  const execution=work.finally(()=>{reservation.release();releasePublicationSlot();inFlight.delete(event.eventId)})
   inFlight.set(event.eventId,{fingerprint:eventFingerprint,promise:execution})
   return execution
  }
@@ -173,15 +193,17 @@ export function createEventBus({
   inFlight:inFlight.size,
   completedEvents:completedEvents.size,
   pendingFailures:pendingFailures.size,
+  reservedCompleted,
+  reservedFailures,
   maxConcurrentPublications,
   maxCompletedEvents,
   maxPendingFailures,
-  remainingCompletedCapacity:maxCompletedEvents-completedEvents.size,
-  remainingFailureCapacity:maxPendingFailures-pendingFailures.size
+  remainingCompletedCapacity:maxCompletedEvents-completedEvents.size-reservedCompleted,
+  remainingFailureCapacity:maxPendingFailures-pendingFailures.size-reservedFailures
  })}
  function clear(){
   if(inFlight.size>0)throw new Error('No se puede limpiar el Event Bus mientras existen publicaciones activas')
-  subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();activeHandlerCounts.clear();publicationWaiters.length=0;activePublications=0
+  subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();activeHandlerCounts.clear();publicationWaiters.length=0;activePublications=0;reservedCompleted=0;reservedFailures=0
  }
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
