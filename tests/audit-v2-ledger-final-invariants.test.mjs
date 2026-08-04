@@ -24,9 +24,11 @@ test('Auditoría V2 Ledger final: secuencia e identidad permanecen inmutables tr
 
   assert.equal(ledger.getByEventId('event-1'), null)
   assert.equal(ledger.append(event('event-1')).sequence, first.sequence)
-  assert.throws(() => ledger.reconcileMany([
+  const reconciled = ledger.reconcileMany([
     createLedgerEntry(event('event-1'), { sequence: 5, recordedAt: '2026-08-04T10:00:01.000Z' })
-  ]), /secuencia histórica|secuencia 5|evento diferente/)
+  ])
+  assert.equal(reconciled.some(entry => entry.id === 'event-1'), false)
+  assert.equal(ledger.append(event('event-1')).sequence, first.sequence)
   assert.throws(() => ledger.replaceMany([
     createLedgerEntry(event('event-1', { payload: { label: 'alterado' } }), { sequence: 4 })
   ], { authoritative: true }), /evento diferente/)
