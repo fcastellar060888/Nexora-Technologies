@@ -155,7 +155,7 @@ test('se conecta al Event Bus y puede desconectarse',async()=>{
 test('reporta salud del repositorio',()=>{
  const ledger=createMemoryLedgerRepository()
  ledger.append(event())
- assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,nextSequence:2,maxEntries:10000,listenerFailureCount:0,listenerErrorsRetained:0,lastListenerError:null})
+ assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,knownEntries:1,nextSequence:2,maxEntries:10000,listenerFailureCount:0,listenerErrorsRetained:0,lastListenerError:null})
 })
 
 test('conserva el append y hace observable un fallo de listener sin dejar que falle la telemetría',()=>{
