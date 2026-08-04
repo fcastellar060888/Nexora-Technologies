@@ -42,7 +42,7 @@ export function createKnowledgeGraphRepository(){
   const edge=normalizeEdge(value);validateEdge(edge)
   const existingById=edges.get(edge.edgeId)
   if(existingById){
-   if(identityFingerprint(existingById)!==identityFingerprint(edge))throw new Error(`El edgeId ${edge.edgeId} ya pertenece a una arista diferente`)
+   if(semanticEdgeKey(existingById)!==semanticEdgeKey(edge))throw new Error(`El edgeId ${edge.edgeId} ya pertenece a una arista diferente`)
    return Object.freeze({inserted:false,edge:existingById,reason:'edgeId'})
   }
   const semanticId=semanticEdges.get(semanticEdgeKey(edge))
