@@ -30,9 +30,24 @@ function fingerprint(value){
  return encode(value)
 }
 
-export function createEventBus({onError=console.error,maxHistory=1000,handlerTimeoutMs=30000}={}){
+function positiveInteger(value,label){
+ if(!Number.isInteger(value)||value<=0)throw new Error(`${label} debe ser un entero positivo`)
+ return value
+}
+
+export function createEventBus({
+ onError=console.error,
+ maxHistory=1000,
+ handlerTimeoutMs=30000,
+ maxConcurrentPublications=32,
+ maxCompletedEvents=10000,
+ maxPendingFailures=1000
+}={}){
  if(!Number.isInteger(maxHistory)||maxHistory<0)throw new Error('El límite de historial debe ser un entero no negativo')
- if(!Number.isInteger(handlerTimeoutMs)||handlerTimeoutMs<=0)throw new Error('El timeout de handlers debe ser un entero positivo')
+ positiveInteger(handlerTimeoutMs,'El timeout de handlers')
+ positiveInteger(maxConcurrentPublications,'El límite de publicaciones concurrentes')
+ positiveInteger(maxCompletedEvents,'El límite de eventos completados')
+ positiveInteger(maxPendingFailures,'El límite de fallos pendientes')
  if(typeof onError!=='function')throw new Error('onError debe ser una función')
  const subscriptions=new Map()
  const history=[]
@@ -40,6 +55,8 @@ export function createEventBus({onError=console.error,maxHistory=1000,handlerTim
  const pendingFailures=new Map()
  const inFlight=new Map()
  const activeHandlerCounts=new Map()
+ const publicationWaiters=[]
+ let activePublications=0
 
  function subscribe(eventName,handler){
   if(typeof handler!=='function')throw new Error('El suscriptor debe ser una función')
@@ -66,6 +83,17 @@ export function createEventBus({onError=console.error,maxHistory=1000,handlerTim
  function report(error,event){try{onError(error,event)}catch{/* La telemetría no altera la entrega ni el reintento. */}}
  function enterHandler(eventId){activeHandlerCounts.set(eventId,(activeHandlerCounts.get(eventId)||0)+1)}
  function leaveHandler(eventId){const remaining=(activeHandlerCounts.get(eventId)||1)-1;if(remaining>0)activeHandlerCounts.set(eventId,remaining);else activeHandlerCounts.delete(eventId)}
+
+ async function acquirePublicationSlot(){
+  if(activePublications<maxConcurrentPublications){activePublications+=1;return}
+  await new Promise(resolve=>publicationWaiters.push(resolve))
+  activePublications+=1
+ }
+ function releasePublicationSlot(){
+  activePublications-=1
+  const next=publicationWaiters.shift()
+  if(next)next()
+ }
 
  async function runHandler(handler,event){
   const controller=new AbortController()
@@ -104,6 +132,11 @@ export function createEventBus({onError=console.error,maxHistory=1000,handlerTim
   return Object.freeze({event,delivered:handlers.length,failed:failedHandlers.length,duplicate:false,retry,pending:failedHandlers.length>0,errors:Object.freeze(results.filter(result=>result.status==='rejected').map(result=>errorText(result.reason)))})
  }
 
+ function assertRetentionCapacity(eventId,pending){
+  if(!pending&&completedEvents.size>=maxCompletedEvents)throw new Error('El Event Bus alcanzó la capacidad de eventos completados; compacte o persista checkpoints antes de continuar')
+  if(!pending&&pendingFailures.size>=maxPendingFailures)throw new Error('El Event Bus alcanzó la capacidad de fallos pendientes; resuelva o compacte fallos antes de continuar')
+ }
+
  async function publish(event){
   if(!isDomainEvent(event))throw new Error('No se puede publicar un evento inválido')
   const eventFingerprint=fingerprint(event)
@@ -117,15 +150,41 @@ export function createEventBus({onError=console.error,maxHistory=1000,handlerTim
   }
   const pending=pendingFailures.get(event.eventId)
   if(pending&&pending.fingerprint!==eventFingerprint)throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
+  assertRetentionCapacity(event.eventId,pending)
   const handlers=pending?[...pending.handlers]:handlersFor(event)
-  const execution=deliver(event,handlers,{retry:Boolean(pending)}).finally(()=>inFlight.delete(event.eventId))
+  const execution=(async()=>{
+   await acquirePublicationSlot()
+   try{return await deliver(event,handlers,{retry:Boolean(pending)})}
+   finally{releasePublicationSlot()}
+  })().finally(()=>inFlight.delete(event.eventId))
   inFlight.set(event.eventId,{fingerprint:eventFingerprint,promise:execution})
   return execution
  }
 
+ function compactStore(store,{remove}={},label){
+  if(inFlight.size>0)throw new Error(`No se puede compactar ${label} mientras existen publicaciones activas`)
+  if(!Array.isArray(remove))throw new Error(`La compactación de ${label} requiere una lista remove`)
+  let removed=0
+  for(const eventId of remove){if(store.delete(String(eventId))){removed+=1}}
+  return Object.freeze({removed,remaining:store.size})
+ }
+ function compactCompleted(options){return compactStore(completedEvents,options,'eventos completados')}
+ function compactPendingFailures(options){return compactStore(pendingFailures,options,'fallos pendientes')}
+ function status(){return Object.freeze({
+  activePublications,
+  queuedPublications:publicationWaiters.length,
+  inFlight:inFlight.size,
+  completedEvents:completedEvents.size,
+  pendingFailures:pendingFailures.size,
+  maxConcurrentPublications,
+  maxCompletedEvents,
+  maxPendingFailures,
+  remainingCompletedCapacity:maxCompletedEvents-completedEvents.size,
+  remainingFailureCapacity:maxPendingFailures-pendingFailures.size
+ })}
  function clear(){
   if(inFlight.size>0)throw new Error('No se puede limpiar el Event Bus mientras existen publicaciones activas')
-  subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();activeHandlerCounts.clear()
+  subscriptions.clear();history.length=0;completedEvents.clear();pendingFailures.clear();activeHandlerCounts.clear();publicationWaiters.length=0;activePublications=0
  }
  function getHistory({name,aggregateId,limit=100}={}){
   const safeLimit=Number.isFinite(Number(limit))?Math.max(0,Math.trunc(Number(limit))):100
@@ -133,7 +192,7 @@ export function createEventBus({onError=console.error,maxHistory=1000,handlerTim
  }
  function getPendingFailures(){return Object.freeze([...pendingFailures.values()].map(item=>Object.freeze({event:item.event,failedHandlers:item.handlers.length})))}
 
- return Object.freeze({subscribe,publish,getHistory,getPendingFailures,clear})
+ return Object.freeze({subscribe,publish,getHistory,getPendingFailures,compactCompleted,compactPendingFailures,status,clear})
 }
 
 const scopedEventBuses=new Map()
