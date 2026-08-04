@@ -4,8 +4,14 @@ const text = value => String(value || '').toLocaleLowerCase('es')
 const errorText = error => String(error?.message || error || 'Error de listener no identificado')
 const fingerprint = event => JSON.stringify(event)
 
-export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryLimit = 100, onListenerError = null } = {}) {
+export function createMemoryLedgerRepository({
+  maxEntries = 10000,
+  maxKnownEntries = 100000,
+  errorHistoryLimit = 100,
+  onListenerError = null
+} = {}) {
   if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new Error('El límite del Ledger debe ser un entero positivo')
+  if (!Number.isInteger(maxKnownEntries) || maxKnownEntries < maxEntries) throw new Error('La capacidad de identidad histórica debe ser un entero igual o mayor al límite del Ledger')
   if (!Number.isInteger(errorHistoryLimit) || errorHistoryLimit < 1) throw new Error('El límite de errores del Ledger debe ser un entero positivo')
   if (onListenerError !== null && typeof onListenerError !== 'function') throw new Error('onListenerError debe ser una función')
 
@@ -16,12 +22,25 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
   const knownEntriesBySequence = new Map()
   const listeners = new Set()
   const listenerErrors = []
+  const activeListenerTasks = new Set()
   let nextSequence = 1
   let listenerFailureCount = 0
 
   function assertSameIdentity(existing, event) {
     if (fingerprint(existing.event) !== fingerprint(event)) {
       throw new Error(`El eventId ${event?.eventId || ''} ya pertenece a un evento diferente`)
+    }
+  }
+
+  function assertKnownCapacity(additional = 1) {
+    if (knownEntriesById.size + additional > maxKnownEntries) {
+      throw new Error(`La capacidad de identidad histórica del Ledger (${maxKnownEntries}) fue alcanzada`)
+    }
+  }
+
+  function assertIdle(action) {
+    if (activeListenerTasks.size) {
+      throw new Error(`No se puede ${action} el Ledger mientras existen observadores asíncronos activos`)
     }
   }
 
@@ -41,10 +60,19 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
     }
   }
 
+  function trackListenerResult(result, entry) {
+    if (!result || typeof result.then !== 'function') return
+    let task
+    task = Promise.resolve(result)
+      .catch(error => reportListenerError(error, entry))
+      .finally(() => activeListenerTasks.delete(task))
+    activeListenerTasks.add(task)
+  }
+
   function notify(entry) {
     listeners.forEach(listener => {
       try {
-        Promise.resolve(listener(entry)).catch(error => reportListenerError(error, entry))
+        trackListenerResult(listener(entry), entry)
       } catch (error) {
         reportListenerError(error, entry)
       }
@@ -73,6 +101,7 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
       return existing
     }
 
+    assertKnownCapacity()
     const sequence = options.sequence ?? nextSequence
     const sequenceOwner = knownEntriesBySequence.get(sequence)
     if (sequenceOwner) throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
@@ -89,8 +118,8 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
     return entry
   }
 
-  function appendMany(values = []) {
-    if (!Array.isArray(values)) throw new Error('La escritura por lote del Ledger requiere una lista')
+  function prepareMany(values, mode) {
+    if (!Array.isArray(values)) throw new Error(mode === 'append' ? 'La escritura por lote del Ledger requiere una lista' : 'La reconciliación del Ledger requiere una lista')
     const candidateById = new Map(knownEntriesById)
     const candidateBySequence = new Map(knownEntriesBySequence)
     const prepared = []
@@ -103,21 +132,25 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
       const existing = candidateById.get(event?.eventId)
       if (existing) {
         assertSameIdentity(existing, event)
-        results.push(existing)
+        if (mode === 'append') results.push(existing)
         continue
       }
+      if (candidateById.size + 1 > maxKnownEntries) throw new Error(`La capacidad de identidad histórica del Ledger (${maxKnownEntries}) fue alcanzada`)
       const sequence = options.sequence ?? candidateNextSequence
       const sequenceOwner = candidateBySequence.get(sequence)
       if (sequenceOwner) throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
       const entry = createLedgerEntry(event, { ...options, sequence })
       prepared.push(entry)
-      results.push(entry)
+      if (mode === 'append') results.push(entry)
       candidateById.set(entry.id, entry)
       candidateBySequence.set(entry.sequence, entry)
       candidateNextSequence = Math.max(candidateNextSequence, entry.sequence + 1)
     }
+    return { prepared, results, candidateNextSequence }
+  }
 
-    if (!prepared.length) return results
+  function commitPrepared(prepared, candidateNextSequence, notifyEntries) {
+    if (!prepared.length) return
     entries.push(...prepared)
     entries.sort((a, b) => a.sequence - b.sequence)
     prepared.forEach(entry => {
@@ -127,46 +160,18 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
     nextSequence = candidateNextSequence
     rebuildRetainedIndexes()
     trim()
-    prepared.forEach(notify)
+    if (notifyEntries) prepared.forEach(notify)
+  }
+
+  function appendMany(values = []) {
+    const { prepared, results, candidateNextSequence } = prepareMany(values, 'append')
+    commitPrepared(prepared, candidateNextSequence, true)
     return results
   }
 
   function reconcileMany(values = []) {
-    if (!Array.isArray(values)) throw new Error('La reconciliación del Ledger requiere una lista')
-    const candidateById = new Map(knownEntriesById)
-    const candidateBySequence = new Map(knownEntriesBySequence)
-    const prepared = []
-    let candidateNextSequence = nextSequence
-
-    for (const value of values) {
-      const event = isLedgerEntry(value) ? value.event : value
-      const options = isLedgerEntry(value) ? { sequence: value.sequence, recordedAt: value.recordedAt } : {}
-      const existing = candidateById.get(event?.eventId)
-      if (existing) {
-        assertSameIdentity(existing, event)
-        continue
-      }
-      const sequence = options.sequence ?? candidateNextSequence
-      const sequenceOwner = candidateBySequence.get(sequence)
-      if (sequenceOwner) throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
-      const entry = createLedgerEntry(event, { ...options, sequence })
-      prepared.push(entry)
-      candidateById.set(entry.id, entry)
-      candidateBySequence.set(entry.sequence, entry)
-      candidateNextSequence = Math.max(candidateNextSequence, entry.sequence + 1)
-    }
-
-    if (prepared.length) {
-      entries.push(...prepared)
-      entries.sort((a, b) => a.sequence - b.sequence)
-      prepared.forEach(entry => {
-        knownEntriesById.set(entry.id, entry)
-        knownEntriesBySequence.set(entry.sequence, entry)
-      })
-      nextSequence = candidateNextSequence
-      rebuildRetainedIndexes()
-      trim()
-    }
+    const { prepared, candidateNextSequence } = prepareMany(values, 'reconcile')
+    commitPrepared(prepared, candidateNextSequence, false)
     return entries.slice()
   }
 
@@ -185,6 +190,7 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
         assertSameIdentity(existing, event)
         continue
       }
+      if (preparedById.size + 1 > maxKnownEntries) throw new Error(`La capacidad de identidad histórica del Ledger (${maxKnownEntries}) fue alcanzada`)
       const sequence = options.sequence ?? preparedNextSequence
       const sequenceOwner = preparedBySequence.get(sequence)
       if (sequenceOwner) throw new Error(`La secuencia ${sequence} ya pertenece al evento ${sequenceOwner.id}`)
@@ -195,6 +201,7 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
       preparedNextSequence = Math.max(preparedNextSequence, entry.sequence + 1)
     }
 
+    assertIdle('rehidratar')
     prepared.sort((a, b) => a.sequence - b.sequence)
     const retained = prepared.slice(-maxEntries)
     entries.length = 0
@@ -208,6 +215,22 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
     rebuildRetainedIndexes()
     nextSequence = Math.max(1, preparedNextSequence)
     return retained.slice()
+  }
+
+  function compactKnownEntries({ remove = [] } = {}) {
+    assertIdle('compactar')
+    if (!Array.isArray(remove)) throw new Error('La compactación de identidad histórica requiere una lista')
+    const retainedIds = new Set(entries.map(entry => entry.id))
+    let removed = 0
+    for (const id of new Set(remove)) {
+      if (retainedIds.has(id)) throw new Error(`No se puede compactar la identidad retenida ${id}`)
+      const entry = knownEntriesById.get(id)
+      if (!entry) continue
+      knownEntriesById.delete(id)
+      knownEntriesBySequence.delete(entry.sequence)
+      removed += 1
+    }
+    return Object.freeze({ removed, knownEntries: knownEntriesById.size })
   }
 
   function find({ organizationId, siteId, eventName, aggregateType, aggregateId, actorId, correlationId, from, to, search, order = 'desc', limit = 100 } = {}) {
@@ -243,6 +266,7 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
   }
   function clearListenerErrors() { listenerErrors.length = 0; return true }
   function clear() {
+    assertIdle('limpiar')
     entries.length = 0
     entriesById.clear()
     entriesBySequence.clear()
@@ -253,10 +277,13 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
   function health() {
     const lastListenerError = listenerErrors.at(-1) || null
     return Object.freeze({
-      status: listenerFailureCount ? 'degraded' : 'ready',
+      status: listenerErrors.length ? 'degraded' : 'ready',
       driver: 'memory',
       entries: entries.length,
       knownEntries: knownEntriesById.size,
+      maxKnownEntries,
+      remainingKnownCapacity: maxKnownEntries - knownEntriesById.size,
+      activeListeners: activeListenerTasks.size,
       nextSequence,
       maxEntries,
       listenerFailureCount,
@@ -265,7 +292,22 @@ export function createMemoryLedgerRepository({ maxEntries = 10000, errorHistoryL
     })
   }
 
-  return Object.freeze({ append, appendMany, reconcileMany, replaceMany, find, getByEventId, getBySequence, count, subscribe, getListenerErrors, clearListenerErrors, clear, health })
+  return Object.freeze({
+    append,
+    appendMany,
+    reconcileMany,
+    replaceMany,
+    compactKnownEntries,
+    find,
+    getByEventId,
+    getBySequence,
+    count,
+    subscribe,
+    getListenerErrors,
+    clearListenerErrors,
+    clear,
+    health
+  })
 }
 
 const scopedLedgers = new Map()
