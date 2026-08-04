@@ -26,7 +26,7 @@ export function createMemoryLedgerRepository({maxEntries=10000,errorHistoryLimit
   if(listenerErrors.length>errorHistoryLimit)listenerErrors.splice(0,listenerErrors.length-errorHistoryLimit)
   if(onListenerError){try{onListenerError(error,entry,failure)}catch{/* La telemetría tampoco bloquea el Ledger. */}}
  }
- function notify(entry){listeners.forEach(listener=>{try{listener(entry)}catch(error){reportListenerError(error,entry)}})}
+ function notify(entry){listeners.forEach(listener=>{try{Promise.resolve(listener(entry)).catch(error=>reportListenerError(error,entry))}catch(error){reportListenerError(error,entry)}})}
  function rebuildIndexes(){entriesById.clear();entriesBySequence.clear();entries.forEach(entry=>{entriesById.set(entry.id,entry);entriesBySequence.set(entry.sequence,entry)})}
  function trim(){if(entries.length<=maxEntries)return;entries.splice(0,entries.length-maxEntries);rebuildIndexes()}
  function append(event,options={}){
