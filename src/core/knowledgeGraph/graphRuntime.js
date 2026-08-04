@@ -3,13 +3,16 @@ import{createKnowledgeGraphRepository}from'./graphRepository.js'
 const repositories=new Map()
 
 function scopePart(value,label){
- const normalized=String(value??'').trim()
+ if(typeof value!=='string')throw new Error(`${label} debe ser texto para resolver el Knowledge Graph`)
+ const normalized=value.trim()
  if(!normalized)throw new Error(`${label} es obligatorio para resolver el Knowledge Graph`)
  return normalized
 }
 
 export function knowledgeGraphRuntimeKey({organizationId,actorId='system'}={}){
- return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`
+ const organization=scopePart(organizationId,'La empresa')
+ const actor=scopePart(actorId,'El actor')
+ return JSON.stringify([organization,actor])
 }
 
 export function getKnowledgeGraphForScope(scope){
