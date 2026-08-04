@@ -66,8 +66,8 @@ test('Auditoría V2 A.3: un handler que venció puede reintentarse con un contex
   assert.equal(signals[1].aborted, false)
 })
 
-test('Auditoría V2 A.3: eventos distintos no tienen backpressure y comienzan simultáneamente', async () => {
-  const bus = createEventBus()
+test('Auditoría V2 A.3: backpressure limita concurrencia y conserva todos los trabajos en cola', async () => {
+  const bus = createEventBus({ maxConcurrentPublications: 4 })
   let active = 0
   let peak = 0
   let unblock
@@ -80,27 +80,82 @@ test('Auditoría V2 A.3: eventos distintos no tienen backpressure y comienzan si
     active -= 1
   })
 
-  const publications = Array.from({ length: 250 }, (_, index) => bus.publish(event(`pressure-${index}`)))
+  const publications = Array.from({ length: 20 }, (_, index) => bus.publish(event(`pressure-${index}`)))
   await tick()
-  assert.equal(peak, 250)
+  assert.equal(peak, 4)
+  assert.deepEqual(bus.status(), {
+    activePublications: 4,
+    queuedPublications: 16,
+    inFlight: 20,
+    completedEvents: 0,
+    pendingFailures: 0,
+    maxConcurrentPublications: 4,
+    maxCompletedEvents: 10000,
+    maxPendingFailures: 1000,
+    remainingCompletedCapacity: 10000,
+    remainingFailureCapacity: 1000
+  })
 
   unblock()
-  await Promise.all(publications)
+  const results = await Promise.all(publications)
+  assert.ok(results.every(result => result.failed === 0))
+  assert.equal(bus.status().activePublications, 0)
+  assert.equal(bus.status().queuedPublications, 0)
+  assert.equal(bus.status().inFlight, 0)
 })
 
-test('Auditoría V2 A.3: fallos permanentes se conservan sin límite operativo visible', async () => {
-  const bus = createEventBus({ onError: () => {} })
+test('Auditoría V2 A.3: capacidad de completados bloquea antes de ejecutar y compacta explícitamente', async () => {
+  const bus = createEventBus({ maxCompletedEvents: 2 })
+  let deliveries = 0
+  bus.subscribe('audit.event.executed', () => { deliveries += 1 })
+
+  await bus.publish(event('completed-a'))
+  await bus.publish(event('completed-b'))
+  await assert.rejects(bus.publish(event('completed-c')), /capacidad de eventos completados/)
+  assert.equal(deliveries, 2)
+  assert.equal(bus.status().remainingCompletedCapacity, 0)
+
+  const report = bus.compactCompleted({ remove: ['completed-a'] })
+  assert.deepEqual(report, { removed: 1, remaining: 1 })
+  await bus.publish(event('completed-c'))
+  assert.equal(deliveries, 3)
+
+  const stillProtected = await bus.publish(event('completed-b'))
+  assert.equal(stillProtected.duplicate, true)
+})
+
+test('Auditoría V2 A.3: fallos pendientes saturan de forma visible y requieren compactación explícita', async () => {
+  const bus = createEventBus({ maxPendingFailures: 2, onError: () => {} })
   bus.subscribe('audit.event.executed', async () => { throw new Error('permanent failure') })
 
-  await Promise.all(Array.from({ length: 100 }, (_, index) => bus.publish(event(`failure-${index}`))))
+  await bus.publish(event('failure-a'))
+  await bus.publish(event('failure-b'))
+  await assert.rejects(bus.publish(event('failure-c')), /capacidad de fallos pendientes/)
+  assert.equal(bus.getPendingFailures().length, 2)
 
-  const pending = bus.getPendingFailures()
-  assert.equal(pending.length, 100)
-  assert.ok(pending.every(item => item.failedHandlers === 1))
+  const report = bus.compactPendingFailures({ remove: ['failure-a'] })
+  assert.deepEqual(report, { removed: 1, remaining: 1 })
+  const third = await bus.publish(event('failure-c'))
+  assert.equal(third.failed, 1)
+  assert.equal(bus.getPendingFailures().length, 2)
 })
 
-test('Auditoría V2 A.3: deduplicación completada sobrevive indefinidamente al recorte de historial', async () => {
-  const bus = createEventBus({ maxHistory: 1 })
+test('Auditoría V2 A.3: compactación se rechaza mientras existen publicaciones activas', async () => {
+  const bus = createEventBus({ maxConcurrentPublications: 1 })
+  let unblock
+  bus.subscribe('audit.event.executed', () => new Promise(resolve => { unblock = resolve }))
+  const publication = bus.publish(event('compact-active'))
+  await tick()
+
+  assert.throws(() => bus.compactCompleted({ remove: [] }), /publicaciones activas/)
+  assert.throws(() => bus.compactPendingFailures({ remove: [] }), /publicaciones activas/)
+
+  unblock()
+  await publication
+})
+
+test('Auditoría V2 A.3: deduplicación completada permanece independiente del historial', async () => {
+  const bus = createEventBus({ maxHistory: 1, maxCompletedEvents: 500 })
   let deliveries = 0
   bus.subscribe('audit.event.executed', () => { deliveries += 1 })
 
@@ -115,7 +170,10 @@ test('Auditoría V2 A.3: deduplicación completada sobrevive indefinidamente al 
   assert.equal(bus.getHistory().length, 1)
 })
 
-test('Auditoría V2 A.3: rechaza timeouts de handler inválidos', () => {
+test('Auditoría V2 A.3: rechaza límites operativos inválidos', () => {
   assert.throws(() => createEventBus({ handlerTimeoutMs: 0 }), /entero positivo/)
   assert.throws(() => createEventBus({ handlerTimeoutMs: 1.5 }), /entero positivo/)
+  assert.throws(() => createEventBus({ maxConcurrentPublications: 0 }), /entero positivo/)
+  assert.throws(() => createEventBus({ maxCompletedEvents: 0 }), /entero positivo/)
+  assert.throws(() => createEventBus({ maxPendingFailures: 0 }), /entero positivo/)
 })
