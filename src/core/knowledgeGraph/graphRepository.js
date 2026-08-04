@@ -73,6 +73,7 @@ export function createKnowledgeGraphRepository(){
  function getEdge(edgeId){return edges.get(String(edgeId||'').trim())||null}
  function edgeList(ids){return freeze([...(ids||[])].map(id=>edges.get(id)).filter(Boolean))}
  function neighbors(nodeId,{direction='both',relationType=null}={}){
+  if(!['in','out','both'].includes(direction))throw new Error('direction debe ser in, out o both')
   const id=String(nodeId||'').trim();if(!nodes.has(id))return freeze([])
   const edgeIds=new Set()
   if(direction==='out'||direction==='both')for(const edgeId of outgoing.get(id)||[])edgeIds.add(edgeId)
@@ -86,6 +87,7 @@ export function createKnowledgeGraphRepository(){
   return freeze(result)
  }
  function descendants(nodeId,{relationType='descends_from',maxDepth=100}={}){
+  if(!Number.isInteger(maxDepth)||maxDepth<0)throw new Error('maxDepth debe ser una profundidad entera no negativa')
   const root=String(nodeId||'').trim();if(!nodes.has(root))return freeze([])
   const visited=new Set([root]),queue=[{id:root,depth:0}],result=[]
   while(queue.length){
