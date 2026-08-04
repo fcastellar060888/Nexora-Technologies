@@ -3,6 +3,7 @@ import{createKnowledgeGraphRepository}from'./graphRepository.js'
 const repositories=new Map()
 
 function scopePart(value,label){
+ if(value===null||value===undefined||value==='')throw new Error(`${label} es obligatorio para resolver el Knowledge Graph`)
  if(typeof value!=='string')throw new Error(`${label} debe ser texto para resolver el Knowledge Graph`)
  const normalized=value.trim()
  if(!normalized)throw new Error(`${label} es obligatorio para resolver el Knowledge Graph`)
