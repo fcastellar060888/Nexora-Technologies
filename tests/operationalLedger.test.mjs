@@ -136,6 +136,7 @@ test('recorta índices e historial de forma coherente',()=>{
 test('rechaza límites de retención inválidos',()=>{
  assert.throws(()=>createMemoryLedgerRepository({maxEntries:0}),/entero positivo/)
  assert.throws(()=>createMemoryLedgerRepository({maxEntries:1.5}),/entero positivo/)
+ assert.throws(()=>createMemoryLedgerRepository({maxKnownEntries:1,maxEntries:2}),/identidad histórica/)
  assert.throws(()=>createMemoryLedgerRepository({errorHistoryLimit:0}),/errores del Ledger/)
  assert.throws(()=>createMemoryLedgerRepository({onListenerError:'invalid'}),/debe ser una función/)
  assert.throws(()=>createMemoryLedgerRepository().appendMany({}),/requiere una lista/)
@@ -155,7 +156,7 @@ test('se conecta al Event Bus y puede desconectarse',async()=>{
 test('reporta salud del repositorio',()=>{
  const ledger=createMemoryLedgerRepository()
  ledger.append(event())
- assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,knownEntries:1,nextSequence:2,maxEntries:10000,listenerFailureCount:0,listenerErrorsRetained:0,lastListenerError:null})
+ assert.deepEqual(ledger.health(),{status:'ready',driver:'memory',entries:1,knownEntries:1,maxKnownEntries:100000,remainingKnownCapacity:99999,activeListeners:0,nextSequence:2,maxEntries:10000,listenerFailureCount:0,listenerErrorsRetained:0,lastListenerError:null})
 })
 
 test('conserva el append y hace observable un fallo de listener sin dejar que falle la telemetría',()=>{
@@ -178,6 +179,7 @@ test('conserva el append y hace observable un fallo de listener sin dejar que fa
  assert.equal(ledger.clearListenerErrors(),true)
  assert.equal(ledger.getListenerErrors().length,0)
  assert.equal(ledger.health().listenerFailureCount,1)
+ assert.equal(ledger.health().status,'ready')
 })
 
 test('el bridge conserva autoridad y aislamiento mediante runtime por workspace',async()=>{
