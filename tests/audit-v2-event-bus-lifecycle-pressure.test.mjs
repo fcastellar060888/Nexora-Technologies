@@ -82,26 +82,33 @@ test('Auditoría V2 A.3: backpressure limita concurrencia y conserva todos los t
 
   const publications = Array.from({ length: 20 }, (_, index) => bus.publish(event(`pressure-${index}`)))
   await tick()
-  assert.equal(peak, 4)
-  assert.deepEqual(bus.status(), {
-    activePublications: 4,
-    queuedPublications: 16,
-    inFlight: 20,
-    completedEvents: 0,
-    pendingFailures: 0,
-    maxConcurrentPublications: 4,
-    maxCompletedEvents: 10000,
-    maxPendingFailures: 1000,
-    remainingCompletedCapacity: 10000,
-    remainingFailureCapacity: 1000
-  })
+  try {
+    assert.equal(peak, 4)
+    assert.deepEqual(bus.status(), {
+      activePublications: 4,
+      queuedPublications: 16,
+      inFlight: 20,
+      completedEvents: 0,
+      pendingFailures: 0,
+      reservedCompleted: 20,
+      reservedFailures: 20,
+      maxConcurrentPublications: 4,
+      maxCompletedEvents: 10000,
+      maxPendingFailures: 1000,
+      remainingCompletedCapacity: 9980,
+      remainingFailureCapacity: 980
+    })
+  } finally {
+    unblock()
+  }
 
-  unblock()
   const results = await Promise.all(publications)
   assert.ok(results.every(result => result.failed === 0))
   assert.equal(bus.status().activePublications, 0)
   assert.equal(bus.status().queuedPublications, 0)
   assert.equal(bus.status().inFlight, 0)
+  assert.equal(bus.status().reservedCompleted, 0)
+  assert.equal(bus.status().reservedFailures, 0)
 })
 
 test('Auditoría V2 A.3: capacidad de completados bloquea antes de ejecutar y compacta explícitamente', async () => {
