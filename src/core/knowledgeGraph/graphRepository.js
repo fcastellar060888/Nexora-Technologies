@@ -10,6 +10,15 @@ export function createKnowledgeGraphRepository(){
  let nodes=new Map(),edges=new Map(),outgoing=new Map(),incoming=new Map(),byOrganization=new Map(),byRelation=new Map(),semanticEdges=new Map(),version=0
 
  function indexSet(map,key,value){if(!map.has(key))map.set(key,new Set());map.get(key).add(value)}
+ function sameMap(left,right){
+  if(left.size!==right.size)return false
+  const leftEntries=left.entries(),rightEntries=right.entries()
+  while(true){
+   const a=leftEntries.next(),b=rightEntries.next()
+   if(a.done||b.done)return a.done===b.done
+   if(a.value[0]!==b.value[0]||identityFingerprint(a.value[1])!==identityFingerprint(b.value[1]))return false
+  }
+ }
  function rebuild(nextNodes,nextEdges){
   const nextOutgoing=new Map(),nextIncoming=new Map(),nextOrganizations=new Map(),nextRelations=new Map(),nextSemantic=new Map()
   for(const node of nextNodes.values())indexSet(nextOrganizations,node.organizationId,node.nodeId)
@@ -66,6 +75,7 @@ export function createKnowledgeGraphRepository(){
    if(semantic.has(key))throw new Error(`Relación semántica duplicada: ${edge.relationType}`)
    semantic.add(key);nextEdges.set(edge.edgeId,edge)
   }
+  if(sameMap(nodes,nextNodes)&&sameMap(edges,nextEdges))return snapshot()
   rebuild(nextNodes,nextEdges)
   return snapshot()
  }
@@ -107,6 +117,6 @@ export function createKnowledgeGraphRepository(){
  function edgesByRelation(relationType){return edgeList(byRelation.get(String(relationType||'').trim()))}
  function snapshot(){return Object.freeze({nodes:freeze(nodes.values()),edges:freeze(edges.values()),version})}
  function health(){return Object.freeze({nodes:nodes.size,edges:edges.size,organizations:new Set([...nodes.values()].map(item=>item.organizationId)).size,relations:byRelation.size,version})}
- function clear(){rebuild(new Map(),new Map())}
+ function clear(){if(!nodes.size&&!edges.size)return snapshot();rebuild(new Map(),new Map());return snapshot()}
  return Object.freeze({addNode,addEdge,replaceAll,getNode,getEdge,neighbors,descendants,nodesForOrganization,edgesByRelation,snapshot,health,clear,getVersion:()=>version})
 }
