@@ -16,6 +16,10 @@ function event(id) {
 }
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
+const settled = promise => promise.then(
+  value => ({ status: 'fulfilled', value }),
+  reason => ({ status: 'rejected', reason })
+)
 
 test('Auditoría V2 independiente: publicaciones concurrentes no exceden capacidad de completados', async () => {
   const bus = createEventBus({ maxCompletedEvents: 1, maxConcurrentPublications: 2 })
@@ -23,14 +27,15 @@ test('Auditoría V2 independiente: publicaciones concurrentes no exceden capacid
   const gate = new Promise(resolve => { release = resolve })
   bus.subscribe('audit.event.executed', async () => gate)
 
-  const first = bus.publish(event('capacity-completed-1'))
-  const second = bus.publish(event('capacity-completed-2'))
+  const first = settled(bus.publish(event('capacity-completed-1')))
+  const second = settled(bus.publish(event('capacity-completed-2')))
   await tick()
   release()
 
-  const results = await Promise.allSettled([first, second])
+  const results = await Promise.all([first, second])
   assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
   assert.equal(results.filter(result => result.status === 'rejected').length, 1)
+  assert.match(String(results.find(result => result.status === 'rejected').reason?.message), /capacidad de eventos completados/)
   assert.equal(bus.status().completedEvents, 1)
   assert.equal(bus.status().remainingCompletedCapacity, 0)
 })
@@ -44,14 +49,15 @@ test('Auditoría V2 independiente: publicaciones concurrentes no exceden capacid
     throw new Error('fallo concurrente')
   })
 
-  const first = bus.publish(event('capacity-failure-1'))
-  const second = bus.publish(event('capacity-failure-2'))
+  const first = settled(bus.publish(event('capacity-failure-1')))
+  const second = settled(bus.publish(event('capacity-failure-2')))
   await tick()
   release()
 
-  const results = await Promise.allSettled([first, second])
+  const results = await Promise.all([first, second])
   assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
   assert.equal(results.filter(result => result.status === 'rejected').length, 1)
+  assert.match(String(results.find(result => result.status === 'rejected').reason?.message), /capacidad de fallos pendientes/)
   assert.equal(bus.status().pendingFailures, 1)
   assert.equal(bus.status().remainingFailureCapacity, 0)
 })
