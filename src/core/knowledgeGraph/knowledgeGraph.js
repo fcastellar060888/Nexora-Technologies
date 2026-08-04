@@ -55,7 +55,10 @@ export function createKnowledgeGraph({maxRelations=50000}={}){
   return legacyNode(preferred)
  }
  function connect(relationInput){
-  const relation=graphRelation(relationInput),fromId=nodeKey(relation.from),toId=nodeKey(relation.to)
+  const relationId=String(relationInput?.relationId??'').trim(),existing=relationId?repository.getEdge(relationId):null
+  const hasExplicitCreatedAt=relationInput?.createdAt!==undefined&&relationInput?.createdAt!==null&&relationInput?.createdAt!==''
+  const stableInput=existing&&!hasExplicitCreatedAt?{...relationInput,createdAt:existing.createdAt}:relationInput
+  const relation=graphRelation(stableInput),fromId=nodeKey(relation.from),toId=nodeKey(relation.to)
   if(!repository.getNode(fromId))upsertNode({ref:relation.from},{retention:RELATION_SCOPED})
   if(!repository.getNode(toId))upsertNode({ref:relation.to},{retention:RELATION_SCOPED})
   const result=repository.addEdge(canonicalEdge(relation));trimRelations();return legacyRelation(result.edge)
