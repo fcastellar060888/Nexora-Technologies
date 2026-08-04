@@ -30,8 +30,9 @@ function fingerprint(value){
  return encode(value)
 }
 
-export function createEventBus({onError=console.error,maxHistory=1000}={}){
+export function createEventBus({onError=console.error,maxHistory=1000,handlerTimeoutMs=30000}={}){
  if(!Number.isInteger(maxHistory)||maxHistory<0)throw new Error('El límite de historial debe ser un entero no negativo')
+ if(!Number.isInteger(handlerTimeoutMs)||handlerTimeoutMs<=0)throw new Error('El timeout de handlers debe ser un entero positivo')
  if(typeof onError!=='function')throw new Error('onError debe ser una función')
  const subscriptions=new Map()
  const history=[]
@@ -66,10 +67,26 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
  function enterHandler(eventId){activeHandlerCounts.set(eventId,(activeHandlerCounts.get(eventId)||0)+1)}
  function leaveHandler(eventId){const remaining=(activeHandlerCounts.get(eventId)||1)-1;if(remaining>0)activeHandlerCounts.set(eventId,remaining);else activeHandlerCounts.delete(eventId)}
 
+ async function runHandler(handler,event){
+  const controller=new AbortController()
+  const context=Object.freeze({signal:controller.signal,timeoutMs:handlerTimeoutMs})
+  let timer
+  const timeout=new Promise((_,reject)=>{
+   timer=setTimeout(()=>{
+    controller.abort()
+    const error=new Error(`El handler excedió el timeout de ${handlerTimeoutMs} ms`)
+    error.code='EVENT_HANDLER_TIMEOUT'
+    reject(error)
+   },handlerTimeoutMs)
+  })
+  try{return await Promise.race([Promise.resolve().then(()=>handler(event,context)),timeout])}
+  finally{clearTimeout(timer)}
+ }
+
  async function deliver(event,handlers,{retry=false}={}){
   const results=await Promise.allSettled(handlers.map(handler=>Promise.resolve().then(async()=>{
    enterHandler(event.eventId)
-   try{return await handler(event)}finally{leaveHandler(event.eventId)}
+   try{return await runHandler(handler,event)}finally{leaveHandler(event.eventId)}
   })))
   const failedHandlers=[]
   results.forEach((result,index)=>{
@@ -122,9 +139,9 @@ export function createEventBus({onError=console.error,maxHistory=1000}={}){
 const scopedEventBuses=new Map()
 function scopePart(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio para resolver el runtime`);return normalized}
 export function eventRuntimeKey({organizationId,actorId='system'}={}){return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`}
-export function getEventBusForScope(scope){
+export function getEventBusForScope(scope,options){
  const key=eventRuntimeKey(scope)
- if(!scopedEventBuses.has(key))scopedEventBuses.set(key,createEventBus())
+ if(!scopedEventBuses.has(key))scopedEventBuses.set(key,createEventBus(options))
  return scopedEventBuses.get(key)
 }
 export function releaseEventBusScope(scope){
