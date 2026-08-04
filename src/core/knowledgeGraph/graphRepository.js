@@ -3,6 +3,7 @@ import{createGraphNode,createGraphEdge,isGraphNode,isGraphEdge}from'./graphContr
 const list=value=>Array.isArray(value)?value:[]
 const freeze=value=>Object.freeze([...value])
 function canonical(value){if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]));return value}
+const identityFingerprint=value=>JSON.stringify(canonical(value))
 const semanticEdgeKey=edge=>JSON.stringify(canonical({organizationId:edge.organizationId,relationType:edge.relationType,sourceNodeId:edge.sourceNodeId,targetNodeId:edge.targetNodeId,source:edge.source,confidence:edge.confidence,validFrom:edge.validFrom,validTo:edge.validTo,metadata:edge.metadata}))
 
 export function createKnowledgeGraphRepository(){
@@ -32,6 +33,7 @@ export function createKnowledgeGraphRepository(){
   const node=normalizeNode(value),existing=nodes.get(node.nodeId)
   if(existing){
    if(existing.organizationId!==node.organizationId)throw new Error('El nodeId ya pertenece a otra organización')
+   if(identityFingerprint(existing)!==identityFingerprint(node))throw new Error(`El nodeId ${node.nodeId} ya pertenece a un nodo diferente`)
    return Object.freeze({inserted:false,node:existing})
   }
   const next=new Map(nodes);next.set(node.nodeId,node);rebuild(next,new Map(edges));return Object.freeze({inserted:true,node})
@@ -39,7 +41,10 @@ export function createKnowledgeGraphRepository(){
  function addEdge(value){
   const edge=normalizeEdge(value);validateEdge(edge)
   const existingById=edges.get(edge.edgeId)
-  if(existingById)return Object.freeze({inserted:false,edge:existingById,reason:'edgeId'})
+  if(existingById){
+   if(identityFingerprint(existingById)!==identityFingerprint(edge))throw new Error(`El edgeId ${edge.edgeId} ya pertenece a una arista diferente`)
+   return Object.freeze({inserted:false,edge:existingById,reason:'edgeId'})
+  }
   const semanticId=semanticEdges.get(semanticEdgeKey(edge))
   if(semanticId)return Object.freeze({inserted:false,edge:edges.get(semanticId),reason:'semantic'})
   const next=new Map(edges);next.set(edge.edgeId,edge);rebuild(new Map(nodes),next);return Object.freeze({inserted:true,edge})
