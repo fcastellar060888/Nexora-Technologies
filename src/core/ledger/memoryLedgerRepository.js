@@ -175,8 +175,9 @@ export function createMemoryLedgerRepository({
     return entries.slice()
   }
 
-  function replaceMany(values = []) {
+  function replaceMany(values = [], { authoritative = false } = {}) {
     if (!Array.isArray(values)) throw new Error('La rehidratación del Ledger requiere una lista')
+    if (typeof authoritative !== 'boolean') throw new Error('authoritative debe ser booleano')
     const prepared = []
     const preparedById = new Map()
     const preparedBySequence = new Map()
@@ -185,6 +186,13 @@ export function createMemoryLedgerRepository({
     for (const value of values) {
       const event = isLedgerEntry(value) ? value.event : value
       const options = isLedgerEntry(value) ? { sequence: value.sequence, recordedAt: value.recordedAt } : {}
+      const known = knownEntriesById.get(event?.eventId)
+      if (known) {
+        assertSameIdentity(known, event)
+        if (options.sequence !== undefined && options.sequence !== known.sequence) {
+          throw new Error(`El eventId ${event.eventId} no puede cambiar de secuencia histórica`)
+        }
+      }
       const existing = preparedById.get(event?.eventId)
       if (existing) {
         assertSameIdentity(existing, event)
@@ -199,6 +207,11 @@ export function createMemoryLedgerRepository({
       preparedById.set(entry.id, entry)
       preparedBySequence.set(entry.sequence, entry)
       preparedNextSequence = Math.max(preparedNextSequence, entry.sequence + 1)
+    }
+
+    const omittedKnownEntries = [...knownEntriesById.keys()].filter(id => !preparedById.has(id))
+    if (omittedKnownEntries.length && !authoritative) {
+      throw new Error(`El reemplazo omite ${omittedKnownEntries.length} identidades conocidas; use authoritative: true solo con un snapshot completo`)
     }
 
     assertIdle('rehidratar')
