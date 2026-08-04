@@ -22,26 +22,48 @@ function event(id, organizationId = 'company-a') {
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 
-test('Auditoría V2 A.3: un handler colgado mantiene publish pendiente y bloquea limpieza del scope', async () => {
+test('Auditoría V2 A.3: timeout aborta un handler colgado y permite liberar el scope', async () => {
   const scope = { organizationId: 'audit-v2-hung', actorId: 'auditor' }
-  const bus = getEventBusForScope(scope)
-  let releaseHandler
-  bus.subscribe('audit.event.executed', () => new Promise(resolve => { releaseHandler = resolve }))
+  const bus = getEventBusForScope(scope, { handlerTimeoutMs: 10, onError: () => {} })
+  let receivedSignal
+  bus.subscribe('audit.event.executed', (_event, { signal }) => {
+    receivedSignal = signal
+    return new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
+  })
 
   const publication = bus.publish(event('hung-1', scope.organizationId))
   await tick()
-
   assert.throws(() => releaseEventBusScope(scope), /publicaciones activas/)
 
-  const state = await Promise.race([
-    publication.then(() => 'completed'),
-    new Promise(resolve => setTimeout(() => resolve('pending'), 10))
-  ])
-  assert.equal(state, 'pending')
-
-  releaseHandler()
-  await publication
+  const result = await publication
+  assert.equal(result.failed, 1)
+  assert.equal(result.pending, true)
+  assert.match(result.errors[0], /timeout de 10 ms/)
+  assert.equal(receivedSignal.aborted, true)
   assert.equal(releaseEventBusScope(scope), true)
+})
+
+test('Auditoría V2 A.3: un handler que venció puede reintentarse con un contexto nuevo', async () => {
+  const bus = createEventBus({ handlerTimeoutMs: 10, onError: () => {} })
+  let attempts = 0
+  const signals = []
+  bus.subscribe('audit.event.executed', async (_event, { signal, timeoutMs }) => {
+    attempts += 1
+    signals.push(signal)
+    assert.equal(timeoutMs, 10)
+    if (attempts === 1) await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
+  })
+
+  const first = await bus.publish(event('timeout-retry'))
+  const second = await bus.publish(event('timeout-retry'))
+
+  assert.equal(first.failed, 1)
+  assert.equal(second.failed, 0)
+  assert.equal(second.retry, true)
+  assert.equal(attempts, 2)
+  assert.notEqual(signals[0], signals[1])
+  assert.equal(signals[0].aborted, true)
+  assert.equal(signals[1].aborted, false)
 })
 
 test('Auditoría V2 A.3: eventos distintos no tienen backpressure y comienzan simultáneamente', async () => {
@@ -91,4 +113,9 @@ test('Auditoría V2 A.3: deduplicación completada sobrevive indefinidamente al 
   assert.equal(duplicate.duplicate, true)
   assert.equal(deliveries, 201)
   assert.equal(bus.getHistory().length, 1)
+})
+
+test('Auditoría V2 A.3: rechaza timeouts de handler inválidos', () => {
+  assert.throws(() => createEventBus({ handlerTimeoutMs: 0 }), /entero positivo/)
+  assert.throws(() => createEventBus({ handlerTimeoutMs: 1.5 }), /entero positivo/)
 })
