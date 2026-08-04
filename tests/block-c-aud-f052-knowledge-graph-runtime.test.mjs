@@ -47,7 +47,10 @@ test('AUD-F052: liberar un scope no altera los demás y crea una instancia limpi
 })
 
 test('AUD-F052: el scope exige identidad explícita y determinista',()=>{
- assert.equal(knowledgeGraphRuntimeKey(scopeA),'org-a::user-1')
+ const key=knowledgeGraphRuntimeKey(scopeA)
+ assert.equal(key,knowledgeGraphRuntimeKey({...scopeA}))
+ assert.deepEqual(JSON.parse(key),['org-a','user-1'])
+ assert.notEqual(key,knowledgeGraphRuntimeKey(scopeA2))
  assert.throws(()=>knowledgeGraphRuntimeKey({actorId:'user-1'}),/empresa.*obligatorio/i)
  assert.throws(()=>knowledgeGraphRuntimeKey({organizationId:'org-a',actorId:''}),/actor.*obligatorio/i)
 })
