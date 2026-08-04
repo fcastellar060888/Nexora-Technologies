@@ -84,15 +84,14 @@ export function createEventBus({
  function enterHandler(eventId){activeHandlerCounts.set(eventId,(activeHandlerCounts.get(eventId)||0)+1)}
  function leaveHandler(eventId){const remaining=(activeHandlerCounts.get(eventId)||1)-1;if(remaining>0)activeHandlerCounts.set(eventId,remaining);else activeHandlerCounts.delete(eventId)}
 
- async function acquirePublicationSlot(){
-  if(activePublications<maxConcurrentPublications){activePublications+=1;return}
-  await new Promise(resolve=>publicationWaiters.push(resolve))
-  activePublications+=1
+ function acquirePublicationSlot(){
+  if(activePublications<maxConcurrentPublications){activePublications+=1;return null}
+  return new Promise(resolve=>publicationWaiters.push(resolve))
  }
  function releasePublicationSlot(){
-  activePublications-=1
   const next=publicationWaiters.shift()
-  if(next)next()
+  if(next){next();return}
+  activePublications-=1
  }
 
  async function runHandler(handler,event){
@@ -132,7 +131,7 @@ export function createEventBus({
   return Object.freeze({event,delivered:handlers.length,failed:failedHandlers.length,duplicate:false,retry,pending:failedHandlers.length>0,errors:Object.freeze(results.filter(result=>result.status==='rejected').map(result=>errorText(result.reason)))})
  }
 
- function assertRetentionCapacity(eventId,pending){
+ function assertRetentionCapacity(pending){
   if(!pending&&completedEvents.size>=maxCompletedEvents)throw new Error('El Event Bus alcanzó la capacidad de eventos completados; compacte o persista checkpoints antes de continuar')
   if(!pending&&pendingFailures.size>=maxPendingFailures)throw new Error('El Event Bus alcanzó la capacidad de fallos pendientes; resuelva o compacte fallos antes de continuar')
  }
@@ -150,13 +149,11 @@ export function createEventBus({
   }
   const pending=pendingFailures.get(event.eventId)
   if(pending&&pending.fingerprint!==eventFingerprint)throw new Error(`El eventId ${event.eventId} ya existe con un contenido diferente`)
-  assertRetentionCapacity(event.eventId,pending)
+  assertRetentionCapacity(pending)
   const handlers=pending?[...pending.handlers]:handlersFor(event)
-  const execution=(async()=>{
-   await acquirePublicationSlot()
-   try{return await deliver(event,handlers,{retry:Boolean(pending)})}
-   finally{releasePublicationSlot()}
-  })().finally(()=>inFlight.delete(event.eventId))
+  const waiting=acquirePublicationSlot()
+  const work=waiting?waiting.then(()=>deliver(event,handlers,{retry:Boolean(pending)})):deliver(event,handlers,{retry:Boolean(pending)})
+  const execution=work.finally(()=>{releasePublicationSlot();inFlight.delete(event.eventId)})
   inFlight.set(event.eventId,{fingerprint:eventFingerprint,promise:execution})
   return execution
  }
