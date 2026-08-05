@@ -39,7 +39,6 @@ export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idF
   return true
  }
  function start(options={}){
-  ensureCapacity()
   const sessionId=text(idFactory())
   if(!sessionId)throw new Error('La sesión de replay requiere un identificador')
   if(sessions.has(sessionId))throw new Error(`La sesión ${sessionId} ya existe`)
@@ -48,6 +47,7 @@ export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idF
   const userOnError=typeof options.onError==='function'?options.onError:()=>{}
   const filters=freeze({organizationId:options.organizationId??null,siteId:options.siteId??null,eventName:options.eventName??null,aggregateType:options.aggregateType??null,aggregateId:options.aggregateId??null,from:options.from??null,to:options.to??null,fromSequence:options.fromSequence??null,toSequence:options.toSequence??null,limit:options.limit??Number.MAX_SAFE_INTEGER})
   const session={sessionId,status:'pending',createdAt,startedAt:null,finishedAt:null,selected:null,processed:0,succeeded:0,failed:0,remaining:null,lastSequence:null,error:null,filters,controller,completion:null}
+  ensureCapacity()
   sessions.set(sessionId,session)
   session.completion=(async()=>{
    session.status='running';session.startedAt=timestamp()
@@ -63,6 +63,6 @@ export function createReplaySessionManager(ledger,engine,{now=()=>Date.now(),idF
   })()
   return Object.freeze({sessionId,completion:session.completion,cancel:()=>cancelSession(sessionId),status:()=>getSession(sessionId)})
  }
- function status(){return Object.freeze({sessions:sessions.size,maxSessions:capacity,active:orderedSessions().filter(session=>!terminal.has(session.status)).length,terminal:orderedSessions().filter(session=>terminal.has(session.status)).length})}
+ function status(){return Object.freeze({sessions:sessions.size,maxSessions:capacity,active:orderedSessions().filter(session=>!terminal.has(session.status)).length,terminal:orderedSessions().filter(session=>terminal.has(session.status)).length})
  return Object.freeze({start,getSession,listSessions,cancelSession,compact,status})
 }
