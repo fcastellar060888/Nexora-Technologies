@@ -66,6 +66,16 @@ test('MIRFE programs explain the empty configuration state',async()=>{
  assert.match(source,/!state\.mirfePrograms\.length\?<StateMessage/)
 })
 
+test('MIRFE monitoring blocks incomplete context and explains empty history',async()=>{
+ const source=await read('src/pages/MirfeMonitoringPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/const prerequisitesReady=/)
+ assert.match(source,/Configuración incompleta/)
+ assert.match(source,/disabled=\{!canSave\}/)
+ assert.match(source,/No hay monitoreos registrados/)
+ assert.match(source,/!state\.mirfeMonitoring\.length\?<StateMessage/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
