@@ -75,6 +75,56 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* Every legacy and current table wrapper must contain its own overflow. */
+.table-wrap,
+.table-scroll {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--nx-color-border, var(--line));
+  border-radius: 12px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.table-wrap table,
+.table-scroll table {
+  width: 100%;
+  min-width: 640px;
+  margin: 0;
+}
+
+.table-wrap th,
+.table-wrap td,
+.table-scroll th,
+.table-scroll td {
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+/* Preserve the actions column while the user scrolls wide operational tables. */
+.table-wrap th:last-child,
+.table-wrap td:last-child,
+.table-scroll th:last-child,
+.table-scroll td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  min-width: 84px;
+  background: var(--nx-color-surface, #fff);
+  box-shadow: -8px 0 12px -12px rgba(18, 48, 74, .5);
+}
+
+.table-wrap th:last-child,
+.table-scroll th:last-child {
+  z-index: 3;
+  background: var(--nx-color-accent-600, var(--teal));
+}
+
 /* Dense paired cards need more room than ordinary dashboard cards. */
 @media (max-width: 1280px) {
   .content-grid.two {
@@ -193,6 +243,38 @@ textarea {
   .row-actions button {
     width: 100%;
     min-height: 44px;
+  }
+
+  .table-wrap,
+  .table-scroll {
+    margin-inline: 0;
+    border-radius: 10px;
+  }
+
+  .table-wrap table,
+  .table-scroll table {
+    min-width: 600px;
+    font-size: 12px;
+  }
+
+  .table-wrap th,
+  .table-wrap td,
+  .table-scroll th,
+  .table-scroll td {
+    padding: 9px;
+  }
+
+  .table-wrap .row-actions,
+  .table-scroll .row-actions {
+    min-width: 72px;
+    gap: 6px;
+  }
+
+  .table-wrap .row-actions button,
+  .table-scroll .row-actions button {
+    width: auto;
+    min-width: 44px;
+    min-height: 40px;
   }
 
   input[type='date'],
