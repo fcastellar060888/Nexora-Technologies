@@ -1,0 +1,102 @@
+/* UX-F007: global interaction, focus and validation hardening. */
+
+:where(a, button, input, select, textarea, [role='button'], [role='option'], [tabindex]):focus-visible {
+  outline: 3px solid var(--nx-color-accent-600, #117a73);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px var(--nx-color-surface, #fff);
+}
+
+:where(button, .button, [role='button']) {
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease, background-color .12s ease;
+}
+
+:where(button, .button, [role='button']):not(:disabled):active {
+  transform: translateY(1px);
+}
+
+:where(button, .button, input, select, textarea):disabled,
+:where(button, .button, input, select, textarea)[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: .58;
+  filter: saturate(.65);
+}
+
+:where(input, select, textarea)[aria-invalid='true'],
+:where(input, select, textarea):user-invalid {
+  border-color: var(--nx-color-danger, #b42318);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nx-color-danger, #b42318) 18%, transparent);
+}
+
+:where(input, select, textarea)[aria-invalid='true']:focus-visible,
+:where(input, select, textarea):user-invalid:focus-visible {
+  outline-color: var(--nx-color-danger, #b42318);
+}
+
+:where([role='alert'], .form-error, .field-error, .error-message, .validation-error) {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  color: var(--nx-color-danger, #9b1c1c);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+:where(.alert, .notice, .feedback, .status-message, [role='status']) {
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--nx-color-border, #d9e2ea);
+  border-radius: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+:where(.alert.error, .notice.error, .feedback.error, .status-message.error) {
+  color: #7f1d1d;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+:where(.alert.warning, .notice.warning, .feedback.warning, .status-message.warning) {
+  color: #713f12;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+:where(.alert.success, .notice.success, .feedback.success, .status-message.success) {
+  color: #14532d;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+:where(.alert.info, .notice.info, .feedback.info, .status-message.info) {
+  color: #164e63;
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+:where(.icon-button, .row-actions button, .map-side-close, .nav-group-toggle) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, [role='button'], [role='option'], [tabindex]):focus-visible {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+  }
+
+  :where(input, select, textarea)[aria-invalid='true'] {
+    border: 2px solid Mark;
+  }
+}
