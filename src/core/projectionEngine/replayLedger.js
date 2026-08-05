@@ -23,6 +23,13 @@ function projectionTimeFor(entry){
  return new Date(parsed).toISOString()
 }
 
+function notify(observer,...args){
+ try{
+  const pending=observer(...args)
+  if(pending&&typeof pending.catch==='function')pending.catch(()=>{})
+ }catch{}
+}
+
 export async function replayLedger(ledger,engine,{organizationId=null,siteId=null,eventName=null,aggregateType=null,aggregateId=null,from=null,to=null,fromSequence=null,toSequence=null,limit=Number.MAX_SAFE_INTEGER,context={},onResult=null,onError=null,stopOnError=false,signal=null}={}){
  assertLedger(ledger)
  assertEngine(engine)
@@ -46,12 +53,12 @@ export async function replayLedger(ledger,engine,{organizationId=null,siteId=nul
    const result=await engine.replay(entry.event,replayContext)
    results.push(Object.freeze({entry,result,error:null}))
    succeeded+=1
-   notifyResult(result,entry)
+   notify(notifyResult,result,entry)
   }catch(error){
    const message=text(error?.message)||'Error durante replay del Ledger'
    results.push(Object.freeze({entry,result:null,error:message}))
    failed+=1
-   notifyError(error,entry)
+   notify(notifyError,error,entry)
    if(stopOnError)break
   }
  }
