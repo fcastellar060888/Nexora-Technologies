@@ -1,0 +1,27 @@
+import test from'node:test'
+import assert from'node:assert/strict'
+import{readFile}from'node:fs/promises'
+
+const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8')
+
+test('StateMessage exposes accessible status and alert semantics',async()=>{
+ const source=await read('src/components/StateMessage.jsx')
+ assert.match(source,/type==='error'\?'alert':'status'/)
+ assert.match(source,/aria-live=/)
+ assert.match(source,/actionLabel&&onAction/)
+})
+
+test('persistence failure uses the shared feedback component and retry action',async()=>{
+ const source=await read('src/components/PersistenceHealthBridge.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/type=\{retrying\?'loading':'error'\}/)
+ assert.match(source,/Reintentar guardado/)
+ assert.doesNotMatch(source,/style=\{\{/)
+})
+
+test('feedback styles respect mobile safe areas and reduced motion',async()=>{
+ const css=await read('src/styles/state-feedback.css')
+ assert.match(css,/safe-area-inset-bottom/)
+ assert.match(css,/prefers-reduced-motion:reduce/)
+ assert.match(css,/state-message-loading/)
+})
