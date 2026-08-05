@@ -1,0 +1,14 @@
+.state-message{display:flex;align-items:flex-start;gap:12px;width:100%;min-width:0;padding:16px;border:1px dashed var(--nx-color-border,var(--line));border-radius:12px;background:color-mix(in srgb,var(--nx-color-surface,#fff) 92%,var(--nx-color-accent-100,#edf7f5));color:var(--nx-color-text,#17324a)}
+.state-message-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:var(--nx-color-accent-100,#e7f4f1);color:var(--nx-color-accent-700,#176b5b);font-weight:800}
+.state-message-content{min-width:0;display:grid;gap:5px}
+.state-message-content strong{line-height:1.25;overflow-wrap:anywhere}
+.state-message-content p{margin:0;color:var(--nx-color-text-muted,#68758a);line-height:1.45;overflow-wrap:anywhere}
+.state-message-action{justify-self:start;margin-top:4px;min-height:40px}
+.state-message-error{border-style:solid;border-color:color-mix(in srgb,var(--nx-color-danger,#b42318) 35%,transparent);background:color-mix(in srgb,var(--nx-color-danger,#b42318) 7%,var(--nx-color-surface,#fff))}
+.state-message-error .state-message-icon{background:color-mix(in srgb,var(--nx-color-danger,#b42318) 14%,transparent);color:var(--nx-color-danger,#b42318)}
+.state-message-success .state-message-icon{background:color-mix(in srgb,var(--nx-color-success,#16855b) 14%,transparent);color:var(--nx-color-success,#16855b)}
+.state-message-loading .state-message-icon{animation:state-message-spin 1.1s linear infinite}
+.state-message.is-compact{padding:12px}.state-message.is-compact .state-message-icon{flex-basis:30px;width:30px;height:30px}
+@keyframes state-message-spin{to{transform:rotate(360deg)}}
+@media(max-width:560px){.state-message{padding:13px;gap:10px}.state-message-action{width:100%;min-height:44px}}
+@media(prefers-reduced-motion:reduce){.state-message-loading .state-message-icon{animation:none}}
