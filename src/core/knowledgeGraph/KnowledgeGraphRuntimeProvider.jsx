@@ -1,6 +1,6 @@
-import{createContext,useContext,useMemo}from'react'
+import{createContext,useContext,useEffect,useMemo}from'react'
 import{useStore}from'../../services/store.jsx'
-import{getKnowledgeGraphForScope,knowledgeGraphRuntimeKey}from'./graphRuntime.js'
+import{getKnowledgeGraphForScope,knowledgeGraphRuntimeKey,retainKnowledgeGraphScope,releaseRetainedKnowledgeGraphScope}from'./graphRuntime.js'
 
 const KnowledgeGraphRuntimeContext=createContext(null)
 
@@ -17,6 +17,10 @@ export default function KnowledgeGraphRuntimeProvider({children}){
  const scope=activeScope(state)
  const key=knowledgeGraphRuntimeKey(scope)
  const value=useMemo(()=>Object.freeze({scope:Object.freeze({...scope}),key,repository:getKnowledgeGraphForScope(scope)}),[key])
+ useEffect(()=>{
+  retainKnowledgeGraphScope(scope)
+  return()=>releaseRetainedKnowledgeGraphScope(scope)
+ },[key])
  return <KnowledgeGraphRuntimeContext.Provider value={value}>{children}</KnowledgeGraphRuntimeContext.Provider>
 }
 
