@@ -62,12 +62,44 @@
   color: var(--nx-color-text-muted, #68758a);
 }
 
+/* Safari-safe replacement for datetime-local: two native controls, one ISO value. */
+.date-time-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(110px, .65fr);
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.date-time-subfield {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.date-time-subfield > span {
+  color: var(--nx-color-text-muted, #68758a);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 @media (max-width: 760px) {
   :where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week']) {
     min-height: 44px;
     padding: 9px 11px;
     font-size: 16px;
     line-height: 1.25;
+  }
+
+  .date-time-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, .72fr);
+  }
+}
+
+@media (max-width: 360px) {
+  .date-time-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
