@@ -49,3 +49,20 @@ test('Auditoría V2 replay sessions: un idFactory defectuoso no elimina sesiones
   assert.equal(manager.getSession('session-1')?.status, 'completed')
   assert.equal(manager.status().sessions, 1)
 })
+
+test('Reauditoría D: un identificador duplicado no compacta la sesión que demuestra la colisión', async () => {
+  const manager = createReplaySessionManager(ledger, engine, {
+    maxSessions: 1,
+    now: () => Date.parse('2026-08-05T02:00:00.000Z'),
+    idFactory: () => 'session-1'
+  })
+
+  await manager.start().completion
+
+  assert.throws(
+    () => manager.start(),
+    /ya existe/
+  )
+  assert.equal(manager.getSession('session-1')?.status, 'completed')
+  assert.equal(manager.status().sessions, 1)
+})
