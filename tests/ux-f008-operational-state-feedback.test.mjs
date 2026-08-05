@@ -19,6 +19,16 @@ test('persistence failure uses the shared feedback component and retry action',a
  assert.doesNotMatch(source,/style=\{\{/)
 })
 
+test('infrastructure differentiates empty inventory from healthy maintenance state',async()=>{
+ const source=await read('src/pages/InfrastructureOperationsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/Sin activos registrados/)
+ assert.match(source,/type="success" title="Sin mantenimientos pendientes"/)
+ assert.match(source,/const pendingMaintenances=/)
+ assert.doesNotMatch(source,/No hay activos registrados\.<\/p>/)
+ assert.doesNotMatch(source,/No hay mantenimientos pendientes\.<\/p>/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
