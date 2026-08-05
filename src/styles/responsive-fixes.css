@@ -125,6 +125,43 @@ textarea {
   background: var(--nx-color-accent-600, var(--teal));
 }
 
+/* Modal shells must use the dynamic viewport and safe areas on mobile browsers. */
+.modal-backdrop {
+  box-sizing: border-box;
+  padding-top: max(14px, env(safe-area-inset-top));
+  padding-right: max(14px, env(safe-area-inset-right));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  padding-left: max(14px, env(safe-area-inset-left));
+  overflow: hidden;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-width: 100%;
+  max-height: calc(100dvh - max(28px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-head {
+  position: sticky;
+  top: -18px;
+  z-index: 8;
+  margin: -18px -18px 14px;
+  padding: 16px 18px 12px;
+  background: color-mix(in srgb, var(--nx-color-surface, #fff) 96%, transparent);
+  border-bottom: 1px solid var(--nx-color-border, var(--line));
+  backdrop-filter: blur(10px);
+}
+
+.modal-head .icon-button,
+.sidebar-head .icon-button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+
 /* Dense paired cards need more room than ordinary dashboard cards. */
 @media (max-width: 1280px) {
   .content-grid.two {
@@ -163,8 +200,93 @@ textarea {
     flex-direction: column;
   }
 
+  .page-header h2 {
+    font-size: clamp(22px, 6vw, 28px);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .page-header p {
+    max-width: 68ch;
+    line-height: 1.45;
+  }
+
   .card {
     padding: 16px;
+  }
+}
+
+/* Mobile topbar: preserve primary navigation and hide secondary telemetry labels. */
+@media (max-width: 760px) {
+  .topbar {
+    min-width: 0;
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .topbar-brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .topbar-brand h1 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-brand p,
+  .editor-status,
+  .realtime-status,
+  .data-source-status,
+  .sync-status,
+  .version-badge {
+    display: none;
+  }
+
+  .global-search {
+    flex: 0 1 156px;
+    min-width: 44px;
+    max-width: 42vw;
+  }
+
+  .global-search input {
+    min-height: 40px;
+    padding-right: 8px;
+    font-size: 16px;
+  }
+
+  .search-results {
+    position: fixed;
+    top: 68px;
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    width: auto;
+    max-height: min(60dvh, 420px);
+    overflow-y: auto;
+  }
+
+  .sidebar {
+    width: min(88vw, 320px);
+    max-width: calc(100vw - 36px);
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-head {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    margin: -14px -10px 10px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--nx-color-surface, #fff) 96%, transparent);
+    border-bottom: 1px solid var(--nx-color-border, var(--line));
+    backdrop-filter: blur(10px);
+  }
+
+  .scrim {
+    touch-action: none;
   }
 }
 
@@ -188,6 +310,29 @@ textarea {
     min-width: 0;
     padding: 14px;
     border-radius: 13px;
+  }
+
+  .modal-backdrop {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    padding: 14px;
+    border-radius: 0;
+  }
+
+  .modal-head {
+    top: -14px;
+    margin: -14px -14px 12px;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  }
+
+  .modal-form {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 
   /* Long operational forms must remain dense without reducing touch targets. */
