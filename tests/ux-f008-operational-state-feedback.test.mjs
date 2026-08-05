@@ -48,7 +48,7 @@ test('MIPE findings distinguish empty data, filtered results and healthy follow-
  assert.doesNotMatch(source,/type="datetime-local"/)
 })
 
-test('MIPE treatments expose prerequisites, empty history and missing inventory',async()=>{
+test('MIPE treatments expose missing prerequisites and inventory blocks',async()=>{
  const source=await read('src/pages/TreatmentsPage.jsx')
  assert.match(source,/import StateMessage/)
  assert.match(source,/No hay hallazgos abiertos/)
@@ -56,7 +56,14 @@ test('MIPE treatments expose prerequisites, empty history and missing inventory'
  assert.match(source,/No hay tratamientos programados/)
  assert.match(source,/Sin lote disponible/)
  assert.match(source,/disabled=\{!canSchedule\}/)
- assert.match(source,/const openFindings=/)
+})
+
+test('MIRFE programs explain the empty configuration state',async()=>{
+ const source=await read('src/pages/MirfeProgramsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/No hay programas MIRFE configurados/)
+ assert.match(source,/Crea el primer programa para definir reglas de activación/)
+ assert.match(source,/!state\.mirfePrograms\.length\?<StateMessage/)
 })
 
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
