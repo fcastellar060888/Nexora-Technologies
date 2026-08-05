@@ -37,6 +37,17 @@ test('MIPE sanitary catalog explains the empty configuration state',async()=>{
  assert.match(source,/!state\.incidents\.length\?<StateMessage/)
 })
 
+test('MIPE findings distinguish empty data, filtered results and healthy follow-ups',async()=>{
+ const source=await read('src/pages/FindingsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/import DateTimeFields/)
+ assert.match(source,/No hay hallazgos MIPE/)
+ assert.match(source,/Sin coincidencias/)
+ assert.match(source,/type="success" title="Seguimientos al día"/)
+ assert.match(source,/DateTimeFields value=/)
+ assert.doesNotMatch(source,/type="datetime-local"/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
