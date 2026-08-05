@@ -1,6 +1,7 @@
 import{useSyncExternalStore,useState}from'react'
 import{useStore}from'../services/store.jsx'
 import{getPersistenceRuntime,saveState,subscribePersistenceRuntime}from'../services/safeStorage.js'
+import StateMessage from'./StateMessage.jsx'
 
 export default function PersistenceHealthBridge(){
  const{state}=useStore()
@@ -11,9 +12,13 @@ export default function PersistenceHealthBridge(){
   setRetrying(true)
   try{saveState(state)}finally{setRetrying(false)}
  }
- return <aside role="alert" aria-live="assertive" style={{position:'fixed',right:'1rem',bottom:'1rem',zIndex:10000,maxWidth:'26rem',padding:'1rem',borderRadius:'12px',background:'var(--color-danger-surface,#3a1111)',color:'var(--color-danger-text,#fff)',boxShadow:'0 12px 32px rgba(0,0,0,.28)'}}>
-  <strong>Cambios pendientes de guardar</strong>
-  <p style={{margin:'.45rem 0 .75rem'}}>La caché offline no pudo actualizarse. Mantén esta pestaña abierta y vuelve a intentar. Detalle: {runtime.lastError}</p>
-  <button type="button" onClick={retry} disabled={retrying}>{retrying?'Reintentando…':'Reintentar guardado'}</button>
+ return <aside className="persistence-health-alert" aria-label="Estado de persistencia local">
+  <StateMessage
+   type={retrying?'loading':'error'}
+   title={retrying?'Reintentando guardado':'Cambios pendientes de guardar'}
+   message={retrying?'Estamos intentando actualizar la caché offline. Mantén esta pestaña abierta.':`La caché offline no pudo actualizarse. Mantén esta pestaña abierta y vuelve a intentar.${runtime.lastError?` Detalle: ${runtime.lastError}`:''}`}
+   actionLabel={retrying?undefined:'Reintentar guardado'}
+   onAction={retrying?undefined:retry}
+  />
  </aside>
 }
