@@ -7,30 +7,29 @@ import{
  knowledgeGraphRuntimeHealth,
  knowledgeGraphScopeCount,
  MAX_KNOWLEDGE_GRAPH_SCOPES,
- retainKnowledgeGraphScope,
- releaseRetainedKnowledgeGraphScope
+ retainKnowledgeGraphScope
 }from'../src/core/knowledgeGraph/index.js'
 
 const tick=()=>new Promise(resolve=>queueMicrotask(resolve))
 test.beforeEach(()=>clearKnowledgeGraphRuntimes())
 
-test('Auditoría V2 Graph runtime: el provider retiene y libera el workspace anterior al cambiar o desmontarse',()=>{
+test('Auditoría V2 Graph runtime: el provider retiene y libera su lease al cambiar o desmontarse',()=>{
  const source=fs.readFileSync(new URL('../src/core/knowledgeGraph/KnowledgeGraphRuntimeProvider.jsx',import.meta.url),'utf8')
  assert.match(source,/useEffect/)
  assert.match(source,/retainKnowledgeGraphScope/)
- assert.match(source,/releaseRetainedKnowledgeGraphScope/)
- assert.match(source,/return\(\)=>releaseRetainedKnowledgeGraphScope\(scope\)/)
+ assert.match(source,/const lease=retainKnowledgeGraphScope\(scope\)/)
+ assert.match(source,/return\(\)=>lease\.release\(\)/)
 })
 
 test('Auditoría V2 Graph runtime: el cleanup diferido tolera el montaje doble de StrictMode',async()=>{
  const scope={organizationId:'org-a',actorId:'actor-a'}
  const first=retainKnowledgeGraphScope(scope)
- assert.equal(releaseRetainedKnowledgeGraphScope(scope),true)
+ assert.equal(first.release(),true)
  const second=retainKnowledgeGraphScope(scope)
  await tick()
- assert.equal(second,first)
+ assert.equal(second.repository,first.repository)
  assert.equal(knowledgeGraphScopeCount(),1)
- releaseRetainedKnowledgeGraphScope(scope)
+ second.release()
  await tick()
  assert.equal(knowledgeGraphScopeCount(),0)
 })
