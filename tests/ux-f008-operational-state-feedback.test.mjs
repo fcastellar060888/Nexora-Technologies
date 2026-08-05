@@ -76,6 +76,17 @@ test('MIRFE monitoring blocks incomplete context and explains empty history',asy
  assert.match(source,/!state\.mirfeMonitoring\.length\?<StateMessage/)
 })
 
+test('MIRFE reinforcements explain optional origins and block missing prerequisites',async()=>{
+ const source=await read('src/pages/MirfeReinforcementsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/Configuración incompleta/)
+ assert.match(source,/Sin programas MIRFE/)
+ assert.match(source,/Sin monitoreo de origen/)
+ assert.match(source,/disabled=\{!canCreate\}/)
+ assert.match(source,/No hay órdenes MIRFE/)
+ assert.match(source,/const houseId=state\.houses\.find\(x=>x\.siteId===siteId\)\?\.id\|\|''/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
