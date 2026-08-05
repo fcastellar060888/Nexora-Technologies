@@ -87,6 +87,19 @@ test('MIRFE reinforcements explain optional origins and block missing prerequisi
  assert.match(source,/const houseId=state\.houses\.find\(x=>x\.siteId===siteId\)\?\.id\|\|''/)
 })
 
+test('MIRFE history distinguishes pending, executed and verified orders',async()=>{
+ const source=await read('src/pages/MirfeHistoryPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/const phaseOf=/)
+ assert.match(source,/return 'Verificada'/)
+ assert.match(source,/return 'Ejecutada'/)
+ assert.match(source,/return 'Pendiente'/)
+ assert.match(source,/No hay órdenes MIRFE para seguir/)
+ assert.match(source,/Sin coincidencias/)
+ assert.match(source,/Actualizar seguimiento/)
+ assert.match(source,/action:'Actualizar seguimiento'/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
