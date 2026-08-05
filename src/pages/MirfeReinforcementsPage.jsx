@@ -2,24 +2,33 @@ import {useMemo,useState} from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
+import StateMessage from'../components/StateMessage'
 import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
 import{mirfeCategories,mirfeStatuses,quantityFromDose}from'../domain/mirfe'
 import{useStore}from'../services/store'
 
-const initialForm=state=>({monitoringId:'',programId:'',siteId:state.sites[0]?.id||'',houseId:state.houses[0]?.id||'',bedId:'',geneticId:state.genetics[0]?.id||'',stage:'Floración media',week:1,category:'Nutrición',reason:'',triggerVariable:'',observedValue:0,targetValue:0,productId:'',objective:'',dose:0,doseUnit:'mL/L',volumePrepared:0,route:'Riego',ecBefore:0,ecAfter:0,phBefore:0,phAfter:0,responsible:'',status:'Pendiente aprobación',nextReview:'',notes:''})
+const initialForm=state=>({monitoringId:'',programId:'',siteId:state.sites[0]?.id||'',houseId:state.houses.find(x=>x.siteId===state.sites[0]?.id)?.id||'',bedId:'',geneticId:state.genetics[0]?.id||'',stage:'Floración media',week:1,category:'Nutrición',reason:'',triggerVariable:'',observedValue:0,targetValue:0,productId:'',objective:'',dose:0,doseUnit:'mL/L',volumePrepared:0,route:'Riego',ecBefore:0,ecAfter:0,phBefore:0,phAfter:0,responsible:'',status:'Pendiente aprobación',nextReview:'',notes:''})
 
 export default function MirfeReinforcementsPage(){
  const{state,update}=useStore()
  const[form,setForm]=useState(()=>initialForm(state))
  const[msg,setMsg]=useState('')
+ const houses=state.houses.filter(x=>x.siteId===form.siteId)
  const beds=state.beds.filter(x=>x.houseId===form.houseId)
  const products=useMemo(()=>state.products.filter(x=>['MIRFE','Fertilizante','Adyuvante','Corrector pH'].includes(x.category)),[state.products])
  const quantity=quantityFromDose(form.dose,form.doseUnit,form.volumePrepared)
  const quantityUnit=form.doseUnit.startsWith('mL')?'mL':'g'
+ const missing=[]
+ if(!state.sites.length)missing.push('una sede')
+ if(!state.houses.length)missing.push('una nave')
+ if(!state.genetics.length)missing.push('una genética')
+ if(!products.length)missing.push('un producto MIRFE, fertilizante, adyuvante o corrector de pH')
+ const canCreate=!missing.length&&Boolean(form.siteId&&form.houseId&&form.geneticId&&form.productId)
 
  function save(e){
   e.preventDefault()
-  if(!form.siteId||!form.houseId)return setMsg('Selecciona la sede y la nave.')
+  if(missing.length)return setMsg(`Configuración incompleta: registra ${missing.join(', ')}.`)
+  if(!form.siteId||!form.houseId||!form.geneticId)return setMsg('Selecciona sede, nave y genética.')
   if(!form.reason.trim())return setMsg('El motivo o diagnóstico es obligatorio.')
   if(!form.productId)return setMsg('Selecciona el producto o insumo.')
   if(Number(form.dose)<=0||Number(form.volumePrepared)<=0)return setMsg('La dosis y el volumen preparado deben ser mayores que cero.')
@@ -42,18 +51,21 @@ export default function MirfeReinforcementsPage(){
   <PageHeader title="Refuerzos y órdenes MIRFE" subtitle="Define el origen, la causa, la formulación, los controles y la revisión de cada intervención."/>
   <Card title="Nueva orden de refuerzo">
    <form id="mirfe-reinforcement-new" data-module="Orden de refuerzo MIRFE" data-record-id="new-reinforcement" className="stacked-form" onSubmit={save}>
+    {missing.length>0&&<StateMessage type="error" title="Configuración incompleta" message={`Antes de crear una orden registra ${missing.join(', ')}.`}/>} 
+    {!state.mirfePrograms.length&&<StateMessage type="info" compact title="Sin programas MIRFE" message="Puedes crear la orden manualmente, pero un programa permite heredar la regla, la meta y el objetivo agronómico."/>}
+    {!state.mirfeMonitoring.length&&<StateMessage type="info" compact title="Sin monitoreo de origen" message="La orden puede registrarse manualmente, aunque vincular un monitoreo conserva el contexto de EC, pH, etapa y ubicación."/>}
     {msg&&<ValidationMessage type={msg.startsWith('Orden')?'success':'error'}>{msg}</ValidationMessage>}
 
     <section className="form-section"><h4>1. Origen de la decisión</h4><div className="form-grid two">
-     <Field label="Programa MIRFE"><select value={form.programId} onChange={e=>selectProgram(e.target.value)}><option value="">Sin programa asociado</option>{state.mirfePrograms.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-     <Field label="Monitoreo de origen"><select value={form.monitoringId} onChange={e=>selectMonitoring(e.target.value)}><option value="">Sin monitoreo asociado</option>{state.mirfeMonitoring.map(x=><option key={x.id} value={x.id}>{x.date} · {state.houses.find(h=>h.id===x.houseId)?.name||'Sin nave'}</option>)}</select></Field>
+     <Field label="Programa MIRFE"><select disabled={!state.mirfePrograms.length} value={form.programId} onChange={e=>selectProgram(e.target.value)}><option value="">Sin programa asociado</option>{state.mirfePrograms.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Monitoreo de origen"><select disabled={!state.mirfeMonitoring.length} value={form.monitoringId} onChange={e=>selectMonitoring(e.target.value)}><option value="">Sin monitoreo asociado</option>{state.mirfeMonitoring.map(x=><option key={x.id} value={x.id}>{x.date} · {state.houses.find(h=>h.id===x.houseId)?.name||'Sin nave'}</option>)}</select></Field>
     </div></section>
 
     <section className="form-section"><h4>2. Ubicación y contexto del cultivo</h4><div className="form-grid four">
-     <Field label="Sede"><select required value={form.siteId} onChange={e=>setForm({...form,siteId:e.target.value,houseId:'',bedId:''})}><option value="">Selecciona</option>{state.sites.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-     <Field label="Nave"><select required value={form.houseId} onChange={e=>setForm({...form,houseId:e.target.value,bedId:''})}><option value="">Selecciona</option>{state.houses.filter(x=>x.siteId===form.siteId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-     <Field label="Cama o bloque"><select value={form.bedId} onChange={e=>setForm({...form,bedId:e.target.value})}><option value="">Toda la nave</option>{beds.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-     <Field label="Genética"><select value={form.geneticId} onChange={e=>setForm({...form,geneticId:e.target.value})}><option value="">Selecciona</option>{state.genetics.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Sede"><select required disabled={!state.sites.length} value={form.siteId} onChange={e=>{const siteId=e.target.value;const houseId=state.houses.find(x=>x.siteId===siteId)?.id||'';setForm({...form,siteId,houseId,bedId:''})}}><option value="">Selecciona</option>{state.sites.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Nave"><select required disabled={!houses.length} value={form.houseId} onChange={e=>setForm({...form,houseId:e.target.value,bedId:''})}><option value="">Selecciona</option>{houses.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Cama o bloque"><select disabled={!form.houseId} value={form.bedId} onChange={e=>setForm({...form,bedId:e.target.value})}><option value="">Toda la nave</option>{beds.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Genética"><select required disabled={!state.genetics.length} value={form.geneticId} onChange={e=>setForm({...form,geneticId:e.target.value})}><option value="">Selecciona</option>{state.genetics.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
      <Field label="Etapa"><input value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})}/></Field>
      <Field label="Semana"><input type="number" min="1" value={form.week} onChange={e=>setForm({...form,week:Number(e.target.value)})}/></Field>
      <Field label="Categoría"><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{mirfeCategories.map(x=><option key={x}>{x}</option>)}</select></Field>
@@ -68,7 +80,7 @@ export default function MirfeReinforcementsPage(){
     </div></section>
 
     <section className="form-section"><h4>4. Formulación y aplicación</h4><div className="form-grid four">
-     <Field label="Producto o insumo"><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})}><option value="">Selecciona</option>{products.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+     <Field label="Producto o insumo"><select required disabled={!products.length} value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})}><option value="">Selecciona</option>{products.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
      <Field label="Dosis"><input required type="number" min="0" step=".01" value={form.dose} onChange={e=>setForm({...form,dose:Number(e.target.value)})}/></Field>
      <Field label="Unidad de dosis"><select value={form.doseUnit} onChange={e=>setForm({...form,doseUnit:e.target.value})}><option>mL/L</option><option>g/L</option><option>mL/100 L</option><option>g/100 L</option></select></Field>
      <Field label="Volumen preparado (L)"><input required type="number" min="0" step=".1" value={form.volumePrepared} onChange={e=>setForm({...form,volumePrepared:Number(e.target.value)})}/></Field>
@@ -85,12 +97,12 @@ export default function MirfeReinforcementsPage(){
      <Field label="Observaciones" className="full"><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></Field>
     </div></section>
 
-    <FormActions><button type="button" className="button secondary" onClick={()=>{setForm(initialForm(state));setMsg('')}}>Limpiar</button><button className="button primary">Crear orden MIRFE</button></FormActions>
+    <FormActions><button type="button" className="button secondary" onClick={()=>{setForm(initialForm(state));setMsg('')}}>Limpiar</button><button className="button primary" disabled={!canCreate}>Crear orden MIRFE</button></FormActions>
    </form>
   </Card>
 
-  <Card title="Órdenes y refuerzos"><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Ubicación</th><th>Genética</th><th>Categoría</th><th>Motivo</th><th>Producto</th><th>Cantidad</th><th>Vía</th><th>Estado</th><th>Próxima revisión</th></tr></thead><tbody>
+  <Card title="Órdenes y refuerzos">{!state.mirfeReinforcements.length?<StateMessage title="No hay órdenes MIRFE" message="Crea la primera orden para documentar la causa, formulación, cantidad calculada, responsable y próxima revisión."/>:<div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Ubicación</th><th>Genética</th><th>Categoría</th><th>Motivo</th><th>Producto</th><th>Cantidad</th><th>Vía</th><th>Estado</th><th>Próxima revisión</th></tr></thead><tbody>
    {[...state.mirfeReinforcements].reverse().map(x=><tr key={x.id}><td>{x.date}</td><td>{state.sites.find(s=>s.id===x.siteId)?.name||'—'} · {state.houses.find(h=>h.id===x.houseId)?.name||'—'}</td><td>{state.genetics.find(g=>g.id===x.geneticId)?.name||'—'}</td><td>{x.category}</td><td>{x.reason||'—'}</td><td>{state.products.find(p=>p.id===x.productId)?.name||'—'}</td><td>{Number(x.quantityApplied||0).toFixed(2)} {String(x.doseUnit||'').startsWith('mL')?'mL':'g'}</td><td>{x.route}</td><td>{x.status}</td><td>{x.nextReview||'—'}</td></tr>)}
-  </tbody></table></div></Card>
+  </tbody></table></div>}</Card>
  </>
 }
