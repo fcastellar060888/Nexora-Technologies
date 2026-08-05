@@ -25,6 +25,7 @@ test('Auditoría V2 Graph runtime: una liberación forzada no puede destruir un 
     type: 'cultivation.plant',
     label: 'Planta retenida',
     version: 1,
+    createdAt: '2026-08-04T00:00:00.000Z',
     updatedAt: '2026-08-04T00:00:00.000Z',
     source: 'ledger',
     metadata: {}
