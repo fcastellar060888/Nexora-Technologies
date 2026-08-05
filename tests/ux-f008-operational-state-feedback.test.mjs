@@ -48,6 +48,17 @@ test('MIPE findings distinguish empty data, filtered results and healthy follow-
  assert.doesNotMatch(source,/type="datetime-local"/)
 })
 
+test('MIPE treatments expose prerequisites, empty history and missing inventory',async()=>{
+ const source=await read('src/pages/TreatmentsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/No hay hallazgos abiertos/)
+ assert.match(source,/No hay productos MIPE disponibles/)
+ assert.match(source,/No hay tratamientos programados/)
+ assert.match(source,/Sin lote disponible/)
+ assert.match(source,/disabled=\{!canSchedule\}/)
+ assert.match(source,/const openFindings=/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
