@@ -4,20 +4,24 @@
 .card,
 .content-grid > *,
 .form-grid > *,
+.form-kit-grid > *,
 .field,
+.form-kit-field,
 .form-actions,
 .calculated-field,
 .detail-grid > *,
 .summary-strip > *,
 .context-bar > * {
   min-width: 0;
+  max-width: 100%;
 }
 
-/* Native date/time controls and selects otherwise impose intrinsic widths on Safari/iPadOS. */
+/* Native controls otherwise impose intrinsic widths on Safari/iPadOS. */
 input,
 select,
 textarea,
 button {
+  box-sizing: border-box;
   max-width: 100%;
   min-width: 0;
 }
@@ -25,9 +29,38 @@ button {
 input[type='date'],
 input[type='datetime-local'],
 input[type='time'],
-input[type='month'] {
+input[type='month'],
+input[type='week'] {
+  display: block;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
+  min-inline-size: 0;
+  inline-size: 100%;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* WebKit gives the editable date segment its own intrinsic width. */
+input[type='date']::-webkit-date-and-time-value,
+input[type='datetime-local']::-webkit-date-and-time-value,
+input[type='time']::-webkit-date-and-time-value,
+input[type='month']::-webkit-date-and-time-value,
+input[type='week']::-webkit-date-and-time-value {
+  min-width: 0;
+  width: 100%;
+  text-align: start;
+}
+
+input[type='date']::-webkit-datetime-edit,
+input[type='datetime-local']::-webkit-datetime-edit,
+input[type='time']::-webkit-datetime-edit,
+input[type='month']::-webkit-datetime-edit,
+input[type='week']::-webkit-datetime-edit {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 textarea {
@@ -35,7 +68,10 @@ textarea {
 }
 
 /* Keep labels readable without forcing their grid track wider. */
-.field > span {
+.field > span,
+.field > label,
+.form-kit-field > span,
+.form-kit-field > label {
   overflow-wrap: anywhere;
 }
 
@@ -69,7 +105,7 @@ textarea {
   .detail-grid,
   .summary-strip,
   .nutrient-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .page-header {
@@ -84,12 +120,21 @@ textarea {
 
 /* Phone-sized screens: avoid controls and actions spilling horizontally. */
 @media (max-width: 560px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
   .main-content {
+    min-width: 0;
     padding-left: 10px;
     padding-right: 10px;
   }
 
   .card {
+    min-width: 0;
     padding: 14px;
     border-radius: 13px;
   }
@@ -105,5 +150,13 @@ textarea {
   .actions .button,
   .row-actions button {
     width: 100%;
+  }
+
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='time'],
+  input[type='month'],
+  input[type='week'] {
+    font-size: 16px;
   }
 }
