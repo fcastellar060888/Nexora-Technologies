@@ -9,6 +9,7 @@
 .state-message-success .state-message-icon{background:color-mix(in srgb,var(--nx-color-success,#16855b) 14%,transparent);color:var(--nx-color-success,#16855b)}
 .state-message-loading .state-message-icon{animation:state-message-spin 1.1s linear infinite}
 .state-message.is-compact{padding:12px}.state-message.is-compact .state-message-icon{flex-basis:30px;width:30px;height:30px}
+.persistence-health-alert{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:10000;width:min(420px,calc(100vw - 32px));filter:drop-shadow(0 12px 28px rgba(0,0,0,.22))}
 @keyframes state-message-spin{to{transform:rotate(360deg)}}
-@media(max-width:560px){.state-message{padding:13px;gap:10px}.state-message-action{width:100%;min-height:44px}}
+@media(max-width:560px){.state-message{padding:13px;gap:10px}.state-message-action{width:100%;min-height:44px}.persistence-health-alert{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));width:calc(100vw - 20px)}}
 @media(prefers-reduced-motion:reduce){.state-message-loading .state-message-icon{animation:none}}
