@@ -29,6 +29,14 @@ test('infrastructure differentiates empty inventory from healthy maintenance sta
  assert.doesNotMatch(source,/No hay mantenimientos pendientes\.<\/p>/)
 })
 
+test('MIPE sanitary catalog explains the empty configuration state',async()=>{
+ const source=await read('src/pages/IncidentsPage.jsx')
+ assert.match(source,/import StateMessage/)
+ assert.match(source,/No hay incidencias configuradas/)
+ assert.match(source,/Registra la primera plaga, enfermedad, deficiencia o daño/)
+ assert.match(source,/!state\.incidents\.length\?<StateMessage/)
+})
+
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
  const css=await read('src/styles/state-feedback.css')
  assert.match(css,/safe-area-inset-bottom/)
