@@ -1,0 +1,78 @@
+/* UX-F001-R1: consistent native date/time controls across Safari, Chromium and Firefox. */
+
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week']) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-inline-size: 0;
+  inline-size: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: start;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+  color-scheme: light;
+}
+
+/* Safari/iOS renders the displayed value inside independent WebKit boxes. */
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week'])::-webkit-date-and-time-value {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: start !important;
+}
+
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week'])::-webkit-datetime-edit {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: start !important;
+}
+
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week'])::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 0;
+}
+
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week'])::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  margin-inline-start: 8px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+/* Keep empty controls visually aligned without Safari's centered placeholder. */
+:where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week']):not(:focus):invalid::-webkit-datetime-edit {
+  color: var(--nx-color-text-muted, #68758a);
+}
+
+@media (max-width: 760px) {
+  :where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week']) {
+    min-height: 44px;
+    padding: 9px 11px;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week']) {
+    border: 1px solid CanvasText;
+  }
+}
