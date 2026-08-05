@@ -61,3 +61,22 @@ test('Auditoría V2 replay: un fallo de onError queda contenido y permite contin
   assert.equal(result.results[0].error, 'fallo de proyección')
   assert.equal(result.results[1].error, null)
 })
+
+test('Reauditoría D: rechazos asíncronos de observadores tampoco alteran el reporte', async () => {
+  const ledger = ledgerWith('evt-1', 'evt-2')
+  const result = await replayLedger(ledger, {
+    replay: async value => {
+      if (value.eventId === 'evt-2') throw new Error('fallo esperado')
+      return { status: 'succeeded' }
+    }
+  }, {
+    onResult: async () => { throw new Error('rechazo asíncrono de resultado') },
+    onError: async () => { throw new Error('rechazo asíncrono de error') }
+  })
+
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(result.processed, 2)
+  assert.equal(result.succeeded, 1)
+  assert.equal(result.failed, 1)
+  assert.equal(result.results.length, 2)
+})
