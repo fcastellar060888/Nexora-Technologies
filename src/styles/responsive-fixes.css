@@ -129,14 +129,45 @@ textarea {
 
   .main-content {
     min-width: 0;
-    padding-left: 10px;
     padding-right: 10px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    padding-left: 10px;
   }
 
   .card {
     min-width: 0;
     padding: 14px;
     border-radius: 13px;
+  }
+
+  /* Long operational forms must remain dense without reducing touch targets. */
+  .form-grid,
+  .form-kit-grid {
+    row-gap: 12px;
+  }
+
+  .field,
+  .form-kit-field {
+    gap: 6px;
+  }
+
+  .field > span,
+  .field > label,
+  .form-kit-field > span,
+  .form-kit-field > label {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  input,
+  select {
+    min-height: 44px;
+    padding: 9px 11px;
+  }
+
+  textarea {
+    min-height: 88px;
+    padding: 10px 11px;
   }
 
   .form-actions,
@@ -146,10 +177,22 @@ textarea {
     flex-direction: column;
   }
 
+  .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 6;
+    margin: 4px -14px -14px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--nx-color-surface) 94%, transparent);
+    border-top: 1px solid var(--nx-color-border);
+    backdrop-filter: blur(10px);
+  }
+
   .form-actions .button,
   .actions .button,
   .row-actions button {
     width: 100%;
+    min-height: 44px;
   }
 
   input[type='date'],
