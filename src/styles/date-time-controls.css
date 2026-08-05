@@ -1,0 +1,49 @@
+/* Safari-safe replacement for datetime-local: two native controls, one ISO value. */
+.date-time-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(110px, .65fr);
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.date-time-subfield {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.date-time-subfield > span {
+  color: var(--nx-color-text-muted, #68758a);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.date-time-subfield input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .date-time-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, .72fr);
+  }
+
+  .date-time-subfield input {
+    min-height: 44px;
+    padding: 9px 11px;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+}
+
+@media (max-width: 360px) {
+  .date-time-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
