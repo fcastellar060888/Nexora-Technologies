@@ -4,28 +4,37 @@
 
 - Rama: `foundation/event-bus-core`
 - PR: `#26`
-- Última Quality analizada: `#1158`
-- Resultado: fallo por error de parser en `src/core/projectionEngine/replaySessionManager.js`
-- Las pruebas del nuevo contrato de leases del Knowledge Graph pasaron.
+- Quality certificada: `#1164`
+- Resultado: `639/639` pruebas exitosas, auditoría estática OK y build de producción exitoso.
+- Knowledge Graph Runtime certificado tras introducir leases por consumidor.
+- Replay Ledger y Replay Session Manager certificados tras aislamiento de observadores e inicio atómico.
 
 ## Últimos commits relevantes
 
-- `9772c13933f8bd66829286992288ba660615c461` — cierre de pruebas forenses de propiedad de leases.
-- `0fe8bea51e2497293859f0054da14ecb467cc214` — reescritura válida de Replay Session Manager.
-- `058c14d038c015ea7cb58194176967db4fac4544` — creación del estado maestro.
+- `9772c13933f8bd66829286992288ba660615c461` — pruebas forenses de propiedad de leases.
+- `0fe8bea51e2497293859f0054da14ecb467cc214` — saneamiento de Replay Session Manager.
+- `80d38bc057b39528ba058a03634389425e65ec22` — expediente maestro inicial; Quality #1164 verde.
+- `7e55ee0f5046abddeeaeed244532bf1216fa862c` — migración de Quality a Actions v6 y Node 24.
+- `60f51b0165211dbe99fe6acaf70c91fec03faa66` — source maps de producción desactivados y vendor chunks separados.
+
+## Hallazgos abiertos del bloque de cadena de suministro
+
+1. No existe `package-lock.json`; todavía no es válido cambiar de `npm install` a `npm ci`.
+2. Las dependencias directas conservan rangos semánticos amplios y deben revisarse junto con el lockfile real.
+3. Falta una política explícita para `npm audit` y severidades aceptadas.
+4. Falta cobertura instrumentada y umbrales graduales.
+5. Falta revisar lint/type checking y pruebas de componentes.
 
 ## Próxima acción obligatoria
 
-1. Consultar Quality del commit más reciente.
-2. Si falla, leer el log y corregir únicamente la causa confirmada.
-3. Si queda verde, certificar Knowledge Graph runtime y Replay Session Manager.
-4. Continuar con el bloque de cadena de suministro:
-   - verificar `package-lock.json`;
-   - migrar CI a `npm ci`;
-   - revisar versiones de acciones y advertencia de Node;
-   - añadir auditoría de dependencias con política explícita;
-   - diseñar cobertura y umbrales graduales.
-5. Actualizar este archivo al terminar cada bloque.
+1. Consultar Quality del commit más reciente después de la migración a Node 24 y el nuevo particionado de Vite.
+2. Corregir cualquier incompatibilidad confirmada sin introducir cambios funcionales.
+3. Generar y versionar un `package-lock.json` completo con npm compatible; no crear uno manual o parcial.
+4. Después del lockfile, cambiar CI a `npm ci` y habilitar caché por lockfile.
+5. Añadir auditoría de dependencias con política explícita.
+6. Diseñar cobertura y umbrales graduales.
+7. Continuar con persistencia, sincronización, seguridad de sesión y configuración productiva.
+8. Actualizar este archivo al terminar cada bloque.
 
 ## Regla de continuidad
 
