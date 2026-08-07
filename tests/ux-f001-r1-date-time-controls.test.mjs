@@ -21,8 +21,10 @@ test('date and time normalization loads after other global styles', async () => 
   assert.ok(dateTime > accessibility, 'date/time normalization must load last')
 })
 
-test('infrastructure environmental reading uses the normalized datetime-local control', async () => {
+test('infrastructure environmental reading uses the Safari-safe split date and time control', async () => {
   const page = await read('src/pages/InfrastructureOperationsPage.jsx')
+  assert.match(page, /import DateTimeFields/)
   assert.match(page, /label="Fecha y hora"/)
-  assert.match(page, /type="datetime-local"/)
+  assert.match(page, /<DateTimeFields value=\{reading\.recordedAt\}/)
+  assert.match(page, /onChange=\{recordedAt=>setReading\(\{\.\.\.reading,recordedAt\}\)\}/)
 })
