@@ -26,6 +26,28 @@ function normalizeTarget(target){
  })
 }
 
+function canonical(value){
+ if(value===null||typeof value!=='object')return JSON.stringify(value)
+ if(Array.isArray(value))return`[${value.map(canonical).join(',')}]`
+ return`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`
+}
+
+function publicationFailed(result){
+ return Boolean(result&&(result.pending===true||Number(result.failed)>0))
+}
+
+function publicationEventId(result,fallback){
+ return result?.event?.eventId||result?.eventId||fallback
+}
+
+function scopedIdempotencyKey({definition,target,key}){
+ const normalized=String(key??'').trim()
+ if(!normalized)return null
+ return`${target.organizationId}::${definition.id}::${target.type}::${target.id}::${normalized}`
+}
+
+function eventIdFor(scope,suffix){return scope?`action:${scope}:${suffix}`:crypto.randomUUID()}
+
 export function defineAction({
  id,
  label,
@@ -52,9 +74,12 @@ export function defineAction({
  })
 }
 
-export function createActionEngine({publishEvent}={}){
+export function createActionEngine({publishEvent,maxIdempotencyEntries=10000}={}){
+ if(!Number.isInteger(maxIdempotencyEntries)||maxIdempotencyEntries<=0)throw new Error('El límite de idempotencia debe ser un entero positivo')
  const registry=new Map()
- const emit=typeof publishEvent==='function'?publishEvent:async()=>null
+ const completedExecutions=new Map()
+ const inFlightExecutions=new Map()
+ const emit=typeof publishEvent==='function'?publishEvent:null
 
  function register(definition){
   if(!definition?.id||typeof definition.execute!=='function')throw new Error('La definición de acción no es válida')
@@ -86,24 +111,101 @@ export function createActionEngine({publishEvent}={}){
   return{allowed:true,definition,target:normalizedTarget,envelope}
  }
 
- async function execute(actionId,{target,input={},actor={},context={},actionIdempotencyKey=null,occurredAt=new Date().toISOString()}={}){
-  const evaluation=await evaluate(actionId,{target,input,actor,context})
-  if(!evaluation.allowed)throw new Error(evaluation.reason)
-  if(Number.isNaN(Date.parse(occurredAt)))throw new Error('La fecha de ejecución no es válida')
+ function remember(scope,fingerprint,result){
+  if(!scope)return
+  completedExecutions.delete(scope)
+  completedExecutions.set(scope,Object.freeze({fingerprint,result}))
+  while(completedExecutions.size>maxIdempotencyEntries)completedExecutions.delete(completedExecutions.keys().next().value)
+ }
+
+ async function emitRequired(event,label){
+  if(!emit)throw new Error('El Action Engine requiere publishEvent para ejecutar acciones mutables')
+  const publication=await emit(event)
+  if(publicationFailed(publication)){
+   const error=new Error(`${label} no pudo persistirse de forma confiable`)
+   error.code='ACTION_EVENT_PERSISTENCE_FAILED'
+   error.publication=publication
+   throw error
+  }
+  return publication
+ }
+
+ async function executeOnce(evaluation,{input,actionIdempotencyKey,occurredAt,scope,fingerprint}){
+  const normalizedOccurredAt=new Date(occurredAt).toISOString()
   const executionId=crypto.randomUUID()
-  const result=await evaluation.definition.execute({
-   ...evaluation.envelope,
-   executionId,
-   occurredAt:new Date(occurredAt).toISOString()
-  })
-  if(result===undefined)throw new Error(`La acción ${actionId} no devolvió un resultado`)
+  const requestedEventId=eventIdFor(scope,'requested')
+  const requestedPublication=await emitRequired({
+   eventId:requestedEventId,
+   name:'core.action.requested',
+   aggregateType:evaluation.target.type,
+   aggregateId:evaluation.target.id,
+   organizationId:evaluation.target.organizationId,
+   siteId:evaluation.target.siteId,
+   occurredAt:normalizedOccurredAt,
+   correlationId:executionId,
+   payload:{
+    actionId:evaluation.definition.id,
+    executionId,
+    intendedEventName:evaluation.definition.eventName,
+    input:clone(input),
+    targetVersion:evaluation.target.version
+   },
+   metadata:{
+    actionEngine:true,
+    actionLabel:evaluation.definition.label,
+    actionPhase:'requested',
+    actionIdempotencyKey:actionIdempotencyKey?String(actionIdempotencyKey):null
+   }
+  },'La intención de la acción')
+
+  if(requestedPublication?.duplicate===true){
+   const cached=scope?completedExecutions.get(scope):null
+   if(cached&&cached.fingerprint===fingerprint)return cached.result
+   const error=new Error('La acción ya fue solicitada con la misma clave de idempotencia')
+   error.code='ACTION_IDEMPOTENCY_DUPLICATE'
+   throw error
+  }
+
+  const persistedRequestId=publicationEventId(requestedPublication,requestedEventId)
+  let result
+  try{
+   result=await evaluation.definition.execute({
+    ...evaluation.envelope,
+    executionId,
+    occurredAt:normalizedOccurredAt
+   })
+  }catch(error){
+   try{
+    await emitRequired({
+     eventId:eventIdFor(scope,'failed'),
+     name:'core.action.failed',
+     aggregateType:evaluation.target.type,
+     aggregateId:evaluation.target.id,
+     organizationId:evaluation.target.organizationId,
+     siteId:evaluation.target.siteId,
+     occurredAt:new Date().toISOString(),
+     correlationId:executionId,
+     causationId:persistedRequestId,
+     payload:{actionId:evaluation.definition.id,executionId,error:String(error?.message||error||'Error no identificado')},
+     metadata:{actionEngine:true,actionLabel:evaluation.definition.label,actionPhase:'failed',actionIdempotencyKey:actionIdempotencyKey?String(actionIdempotencyKey):null}
+    },'El fallo de la acción')
+   }catch{/* La intención ya quedó persistida; no se oculta el error original. */}
+   throw error
+  }
+
+  if(result===undefined)throw new Error(`La acción ${evaluation.definition.id} no devolvió un resultado`)
   const normalizedResult=freeze(clone(result))
-  const event=await emit({
+  const completedEventId=eventIdFor(scope,'completed')
+  const publication=await emitRequired({
+   eventId:completedEventId,
    name:evaluation.definition.eventName,
    aggregateType:evaluation.target.type,
    aggregateId:evaluation.target.id,
    organizationId:evaluation.target.organizationId,
    siteId:evaluation.target.siteId,
+   occurredAt:normalizedOccurredAt,
+   correlationId:executionId,
+   causationId:persistedRequestId,
    payload:{
     actionId:evaluation.definition.id,
     executionId,
@@ -113,17 +215,50 @@ export function createActionEngine({publishEvent}={}){
    metadata:{
     actionEngine:true,
     actionLabel:evaluation.definition.label,
+    actionPhase:'completed',
     actionIdempotencyKey:actionIdempotencyKey?String(actionIdempotencyKey):null
    }
-  })
-  return Object.freeze({
+  },'El evento final de la acción')
+
+  const response=Object.freeze({
    executionId,
    actionId:evaluation.definition.id,
    target:evaluation.target,
    result:normalizedResult,
-   event:event??null
+   requestEvent:requestedPublication??null,
+   event:publication??null
   })
+  remember(scope,fingerprint,response)
+  return response
  }
 
- return Object.freeze({register,get,list,evaluate,execute})
+ async function execute(actionId,{target,input={},actor={},context={},actionIdempotencyKey=null,occurredAt=new Date().toISOString()}={}){
+  const evaluation=await evaluate(actionId,{target,input,actor,context})
+  if(!evaluation.allowed)throw new Error(evaluation.reason)
+  if(Number.isNaN(Date.parse(occurredAt)))throw new Error('La fecha de ejecución no es válida')
+  if(!emit)throw new Error('El Action Engine requiere publishEvent para ejecutar acciones mutables')
+
+  const scope=scopedIdempotencyKey({definition:evaluation.definition,target:evaluation.target,key:actionIdempotencyKey})
+  const fingerprint=canonical({target:evaluation.target,input:evaluation.envelope.input,actor:evaluation.envelope.actor,context:evaluation.envelope.context})
+  if(!scope)return executeOnce(evaluation,{input,actionIdempotencyKey,occurredAt,scope,fingerprint})
+
+  const completed=completedExecutions.get(scope)
+  if(completed){
+   if(completed.fingerprint!==fingerprint)throw new Error('La clave de idempotencia ya fue usada con datos diferentes')
+   return completed.result
+  }
+  const active=inFlightExecutions.get(scope)
+  if(active){
+   if(active.fingerprint!==fingerprint)throw new Error('La clave de idempotencia ya está en uso con datos diferentes')
+   return active.promise
+  }
+
+  const promise=executeOnce(evaluation,{input,actionIdempotencyKey,occurredAt,scope,fingerprint}).finally(()=>inFlightExecutions.delete(scope))
+  inFlightExecutions.set(scope,Object.freeze({fingerprint,promise}))
+  return promise
+ }
+
+ function status(){return Object.freeze({registeredActions:registry.size,idempotencyEntries:completedExecutions.size,inFlightExecutions:inFlightExecutions.size,maxIdempotencyEntries})}
+
+ return Object.freeze({register,get,list,evaluate,execute,status})
 }
