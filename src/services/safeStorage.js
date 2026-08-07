@@ -4,11 +4,12 @@ import { getPersistenceDriver } from './persistenceDriver'
 import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
+import{cleanupLegacySeed}from'./legacySeedCleanup.js'
 
 let lastObservedAuditId=''
 let persistenceRuntime=createPersistenceRuntime()
 const persistenceListeners=new Set()
-const normalizeState=value=>migrateMaterialPlantIdentity(migrateState(value))
+const normalizeState=value=>cleanupLegacySeed(migrateMaterialPlantIdentity(migrateState(value)))
 
 function cloneInitialState(){
  return normalizeState(structuredClone(initialState))
