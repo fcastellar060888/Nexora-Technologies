@@ -1,17 +1,15 @@
 name: AUD-F059 Generate Lockfile
 
 on:
-  push:
+  pull_request:
     branches:
-      - audit/aud-f059-reproducible-lockfile
-    paths-ignore:
-      - package-lock.json
+      - foundation/event-bus-core
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: aud-f059-${{ github.ref }}
+  group: aud-f059-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -38,16 +36,10 @@ jobs:
       - name: Run full Quality gate
         run: npm run check
 
-      - name: Commit generated lockfile
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "package-lock.json is already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "build(audit): add reproducible npm lockfile"
-          git push
+      - name: Upload certified lockfile
+        uses: actions/upload-artifact@v6
+        with:
+          name: aud-f059-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
