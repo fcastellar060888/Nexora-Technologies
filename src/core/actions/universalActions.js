@@ -15,7 +15,7 @@ export function createUniversalActions(commands={}){
  return Object.freeze([
   defineAction({
    id:'object.move',label:'Mover',eventName:'core.object.moved',
-   validate:({input})=>input?.destinationId?'true'==='true':'El destino es obligatorio',
+   validate:({input})=>String(input?.destinationId??'').trim()?true:'El destino es obligatorio',
    execute:({target,input,actor,context,executionId,occurredAt})=>move({target,input,actor,context,executionId,occurredAt})
   }),
   defineAction({
