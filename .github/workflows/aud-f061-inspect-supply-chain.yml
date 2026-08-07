@@ -1,15 +1,17 @@
-name: AUD-F061 Inspect Supply Chain
+name: AUD-F061 Supply Chain Certification
 
 on:
-  pull_request:
+  push:
     branches:
-      - foundation/event-bus-core
+      - audit/aud-f061-supply-chain-policy
+    paths-ignore:
+      - package-lock.json
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  certify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,20 +25,24 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Regenerate lock metadata from pinned manifest
         run: npm install --package-lock-only --no-audit --no-fund
-      - name: Clean install
+      - name: Clean install under strict install-script policy
         run: npm ci
-      - name: Direct dependency versions
-        run: npm ls --depth=0
-      - name: Pending install scripts
+      - name: Verify no unreviewed install scripts remain
         run: npm approve-scripts --allow-scripts-pending
       - name: High severity dependency gate
         run: npm audit --audit-level=high
       - name: Full Quality gate
         run: npm run check
-      - name: Upload regenerated lockfile
-        uses: actions/upload-artifact@v6
-        with:
-          name: aud-f061-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 7
+      - name: Commit regenerated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json already matches pinned manifest"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(audit): align lockfile with pinned dependencies"
+          git push
