@@ -111,7 +111,7 @@ export function createAuthSessionStorage({
   }
 
   removeLegacyLocalSessions()
-  ensureChannel()
+  if (typeof globalThis.window !== 'undefined') ensureChannel()
 
   return { save, load, clear, subscribe, close, removeLegacyLocalSessions }
 }
