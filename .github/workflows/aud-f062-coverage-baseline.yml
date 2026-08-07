@@ -1,0 +1,32 @@
+name: AUD-F062 Coverage Baseline
+
+on:
+  pull_request:
+    branches:
+      - foundation/event-bus-core
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Clean install
+        run: npm ci
+      - name: Measure source coverage baseline
+        run: |
+          node --experimental-test-coverage \
+            --test-coverage-include='src/**/*.js' \
+            --test-coverage-include='src/**/*.jsx' \
+            --test-coverage-include='scripts/**/*.mjs' \
+            --test tests/*.test.mjs
