@@ -6,7 +6,7 @@ on:
       - foundation/event-bus-core
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: aud-f059-${{ github.event.pull_request.number }}
@@ -18,8 +18,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -35,6 +37,20 @@ jobs:
 
       - name: Run full Quality gate
         run: npm run check
+
+      - name: Commit certified lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json is already certified and up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(audit): add reproducible npm lockfile"
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Upload certified lockfile
         uses: actions/upload-artifact@v6
