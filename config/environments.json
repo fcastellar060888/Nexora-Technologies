@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "local": {
+      "viteMode": "development",
+      "deployment": "developer-machine",
+      "requiredPublicVariables": []
+    },
+    "preview": {
+      "viteMode": "preview",
+      "deployment": "cloudflare-preview",
+      "requiredPublicVariables": ["VITE_APP_ENV", "VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"]
+    },
+    "staging": {
+      "viteMode": "staging",
+      "deployment": "cloudflare-staging",
+      "requiredPublicVariables": ["VITE_APP_ENV", "VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"]
+    },
+    "production": {
+      "viteMode": "production",
+      "deployment": "cloudflare-production",
+      "requiredPublicVariables": ["VITE_APP_ENV", "VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"]
+    }
+  },
+  "allowedClientVariables": [
+    "VITE_APP_ENV",
+    "VITE_SUPABASE_URL",
+    "VITE_SUPABASE_ANON_KEY"
+  ],
+  "forbiddenClientNameFragments": [
+    "SERVICE_ROLE",
+    "PRIVATE_KEY",
+    "DATABASE_PASSWORD",
+    "DB_PASSWORD",
+    "SECRET_KEY",
+    "ACCESS_SECRET"
+  ]
+}

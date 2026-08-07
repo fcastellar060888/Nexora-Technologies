@@ -9,13 +9,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:preview": "vite build --mode preview",
+    "build:staging": "vite build --mode staging",
+    "build:production": "vite build --mode production",
     "preview": "vite preview",
     "audit:static": "node scripts/static-audit.mjs",
     "audit:deps": "npm audit --audit-level=high",
+    "audit:env": "node scripts/audit-environment.mjs",
     "audit:build": "node scripts/audit-production-build.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:coverage": "node scripts/run-tests.mjs --coverage",
-    "check": "npm run audit:static && npm run audit:deps && npm run test:coverage && npm run build && npm run audit:build"
+    "check": "npm run audit:static && npm run audit:deps && npm run audit:env && npm run test:coverage && npm run build:production && npm run audit:build"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
