@@ -2,37 +2,50 @@ import{useMemo,useState}from'react'
 import Card from'./Card'
 import CrudActions from'./CrudActions'
 import Field from'./Field'
+import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 
 export const SPACE_CAPABILITIES=['Material vegetal','Producción','Recepción','Secado','Destalle','Manicura','Selección','Empaque','Almacenamiento','Cuarentena','Compostaje','Destrucción','Extracción','Laboratorio','Limpieza']
 const emptyArea=siteId=>({siteId:siteId||'',name:'',type:'Área operativa',capabilities:[],shared:false,dimensionUnit:'m',length:0,width:0,height:0,notes:''})
 
 export default function FacilityAreaManager({state,update}){
- const areas=state.facilityAreas||[],defaultSite=state.currentContext?.siteId||state.sites?.[0]?.id||''
+ const areas=state.facilityAreas||[],activeSites=(state.sites||[]).filter(site=>site.active!==false),defaultSite=state.currentContext?.siteId&&activeSites.some(site=>site.id===state.currentContext.siteId)?state.currentContext.siteId:activeSites[0]?.id||''
  const[form,setForm]=useState(()=>emptyArea(defaultSite)),[editingId,setEditingId]=useState(null)
  const grouped=useMemo(()=>state.sites.map(site=>({site,areas:areas.filter(area=>area.siteId===site.id)})).filter(group=>group.areas.length),[state.sites,areas])
+ function organizationIdForSite(siteId){return state.sites.find(site=>site.id===siteId)?.companyId||''}
  function toggleCapability(value){setForm(current=>({...current,capabilities:current.capabilities.includes(value)?current.capabilities.filter(item=>item!==value):[...current.capabilities,value]}))}
  function save(event){
   event.preventDefault()
-  const name=form.name.trim()
+  const name=form.name.trim(),site=activeSites.find(item=>item.id===form.siteId)
   if(!name)return alert('Escribe el nombre del área.')
-  if(!form.siteId)return alert('Selecciona la sede.')
+  if(!site)return alert('Selecciona una sede activa.')
   if(!form.capabilities.length)return alert('Selecciona al menos una capacidad operativa.')
-  if(areas.some(item=>item.id!==editingId&&item.siteId===form.siteId&&item.name.trim().toLowerCase()===name.toLowerCase()))return alert('Ya existe un área con ese nombre en la sede.')
+  if(areas.some(item=>item.id!==editingId&&item.siteId===form.siteId&&item.active!==false&&item.name.trim().toLowerCase()===name.toLowerCase()))return alert('Ya existe un área activa con ese nombre en la sede.')
   const payload={...form,name,shared:form.capabilities.length>1||Boolean(form.shared),length:Math.max(0,Number(form.length)||0),width:Math.max(0,Number(form.width)||0),height:Math.max(0,Number(form.height)||0)}
-  update(store=>({...store,facilityAreas:editingId?areas.map(item=>item.id===editingId?{...item,...payload}:item):[...areas,{id:crypto.randomUUID(),createdAt:new Date().toISOString(),active:true,...payload}]}),{module:'Infraestructura',action:editingId?'Área actualizada':'Área creada',detail:`${name} · ${payload.capabilities.join(', ')}`})
+  if(editingId){
+   const previous=areas.find(item=>item.id===editingId),after={...previous,...payload}
+   update(store=>({...store,facilityAreas:areas.map(item=>item.id===editingId?after:item)}),{module:'Infraestructura',action:'Área actualizada',detail:`${name} · ${payload.capabilities.join(', ')}`})
+   void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_UPDATED,aggregateType:'facility.area',aggregateId:editingId,organizationId:organizationIdForSite(form.siteId),siteId:form.siteId,payload:{label:name,before:previous,after},metadata:{collections:['facilityAreas']}})
+  }else{
+   const id=crypto.randomUUID(),createdAt=new Date().toISOString(),area={id,createdAt,active:true,...payload}
+   update(store=>({...store,facilityAreas:[...areas,area]}),{module:'Infraestructura',action:'Área creada',detail:`${name} · ${payload.capabilities.join(', ')}`})
+   void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_CREATED,aggregateType:'facility.area',aggregateId:id,organizationId:organizationIdForSite(form.siteId),siteId:form.siteId,payload:{label:name,area},metadata:{collections:['facilityAreas']}})
+  }
   setEditingId(null);setForm(emptyArea(form.siteId))
  }
  function edit(area){setEditingId(area.id);setForm({...emptyArea(area.siteId),...area,capabilities:[...(area.capabilities||[])]})}
- function remove(area){
-  const linked=(state.houses||[]).filter(item=>item.areaId===area.id).length+(state.propagationBanks||[]).filter(item=>item.areaId===area.id).length
-  if(linked)return alert(`No puedes eliminar el área porque tiene ${linked} espacios vinculados.`)
-  if(!confirm(`¿Eliminar el área ${area.name}?`))return
-  update(store=>({...store,facilityAreas:areas.filter(item=>item.id!==area.id)}),{module:'Infraestructura',action:'Área eliminada',detail:area.name})
+ function archive(area){
+  const linked=(state.houses||[]).filter(item=>item.areaId===area.id&&item.active!==false).length+(state.propagationBanks||[]).filter(item=>item.areaId===area.id&&item.active!==false).length
+  if(linked)return alert(`No puedes archivar el área porque tiene ${linked} espacios activos vinculados.`)
+  if(!confirm(`¿Archivar el área ${area.name}? Su identidad e historial se conservarán.`))return
+  const archivedAt=new Date().toISOString(),previous=area,after={...area,active:false,archivedAt}
+  update(store=>({...store,facilityAreas:areas.map(item=>item.id===area.id?after:item)}),{module:'Infraestructura',action:'Área archivada',detail:area.name})
+  void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_ARCHIVED,aggregateType:'facility.area',aggregateId:area.id,organizationId:organizationIdForSite(area.siteId),siteId:area.siteId,payload:{label:area.name,before:previous,after},metadata:{collections:['facilityAreas']}})
+  if(editingId===area.id){setEditingId(null);setForm(emptyArea(defaultSite))}
  }
  return <>
   <Card title={editingId?'Editar área física':'Nueva área física'} subtitle="El espacio es único; sus capacidades pueden ser exclusivas, compartidas o cambiar por programación.">
    <form className="form-grid" onSubmit={save}>
-    <Field label="Sede" required><select value={form.siteId} onChange={event=>setForm({...form,siteId:event.target.value})}><option value="">Seleccionar</option>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
+    <Field label="Sede" required><select value={form.siteId} onChange={event=>setForm({...form,siteId:event.target.value})}><option value="">Seleccionar</option>{activeSites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
     <Field label="Nombre" required><input value={form.name} onChange={event=>setForm({...form,name:event.target.value})} placeholder="Sala de procesamiento"/></Field>
     <Field label="Tipo de espacio"><select value={form.type} onChange={event=>setForm({...form,type:event.target.value})}><option>Área operativa</option><option>Nave</option><option>Sala</option><option>Cuarto</option><option>Almacén</option><option>Zona exterior</option><option>Laboratorio</option><option>Otro</option></select></Field>
     <Field label="Unidad"><select value={form.dimensionUnit} onChange={event=>setForm({...form,dimensionUnit:event.target.value})}><option value="m">Metros</option><option value="cm">Centímetros</option></select></Field>
@@ -45,6 +58,6 @@ export default function FacilityAreaManager({state,update}){
     <div className="form-actions"><button className="button primary">{editingId?'Guardar área':'Crear área'}</button>{editingId&&<button type="button" className="button secondary" onClick={()=>{setEditingId(null);setForm(emptyArea(defaultSite))}}>Cancelar</button>}</div>
    </form>
   </Card>
-  <Card title="Áreas configuradas">{grouped.length?grouped.map(({site,areas:siteAreas})=><div className="site-group" key={site.id}><div className="site-group-head"><h4>{site.name}</h4><span>{siteAreas.length} áreas</span></div><div className="house-list">{siteAreas.map(area=><div className="house-list-card" key={area.id}><div><strong>{area.name}</strong><small>{area.type} · {(area.capabilities||[]).join(' · ')}</small></div><span className="tag success">{area.shared||area.capabilities?.length>1?'Compartida':'Exclusiva'}</span><CrudActions onEdit={()=>edit(area)} onDelete={()=>remove(area)}/></div>)}</div></div>):<div className="empty-state"><strong>No hay áreas físicas configuradas</strong><p>Crea áreas para reflejar cultivo, postcosecha, almacenamiento y espacios compartidos.</p></div>}</Card>
+  <Card title="Áreas configuradas">{grouped.length?grouped.map(({site,areas:siteAreas})=><div className="site-group" key={site.id}><div className="site-group-head"><h4>{site.name}</h4><span>{siteAreas.length} áreas</span></div><div className="house-list">{siteAreas.map(area=><div className="house-list-card" key={area.id}><div><strong>{area.name}</strong><small>{area.type} · {(area.capabilities||[]).join(' · ')}</small></div><span className={`tag ${area.active===false?'':'success'}`}>{area.active===false?'Archivada':area.shared||area.capabilities?.length>1?'Compartida':'Exclusiva'}</span><CrudActions onEdit={area.active===false?undefined:()=>edit(area)} onDelete={area.active===false?undefined:()=>archive(area)}/></div>)}</div></div>):<div className="empty-state"><strong>No hay áreas físicas configuradas</strong><p>Crea áreas para reflejar cultivo, postcosecha, almacenamiento y espacios compartidos.</p></div>}</Card>
  </>
 }
