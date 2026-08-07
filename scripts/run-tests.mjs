@@ -46,6 +46,7 @@ if (coverage) {
     "--test-coverage-include=src/**/*.js",
     "--test-coverage-include=src/**/*.jsx",
     "--test-coverage-include=scripts/**/*.mjs",
+    '--test-coverage-exclude=scripts/run-tests.mjs',
   );
 }
 args.push('--test', ...tests);
