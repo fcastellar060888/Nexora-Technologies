@@ -13,7 +13,8 @@
     "audit:static": "node scripts/static-audit.mjs",
     "audit:deps": "npm audit --audit-level=high",
     "test": "node --test tests/*.test.mjs",
-    "check": "npm run audit:static && npm run audit:deps && npm test && npm run build"
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=74 --test-coverage-functions=88 --test-coverage-include='src/**/*.js' --test-coverage-include='src/**/*.jsx' --test-coverage-include='scripts/**/*.mjs' --test tests/*.test.mjs",
+    "check": "npm run audit:static && npm run audit:deps && npm run test:coverage && npm run build"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
