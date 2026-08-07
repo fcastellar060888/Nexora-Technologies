@@ -12,9 +12,10 @@
     "preview": "vite preview",
     "audit:static": "node scripts/static-audit.mjs",
     "audit:deps": "npm audit --audit-level=high",
+    "audit:build": "node scripts/audit-production-build.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:coverage": "node scripts/run-tests.mjs --coverage",
-    "check": "npm run audit:static && npm run audit:deps && npm run test:coverage && npm run build"
+    "check": "npm run audit:static && npm run audit:deps && npm run test:coverage && npm run build && npm run audit:build"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
