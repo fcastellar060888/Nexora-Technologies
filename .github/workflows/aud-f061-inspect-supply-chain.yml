@@ -1,0 +1,33 @@
+name: AUD-F061 Inspect Supply Chain
+
+on:
+  pull_request:
+    branches:
+      - foundation/event-bus-core
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Clean install
+        run: npm ci
+      - name: Direct dependency versions
+        run: npm ls --depth=0
+      - name: Pending install scripts
+        run: npm approve-scripts --allow-scripts-pending || true
+      - name: Dependency audit report
+        run: npm audit --json || true
+      - name: High severity gate probe
+        run: npm audit --audit-level=high
