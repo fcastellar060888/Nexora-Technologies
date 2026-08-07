@@ -1,0 +1,53 @@
+name: AUD-F059 Generate Lockfile
+
+on:
+  push:
+    branches:
+      - audit/aud-f059-reproducible-lockfile
+    paths-ignore:
+      - package-lock.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aud-f059-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-and-certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Generate complete npm lockfile
+        run: npm install --package-lock-only --no-audit --no-fund
+
+      - name: Verify reproducible clean install
+        run: npm ci --no-audit --no-fund
+
+      - name: Run full Quality gate
+        run: npm run check
+
+      - name: Commit generated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(audit): add reproducible npm lockfile"
+          git push
