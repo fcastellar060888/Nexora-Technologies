@@ -2,6 +2,8 @@ import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{applyRemoteRecords,compactQueue}from'./syncEngine.js'
 
 const MAX_ATTEMPTS=6
+const PULL_PAGE_SIZE=1000
+const EPOCH='1970-01-01T00:00:00.000Z'
 const now=()=>new Date().toISOString()
 const list=value=>Array.isArray(value)?value:[]
 
@@ -29,6 +31,32 @@ function mapRemote(row){
   updatedAt:row.updated_at,
   deletedAt:row.deleted_at
  }
+}
+
+export function normalizePullCursor(value){
+ if(typeof value==='string')return{updatedAt:value||EPOCH,recordId:''}
+ return{updatedAt:String(value?.updatedAt||EPOCH),recordId:String(value?.recordId||'')}
+}
+
+function quotedFilterValue(value){return`"${String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`}
+
+export function buildPullPath(companyId,cursorValue,{limit=PULL_PAGE_SIZE}={}){
+ const cursor=normalizePullCursor(cursorValue)
+ const boundary=`(updated_at.gt.${quotedFilterValue(cursor.updatedAt)},and(updated_at.eq.${quotedFilterValue(cursor.updatedAt)},record_id.gt.${quotedFilterValue(cursor.recordId)}))`
+ const params=new URLSearchParams()
+ params.set('organization_id',`eq.${companyId}`)
+ params.set('or',boundary)
+ params.set('select','organization_id,collection,record_id,payload,version,updated_at,deleted_at')
+ params.set('order','updated_at.asc,record_id.asc')
+ params.set('limit',String(limit))
+ return`/rest/v1/erp_records?${params.toString()}`
+}
+
+export function advancePullCursor(cursorValue,records=[]){
+ const cursor=normalizePullCursor(cursorValue)
+ if(!records.length)return cursor
+ const last=records.at(-1)
+ return{updatedAt:String(last.updatedAt||cursor.updatedAt),recordId:String(last.recordId||cursor.recordId)}
 }
 
 async function pushOne(entry){
@@ -80,17 +108,22 @@ export async function pushPending(state,companyId=state.currentContext?.companyI
 }
 
 export async function pullRemote(state,companyId){
- const cursor=state.syncMeta?.cursorByCompany?.[companyId]||'1970-01-01T00:00:00.000Z'
- const path=`/rest/v1/erp_records?organization_id=eq.${encodeURIComponent(companyId)}&updated_at=gt.${encodeURIComponent(cursor)}&select=organization_id,collection,record_id,payload,version,updated_at,deleted_at&order=updated_at.asc&limit=1000`
- const rows=await authenticatedRequest(path)
- const records=list(rows).map(mapRemote)
- const foreign=records.filter(record=>record.companyId!==companyId)
- if(foreign.length)throw new Error('La respuesta remota contiene registros de otra empresa')
- const next=applyRemoteRecords(state,records,{companyId})
- const latest=records.reduce((value,row)=>row.updatedAt>value?row.updatedAt:value,cursor)
+ let cursor=normalizePullCursor(state.syncMeta?.cursorByCompany?.[companyId])
+ let next=state
+ let pulled=0
+ while(true){
+  const rows=await authenticatedRequest(buildPullPath(companyId,cursor))
+  const records=list(rows).map(mapRemote)
+  const foreign=records.filter(record=>record.companyId!==companyId)
+  if(foreign.length)throw new Error('La respuesta remota contiene registros de otra empresa')
+  next=applyRemoteRecords(next,records,{companyId})
+  pulled+=records.length
+  cursor=advancePullCursor(cursor,records)
+  if(records.length<PULL_PAGE_SIZE)break
+ }
  return{
-  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:latest}}},
-  pulled:records.length
+  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
+  pulled
  }
 }
 
