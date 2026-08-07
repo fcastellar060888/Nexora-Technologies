@@ -1,38 +1,20 @@
+import { createAuthSessionStorage } from './authSessionStorage.js'
+
 const env=import.meta.env||{}
 const url = env.VITE_SUPABASE_URL
 const anonKey = env.VITE_SUPABASE_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anonKey)
 export const supabaseConfig={url:url||'',anonKey:anonKey||''}
-const TOKEN_KEY = 'canapa_supabase_session'
-const LEGACY_TOKEN_KEY='cannapa_supabase_session'
 const EXPIRY_MARGIN_SECONDS = 60
+const authSession=createAuthSessionStorage()
+let refreshPromise=null
 
 function headers(token='') {
   return {
     apikey: anonKey || '',
     Authorization: `Bearer ${token || anonKey || ''}`,
     'Content-Type': 'application/json',
-  }
-}
-
-function persistSession(session) {
-  localStorage.removeItem(LEGACY_TOKEN_KEY)
-  if (!session) localStorage.removeItem(TOKEN_KEY)
-  else localStorage.setItem(TOKEN_KEY, JSON.stringify(session))
-}
-
-function loadSession() {
-  try {
-    const raw=localStorage.getItem(TOKEN_KEY)||localStorage.getItem(LEGACY_TOKEN_KEY)
-    const session = JSON.parse(raw || 'null')
-    if (!session || typeof session !== 'object') return null
-    if(!localStorage.getItem(TOKEN_KEY))persistSession(session)
-    return session
-  } catch {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(LEGACY_TOKEN_KEY)
-    return null
   }
 }
 
@@ -57,20 +39,30 @@ async function request(path,{method='GET',token='',body,headers:extra={}}={}){
 
 async function refreshSession(session) {
   if (!session?.refresh_token) return null
-  try{
-    const data=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token}})
-    persistSession(data)
-    return data
-  }catch{
-    persistSession(null)
-    return null
-  }
+  if(refreshPromise)return refreshPromise
+  refreshPromise=(async()=>{
+    try{
+      const data=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token}})
+      authSession.save(data)
+      return data
+    }catch{
+      authSession.clear({broadcast:true})
+      return null
+    }finally{
+      refreshPromise=null
+    }
+  })()
+  return refreshPromise
+}
+
+export function subscribeAuthSession(listener){
+  return authSession.subscribe(listener)
 }
 
 export async function signIn(email,password){
   try{
     const data=await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email,password}})
-    persistSession(data)
+    authSession.save(data)
     return{data,error:null}
   }catch(error){return{data:null,error}}
 }
@@ -80,14 +72,14 @@ export async function requestPasswordReset(email,redirectTo=window.location.orig
 }
 
 export async function signOut(){
-  const session=loadSession()
+  const session=authSession.load()
   try{if(session?.access_token&&supabaseEnabled)await request('/auth/v1/logout',{method:'POST',token:session.access_token})}
-  catch{ /* La sesión local debe cerrarse aunque falle la red. */ }
-  finally{persistSession(null)}
+  catch{ /* El cierre local y entre pestañas prevalece aunque falle la red. */ }
+  finally{authSession.clear({broadcast:true})}
 }
 
 export async function getSession(){
-  const session=loadSession()
+  const session=authSession.load()
   if(!session)return{data:{session:null}}
   if(!isExpired(session))return{data:{session}}
   return{data:{session:await refreshSession(session)}}
