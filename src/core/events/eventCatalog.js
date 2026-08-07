@@ -1,10 +1,10 @@
 export const DomainEvents=Object.freeze({
  COMPANY_CREATED:'organization.company.created',
  COMPANY_UPDATED:'organization.company.updated',
- COMPANY_DELETED:'organization.company.deleted',
+ COMPANY_ARCHIVED:'organization.company.archived',
  SITE_CREATED:'organization.site.created',
  SITE_UPDATED:'organization.site.updated',
- SITE_DELETED:'organization.site.deleted',
+ SITE_ARCHIVED:'organization.site.archived',
  USER_CREATED:'identity.user.created',
  USER_ACTIVATED:'identity.user.activated',
  USER_DEACTIVATED:'identity.user.deactivated',
