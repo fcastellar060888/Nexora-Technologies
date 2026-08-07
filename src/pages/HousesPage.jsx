@@ -2,6 +2,7 @@ import{useState}from'react'
 import Card from'../components/Card'
 import CrudActions from'../components/CrudActions'
 import FacilityAreaManager from'../components/FacilityAreaManager.jsx'
+import PropagationBankManager from'../components/PropagationBankManager.jsx'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
@@ -64,7 +65,7 @@ export default function HousesPage(){
  const substrateLiters=previewPlants*(Number(bed.containerVolumeLiters)||0)
 
  return <>
-  <PageHeader title="Infraestructura, naves y camas" subtitle="Modela áreas exclusivas o compartidas y configura capacidad, contenedores y medio de cultivo."/>
+  <PageHeader title="Infraestructura, naves, camas y bancos" subtitle="Configura la estructura física del cultivo. El mapa unificado la representa como resumen operativo, sin crear ni mover infraestructura."/>
   <FacilityAreaManager state={state} update={update}/>
   {!activeSites.length?<Card title="Primero crea una sede activa"><div className="empty-state"><strong>No es posible registrar naves todavía</strong><p>Una nave debe pertenecer a una sede activa.</p></div></Card>:<Card title={editingId?'Editar nave':'Nueva nave'}>
    <form className="form-grid compact-form" onSubmit={save}>
@@ -92,5 +93,6 @@ export default function HousesPage(){
    </form>
   </Card>}
   <Card title="Naves por sede">{state.sites.map(site=>{const houses=state.houses.filter(h=>h.siteId===site.id);if(!houses.length)return null;return <div className="site-group" key={site.id}><div className="site-group-head"><h4>{site.name}</h4><span>{houses.length} naves</span></div><div className="house-list">{houses.map(h=>{const beds=state.beds.filter(b=>b.houseId===h.id),plants=state.plantPositions.filter(p=>beds.some(b=>b.id===p.bedId)),activePlants=plants.filter(p=>p.active).length,open=state.findings.filter(f=>plants.some(p=>p.id===f.plantPositionId)&&!['Resuelto','Falso positivo'].includes(f.status)).length,area=areaSquareMeters(h.length,h.width,h.dimensionUnit),profiles=[...new Set(beds.map(b=>`${b.containerType||'Matera'} ${b.containerVolumeLiters||10} L · ${b.growingMedium||'Sin medio'}`))],facilityArea=(state.facilityAreas||[]).find(item=>item.id===h.areaId);return <div className="house-list-card" key={h.id}><div><strong>{h.name}</strong><small>{facilityArea?.name||'Sin área asignada'} · {beds.length} camas · {activePlants} plantas · {formatArea(area)} · {formatDensity(plantDensity(activePlants,area))}</small><small>{profiles.join(' | ')}</small></div><span className={`tag ${h.active===false?'':open?'danger-tag':'success'}`}>{h.active===false?'Archivada':`${open} hallazgos`}</span><CrudActions onEdit={h.active===false?undefined:()=>{setEditingId(h.id);setHouse({siteId:h.siteId,areaId:h.areaId||'',name:h.name,notes:h.notes||'',dimensionUnit:h.dimensionUnit||'m',length:h.length||0,width:h.width||0,height:h.height||0})}} onDelete={h.active===false?undefined:()=>archive(h)}/></div>})}</div></div>})}</Card>
+  <PropagationBankManager state={state} update={update}/>
  </>
 }
