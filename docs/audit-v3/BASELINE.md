@@ -39,6 +39,7 @@ No historical finding is inherited as Closed without fresh verification against 
 | AUD3-F008 | P0 | Remote bootstrap / Ledger | PostgreSQL bootstrap treats `operationalLedgerEntries` as a generic operational collection even though no matching generic `erp_records` authority exists, so authoritative hydration can replace the active Ledger partition with an empty collection. | Fixed |
 | AUD3-F009 | P1 | Tenant isolation / cache | Segmented cache ownership resolution ignores `event.context.organizationId`. Ledger entries therefore look unowned and can be copied into every active-company cache instead of remaining in their organization partition. | Fixed |
 | AUD3-F010 | P1 | Quality / test discovery | The recursive test runner only discovers `.test.mjs`, while the repository still contains active `.test.js` suites such as `remoteBootstrap.test.js`; those tests can silently fall outside Quality and coverage. | Fixed |
+| AUD3-F011 | P0 | Ledger outbox / concurrent sync | A shallow `syncMeta` commit can overwrite `ledgerOutboxByCompany` with the processed snapshot and silently remove eventIds appended while synchronization is in flight. A newly generated canonical event can therefore disappear from the upload outbox before reaching PostgreSQL. | Fixed |
 
 ## AUD3-F001 evidence chain
 
@@ -56,15 +57,16 @@ No historical finding is inherited as Closed without fresh verification against 
 - Server-side append RPC with membership validation, per-organization row lock and idempotency by immutable `eventId` content.
 - RLS read policy and no direct authenticated insert/update/delete grants.
 - Database trigger rejects updates and deletes.
-- Client `operationalLedgerSync` uploads local entries after the last confirmed server cursor, then pulls canonical entries ordered by server sequence.
+- `OperationalLedgerBridge` records every newly appended local eventId in `syncMeta.ledgerOutboxByCompany`; remote `reconcileMany()` remains silent and therefore does not contaminate the outbox.
+- Client `operationalLedgerSync` uploads exactly the eventIds present in that explicit outbox, independent of the device-local numeric sequence, then pulls canonical entries ordered by server sequence.
+- Successful confirmation removes the eventId from the outbox; an interrupted post-append pull leaves the original local state/outbox intact so retry is idempotent by eventId.
 - Ledger synchronization runs before mutable `erp_records` synchronization; a Ledger failure prevents the mutable sync phase from starting.
-- Retry after an uncertain network outcome is safe because the RPC returns the existing entry when the same `eventId` and content already exist.
 
 ### Remaining verification before closure
 
 - Run adversarial multi-device tests.
 - Run complete Quality Gate with `.test.js` and `.test.mjs` discovery.
-- Re-audit database/client ordering, retry and tenant boundaries independently.
+- Re-audit database/client ordering, retry, concurrent sync and tenant boundaries independently.
 
 ## AUD3-F007 evidence chain and correction
 
@@ -72,7 +74,7 @@ No historical finding is inherited as Closed without fresh verification against 
 - Old `lightweightCache` capped generic company collections at 1,500 records.
 - Old cache ordering ignored Ledger `recordedAt` and nested `event.occurredAt`.
 - Cache ownership now reads nested Ledger organization identity.
-- Ledger cache now keeps a 10,000-entry confirmed window plus every entry whose local sequence is above the last server-confirmed Ledger cursor; unconfirmed events are never silently evicted.
+- Ledger cache now keeps a 10,000-entry confirmed window plus every entry whose eventId is still present in the explicit Ledger outbox; pending events are never inferred from local sequence and are never silently evicted.
 
 ## AUD3-F008 correction
 
@@ -86,10 +88,19 @@ Segmented cache ownership now includes `record.event.context.organizationId`; cr
 
 The recursive test runner now discovers both `tests/**/*.test.mjs` and `tests/**/*.test.js`. Existing `.test.js` suites become natural sentinels proving that the extension is actually included.
 
+## AUD3-F011 evidence chain and correction
+
+- `commitIncrementalSyncResult()` previously merged `syncMeta` shallowly.
+- During an in-flight sync, the current store can receive a new Ledger append and therefore a new outbox eventId not present in the initial snapshot.
+- The processed sync result can legitimately remove eventIds it confirmed remotely.
+- The corrected merge computes the resulting outbox as `processed retained IDs + current IDs that did not exist at sync start`, preserving concurrent appends while still removing confirmed IDs.
+- Cursor maps are merged per company instead of replacing the whole nested object.
+- A dedicated concurrency regression test covers confirmation of event A while event B is appended during the same synchronization window.
+
 ## Counts
 
 - Open: 5
 - Fixing: 0
-- Fixed: 5
+- Fixed: 6
 - Verified: 0
 - Closed: 0
