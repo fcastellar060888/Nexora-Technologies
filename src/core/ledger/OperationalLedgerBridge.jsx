@@ -47,19 +47,15 @@ export default function OperationalLedgerBridge(){
  },[state.operationalLedgerEntries,update,ledger,companyId])
 
  useEffect(()=>{
-  const persist=ledger.subscribe(()=>{
+  const persist=ledger.subscribe(entry=>{
    update(current=>{
-    const foreign=(current.operationalLedgerEntries||[]).filter(entry=>entryOrganizationId(entry)!==companyId)
+    const foreign=(current.operationalLedgerEntries||[]).filter(item=>entryOrganizationId(item)!==companyId)
     const canonical=ledger.find({organizationId:companyId,order:'asc',limit:10000})
-    return{...current,operationalLedgerEntries:[...foreign,...canonical]}
+    const withLedger={...current,operationalLedgerEntries:[...foreign,...canonical]}
+    return appendOutboxId(withLedger,companyId,eventIdOf(entry))
    },{sync:false,audit:false})
   })
-  const disconnect=connectLedgerToEventBus(ledger,bus,{
-   onAppend:entry=>{
-    const eventId=eventIdOf(entry)
-    update(current=>appendOutboxId(current,companyId,eventId),{sync:false,audit:false})
-   }
-  })
+  const disconnect=connectLedgerToEventBus(ledger,bus)
   return()=>{disconnect();persist()}
  },[update,ledger,bus,companyId])
 
