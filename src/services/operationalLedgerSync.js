@@ -10,18 +10,30 @@ const sequence=value=>{
 }
 const entryOrganizationId=entry=>text(entry?.event?.context?.organizationId)
 const eventIdOf=entry=>text(entry?.event?.eventId||entry?.id)
+const uniqueIds=value=>[...new Set(list(value).map(text).filter(Boolean))]
 
 export function operationalLedgerCursor(state,companyId=state?.currentContext?.companyId||''){
  const value=Number(state?.syncMeta?.ledgerCursorByCompany?.[companyId]||0)
  return Number.isSafeInteger(value)&&value>=0?value:0
 }
 
+export function operationalLedgerOutbox(state,companyId=state?.currentContext?.companyId||''){
+ if(!companyId)return[]
+ return uniqueIds(state?.syncMeta?.ledgerOutboxByCompany?.[companyId])
+}
+
 export function pendingOperationalLedgerEntries(state,companyId=state?.currentContext?.companyId||''){
  if(!companyId)return[]
- const cursor=operationalLedgerCursor(state,companyId)
- return list(state?.operationalLedgerEntries)
-  .filter(entry=>entryOrganizationId(entry)===companyId&&Number(entry?.sequence||0)>cursor)
-  .sort((a,b)=>Number(a.sequence)-Number(b.sequence)||String(a.recordedAt||'').localeCompare(String(b.recordedAt||''))||eventIdOf(a).localeCompare(eventIdOf(b)))
+ const byId=new Map(
+  list(state?.operationalLedgerEntries)
+   .filter(entry=>entryOrganizationId(entry)===companyId)
+   .map(entry=>[eventIdOf(entry),entry])
+ )
+ return operationalLedgerOutbox(state,companyId).map(id=>{
+  const entry=byId.get(id)
+  if(!entry)throw new Error(`La outbox del Operational Ledger referencia un evento local inexistente: ${id}`)
+  return entry
+ })
 }
 
 export function buildOperationalLedgerPullPath(companyId,cursor=0,{limit=PULL_PAGE_SIZE}={}){
@@ -114,14 +126,17 @@ export async function synchronizeOperationalLedger(state,{companyId=state?.curre
  const pulled=await pullRemoteEntries(request,companyId,cursor)
  const incoming=[...confirmed,...pulled]
  const merged=mergeOperationalLedgerPartition(state?.operationalLedgerEntries,incoming,companyId,{replaceCurrent:cursor===0})
- const nextCursor=pulled.reduce((value,entry)=>Math.max(value,entry.sequence),cursor)
+ const nextCursor=incoming.reduce((value,entry)=>Math.max(value,entry.sequence),cursor)
+ const confirmedIds=new Set(confirmed.map(eventIdOf))
+ const remainingOutbox=operationalLedgerOutbox(state,companyId).filter(id=>!confirmedIds.has(id))
  return{
   state:{
    ...state,
    operationalLedgerEntries:merged,
    syncMeta:{
     ...(state?.syncMeta||{}),
-    ledgerCursorByCompany:{...(state?.syncMeta?.ledgerCursorByCompany||{}),[companyId]:nextCursor}
+    ledgerCursorByCompany:{...(state?.syncMeta?.ledgerCursorByCompany||{}),[companyId]:nextCursor},
+    ledgerOutboxByCompany:{...(state?.syncMeta?.ledgerOutboxByCompany||{}),[companyId]:remainingOutbox}
    }
   },
   pushed:pending.length,
