@@ -21,14 +21,21 @@ function ledgerEntry(eventId,aggregateId,sequence){
  return{id:eventId,sequence,recordedAt:'2026-08-07T20:00:01.000Z',event}
 }
 
-function deviceState(entries=[],cursor=0){
- return{currentContext:{companyId:ORG},operationalLedgerEntries:entries,syncMeta:{ledgerCursorByCompany:{[ORG]:cursor}}}
+function deviceState(entries=[],cursor=0,{pending=entries.map(entry=>entry.id)}={}){
+ return{
+  currentContext:{companyId:ORG},operationalLedgerEntries:entries,
+  syncMeta:{ledgerCursorByCompany:{[ORG]:cursor},ledgerOutboxByCompany:{[ORG]:pending}}
+ }
 }
 
-function fakeLedgerServer(){
+function fakeLedgerServer(seed=[]){
  const rows=[]
  const byId=new Map()
  let nextSequence=1
+ for(const item of seed){
+  const row={organization_id:ORG,sequence:nextSequence,event_id:item.event.eventId,event:item.event,recorded_at:item.recordedAt}
+  rows.push(row);byId.set(row.event_id,row);nextSequence++
+ }
  async function request(path,{body}={}){
   if(path==='/rest/v1/rpc/append_operational_ledger_event'){
    assert.equal(body.p_organization_id,ORG)
@@ -63,16 +70,32 @@ test('server sequence resolves two devices that both created local sequence 1',a
 
  const syncedA=await synchronizeOperationalLedger(deviceA,{request:server.request})
  assert.deepEqual(syncedA.state.operationalLedgerEntries.map(item=>[item.id,item.sequence]),[['event-a',1]])
+ assert.deepEqual(syncedA.state.syncMeta.ledgerOutboxByCompany[ORG],[])
  assert.equal(syncedA.cursor,1)
 
  const syncedB=await synchronizeOperationalLedger(deviceB,{request:server.request})
  assert.deepEqual(syncedB.state.operationalLedgerEntries.map(item=>[item.id,item.sequence]),[['event-a',1],['event-b',2]])
+ assert.deepEqual(syncedB.state.syncMeta.ledgerOutboxByCompany[ORG],[])
  assert.equal(syncedB.cursor,2)
 
  const reconciledA=await synchronizeOperationalLedger(syncedA.state,{request:server.request})
  assert.deepEqual(reconciledA.state.operationalLedgerEntries.map(item=>[item.id,item.sequence]),[['event-a',1],['event-b',2]])
  assert.equal(reconciledA.cursor,2)
  assert.equal(server.rows.length,2)
+})
+
+test('outbox uploads a new local event even when its local sequence is below the remote cursor',async()=>{
+ const historical=Array.from({length:5},(_,index)=>ledgerEntry(`remote-${index+1}`,`plant-${index+1}`,index+1))
+ const server=fakeLedgerServer(historical)
+ const local=ledgerEntry('offline-new','plant-offline',1)
+ const state=deviceState([local],5,{pending:['offline-new']})
+ const synced=await synchronizeOperationalLedger(state,{request:server.request})
+ assert.equal(server.rows.length,6)
+ assert.equal(server.rows.at(-1).event_id,'offline-new')
+ assert.equal(server.rows.at(-1).sequence,6)
+ assert.equal(synced.cursor,6)
+ assert.deepEqual(synced.state.syncMeta.ledgerOutboxByCompany[ORG],[])
+ assert.equal(synced.state.operationalLedgerEntries.find(item=>item.id==='offline-new').sequence,6)
 })
 
 test('retry after append succeeds but pull fails is idempotent by eventId',async()=>{
@@ -84,22 +107,32 @@ test('retry after append succeeds but pull fails is idempotent by eventId',async
  }
  await assert.rejects(()=>synchronizeOperationalLedger(initial,{request:flaky}),/network interrupted/)
  assert.equal(server.rows.length,1)
+ assert.deepEqual(initial.syncMeta.ledgerOutboxByCompany[ORG],['event-retry'])
  const retry=await synchronizeOperationalLedger(initial,{request:server.request})
  assert.equal(server.rows.length,1)
  assert.deepEqual(retry.state.operationalLedgerEntries.map(item=>[item.id,item.sequence]),[['event-retry',1]])
+ assert.deepEqual(retry.state.syncMeta.ledgerOutboxByCompany[ORG],[])
 })
 
-test('local cache never evicts unconfirmed Ledger entries when confirmed window is compacted',()=>{
+test('missing event referenced by outbox fails closed before remote mutation',async()=>{
+ const server=fakeLedgerServer()
+ const broken=deviceState([],0,{pending:['missing-event']})
+ await assert.rejects(()=>synchronizeOperationalLedger(broken,{request:server.request}),/evento local inexistente/)
+ assert.equal(server.rows.length,0)
+})
+
+test('local cache never evicts outbox Ledger entries when confirmed window is compacted',()=>{
  const entries=Array.from({length:10003},(_,index)=>ledgerEntry(`event-${index+1}`,`plant-${index+1}`,index+1))
  const state={
-  currentContext:{companyId:ORG},syncMeta:{ledgerCursorByCompany:{[ORG]:10001}},
+  currentContext:{companyId:ORG},
+  syncMeta:{ledgerCursorByCompany:{[ORG]:10003},ledgerOutboxByCompany:{[ORG]:['event-1','event-2']}},
   companies:[{id:ORG}],users:[],roles:[],memberships:[],userSessions:[],auditLog:[],syncQueue:[],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],
   operationalLedgerEntries:entries
  }
  const compacted=compactCompanyState(state,ORG).collections.operationalLedgerEntries
  assert.equal(compacted.length,10002)
- assert.equal(compacted[0].sequence,2)
- assert.deepEqual(compacted.slice(-2).map(item=>item.sequence),[10002,10003])
+ assert.deepEqual(compacted.slice(-2).map(item=>item.id),['event-1','event-2'])
+ assert.ok(compacted.some(item=>item.id==='event-10003'))
 })
 
 test('database contract is append-only, organization-scoped and server-sequenced',async()=>{
