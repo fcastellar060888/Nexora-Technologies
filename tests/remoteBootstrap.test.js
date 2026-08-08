@@ -3,6 +3,15 @@ import assert from'node:assert/strict'
 import{groupRemoteRecords,hydrateAuthoritativeState,overlayPendingMutations}from'../src/services/remoteBootstrap.js'
 
 const row=(collection,id,payload,extra={})=>({organization_id:'org-1',collection,record_id:id,payload,version:2,updated_at:'2026-07-31T12:00:00.000Z',deleted_at:null,...extra})
+const ledgerEntry=(id='event-1',sequence=1)=>({
+ id,sequence,recordedAt:'2026-07-31T11:59:00.000Z',
+ event:{
+  eventId:id,name:'production.plant.updated',version:1,
+  aggregate:{type:'plant',id:'plant-1'},
+  context:{organizationId:'org-1',siteId:null,actorId:'user-1'},
+  occurredAt:'2026-07-31T11:58:00.000Z',correlationId:null,causationId:null,payload:{},metadata:{}
+ }
+})
 
 test('groups active PostgreSQL records and ignores tombstones',()=>{
  const grouped=groupRemoteRecords([
@@ -27,6 +36,7 @@ test('hydrates operational data from PostgreSQL while retaining local identity a
   users:[{id:'u1',name:'Administrador',activeSession:true,remoteId:'remote-u1'}],roles:[{id:'r1'}],memberships:[{id:'m1'}],
   syncQueue:[{id:'q1',status:'pending',collection:'sites',recordId:'offline',operation:'upsert',payload:{id:'offline',name:'Sin red'}}],
   syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],userSessions:[],auditLog:[],
+  operationalLedgerEntries:[ledgerEntry()],timelineEntries:[{id:'timeline-1',organizationId:'org-1',occurredAt:'2026-07-31T11:58:00.000Z'}],
   currentContext:{companyId:'org-1'}
  }
  const result=hydrateAuthoritativeState(local,[row('sites','server',{id:'server',name:'Servidor'})],{companyId:'org-1',hydratedAt:'2026-07-31T13:00:00.000Z'})
@@ -34,6 +44,9 @@ test('hydrates operational data from PostgreSQL while retaining local identity a
  assert.deepEqual(result.houses,[])
  assert.equal(result.users[0].activeSession,true)
  assert.equal(result.syncQueue.length,1)
+ assert.equal(result.operationalLedgerEntries.length,1)
+ assert.equal(result.operationalLedgerEntries[0].id,'event-1')
+ assert.equal(result.timelineEntries.length,1)
  assert.equal(result.syncMeta.hydrationSource,'postgres')
  assert.equal(result.syncMeta.hydratedCompanyId,'org-1')
 })
