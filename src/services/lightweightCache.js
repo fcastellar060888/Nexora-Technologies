@@ -16,10 +16,12 @@ function parse(raw,fallback=null){try{return raw?JSON.parse(raw):fallback}catch{
 function companyKey(companyId){return`${COMPANY_PREFIX}${companyId}`}
 function stamp(record){return Date.parse(record?.updatedAt||record?.createdAt||record?.recordedAt||record?.date||record?.event?.occurredAt||0)||0}
 function bounded(records,max=MAX_COLLECTION_RECORDS){return[...list(records)].sort((a,b)=>stamp(b)-stamp(a)).slice(0,max)}
-function boundedLedger(records,max=MAX_LEDGER_RECORDS,confirmedThrough=0){
+function eventIdOf(entry){return String(entry?.event?.eventId||entry?.id||'').trim()}
+function boundedLedger(records,max=MAX_LEDGER_RECORDS,pendingIds=[]){
+ const pending=new Set(list(pendingIds).map(value=>String(value||'').trim()).filter(Boolean))
  const ordered=[...list(records)].sort((a,b)=>Number(a?.sequence||0)-Number(b?.sequence||0)||stamp(a)-stamp(b)||String(a?.id||'').localeCompare(String(b?.id||'')))
- const confirmed=ordered.filter(entry=>Number(entry?.sequence||0)<=confirmedThrough).slice(-max)
- const unconfirmed=ordered.filter(entry=>Number(entry?.sequence||0)>confirmedThrough)
+ const confirmed=ordered.filter(entry=>!pending.has(eventIdOf(entry))).slice(-max)
+ const unconfirmed=ordered.filter(entry=>pending.has(eventIdOf(entry)))
  return[...confirmed,...unconfirmed]
 }
 function recordOrganizationId(record){return String(record?._organizationId||record?.companyId||record?.organizationId||record?.event?.context?.organizationId||'')}
@@ -46,14 +48,14 @@ export function compactIdentity(state={}){
 
 export function compactCompanyState(state={},companyId=''){
  const collections={}
- const ledgerCursor=Number(state?.syncMeta?.ledgerCursorByCompany?.[companyId]||0)
+ const ledgerOutbox=state?.syncMeta?.ledgerOutboxByCompany?.[companyId]||[]
  for(const key of cacheCollections(state)){
   if(key==='companies')continue
   const scoped=list(state[key]).filter(record=>{
    const owner=recordOrganizationId(record)
    return!owner||owner===companyId
   })
-  collections[key]=key==='operationalLedgerEntries'?boundedLedger(scoped,MAX_LEDGER_RECORDS,ledgerCursor):bounded(scoped)
+  collections[key]=key==='operationalLedgerEntries'?boundedLedger(scoped,MAX_LEDGER_RECORDS,ledgerOutbox):bounded(scoped)
  }
  return{companyId,cachedAt:new Date().toISOString(),collections}
 }
