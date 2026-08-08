@@ -27,6 +27,8 @@ export function commitIncrementalSyncResult(initialState,currentState,processedS
   memberships:list(currentState.memberships),
   userSessions:list(currentState.userSessions),
   auditLog:list(currentState.auditLog),
+  timelineEntries:mergeById(processedState.timelineEntries,currentState.timelineEntries,initialState.timelineEntries),
+  operationalLedgerEntries:mergeById(processedState.operationalLedgerEntries,currentState.operationalLedgerEntries,initialState.operationalLedgerEntries),
   syncQueue:mergeById(processedState.syncQueue,currentState.syncQueue,initialState.syncQueue),
   syncConflicts:mergeById(processedState.syncConflicts,currentState.syncConflicts,initialState.syncConflicts),
   syncHealthEvents:list(currentState.syncHealthEvents),
