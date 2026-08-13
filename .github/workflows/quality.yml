@@ -56,6 +56,27 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Generate lockfile remediation candidate
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          cp package-lock.json package-lock.before.json
+          npm audit fix --package-lock-only --ignore-scripts
+          git diff --no-index -- package-lock.before.json package-lock.json > package-lock-remediation.diff
+          exit 0
+
+      - name: Upload lockfile remediation candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-lock-remediation
+          path: |
+            package-lock.json
+            package-lock-remediation.diff
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Environment contract audit
         run: npm run audit:env
 
