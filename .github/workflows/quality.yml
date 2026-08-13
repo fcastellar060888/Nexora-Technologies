@@ -35,5 +35,23 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci --no-fund
 
-      - name: Static audit, tests and build
-        run: npm run check
+      - name: Static audit
+        run: npm run audit:static
+
+      - name: Dependency audit
+        run: npm run audit:deps
+
+      - name: Environment contract audit
+        run: npm run audit:env
+
+      - name: Authentication and session audit
+        run: npm run audit:auth
+
+      - name: Tests with coverage gate
+        run: npm run test:coverage
+
+      - name: Production build
+        run: npm run build:production
+
+      - name: Production artifact audit
+        run: npm run audit:build
