@@ -21,8 +21,10 @@ test('naves y camas permiten asignar un área física sin romper históricos',as
  assert.match(source,/state\.facilityAreas\|\|\[\]/)
 })
 
-test('un área con espacios vinculados no puede eliminarse',async()=>{
+test('un área con espacios vinculados conserva el guard de archivado',async()=>{
  const source=await readFile(new URL('../src/components/FacilityAreaManager.jsx',import.meta.url),'utf8')
- assert.match(source,/item\.areaId===area\.id/)
- assert.match(source,/No puedes eliminar el área/)
+ assert.match(source,/const linked=/)
+ assert.match(source,/item\.areaId===area\.id&&item\.active!==false/)
+ assert.match(source,/if\(linked\)return alert/)
+ assert.match(source,/FACILITY_AREA_ARCHIVED/)
 })
