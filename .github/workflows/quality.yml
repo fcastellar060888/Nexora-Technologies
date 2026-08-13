@@ -10,7 +10,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
@@ -39,56 +39,7 @@ jobs:
         run: npm run audit:static
 
       - name: Dependency audit
-        shell: bash
-        run: |
-          set +e
-          npm audit --audit-level=high --json > npm-audit.json
-          status=$?
-          cat npm-audit.json
-          exit $status
-
-      - name: Upload dependency audit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-audit-report
-          path: npm-audit.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Generate lockfile remediation candidate
-        if: failure()
-        shell: bash
-        run: |
-          set +e
-          cp package-lock.json package-lock.before.json
-          npm audit fix --package-lock-only --ignore-scripts
-          git diff --no-index -- package-lock.before.json package-lock.json > package-lock-remediation.diff
-          exit 0
-
-      - name: Commit verified lockfile remediation on audit branch
-        if: failure() && github.event_name == 'push' && github.ref_name == 'audit/v3-foundation-m0'
-        shell: bash
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package-lock.json
-          git commit -m 'fix(deps): remediate high-severity npm advisory'
-          git push origin HEAD:audit/v3-foundation-m0
-
-      - name: Upload lockfile remediation candidate
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-lock-remediation
-          path: |
-            package-lock.json
-            package-lock-remediation.diff
-          if-no-files-found: ignore
-          retention-days: 7
+        run: npm run audit:deps
 
       - name: Environment contract audit
         run: npm run audit:env
