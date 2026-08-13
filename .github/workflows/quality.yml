@@ -47,7 +47,10 @@ jobs:
       - name: Authentication and session audit
         run: npm run audit:auth
 
-      - name: Tests with coverage gate
+      - name: Functional tests
+        run: npm test
+
+      - name: Coverage gate
         run: npm run test:coverage
 
       - name: Production build
