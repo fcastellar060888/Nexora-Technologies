@@ -110,7 +110,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  return migrateMaterialPlantIdentity(migrateState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId},
-  syncQueue:list(localState.syncQueue),
+  syncQueue:list(localState.syncQueue).map(item=>item?.companyId?item:{...item,companyId}),
   syncConflicts:list(localState.syncConflicts),
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
