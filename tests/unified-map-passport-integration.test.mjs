@@ -18,7 +18,8 @@ test('el mapa abre plantas productivas con el mismo Passport universal de la fic
 
 test('la integración conserva el panel contextual independiente para esquejes',async()=>{
  const map=await readFile('src/pages/UnifiedCultivationMapPage.jsx','utf8')
- assert.match(map,/selectedPlant\.kind==='plant'\?/) 
- assert.match(map,/propagationUnitId===plant\.id/)
- assert.match(map,/aria-label="Información del esqueje"/)
+ const cutting=await readFile('src/components/UnifiedMapCuttingDrawer.jsx','utf8')
+ assert.match(map,/selectedPlant\.kind==='plant'\?/)
+ assert.match(cutting,/propagationUnitId===plant\.id/)
+ assert.match(cutting,/aria-label="Información del esqueje"/)
 })
