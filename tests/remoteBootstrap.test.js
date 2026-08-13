@@ -24,10 +24,10 @@ test('groups active PostgreSQL records and ignores tombstones',()=>{
 })
 
 test('pending local mutations are preserved over authoritative records',()=>{
- const local={syncQueue:[{id:'m1',status:'pending',collection:'sites',recordId:'s1',operation:'upsert',payload:{id:'s1',name:'Cambio offline'}},{id:'m2',status:'pending',collection:'sites',recordId:'s2',operation:'delete'}]}
+ const local={currentContext:{companyId:'org-1'},syncQueue:[{id:'m1',status:'pending',collection:'sites',recordId:'s1',operation:'upsert',payload:{id:'s1',name:'Cambio offline'}},{id:'m2',status:'pending',collection:'sites',recordId:'s2',operation:'delete'}]}
  const base={sites:[{id:'s1',name:'Servidor'},{id:'s2',name:'Eliminar'}]}
  const result=overlayPendingMutations(local,base)
- assert.deepEqual(result.sites,[{id:'s1',name:'Cambio offline'}])
+ assert.deepEqual(result.sites,[{id:'s1',name:'Cambio offline',_organizationId:'org-1'}])
 })
 
 test('hydrates operational data from PostgreSQL while retaining local identity and queue',()=>{
@@ -44,6 +44,7 @@ test('hydrates operational data from PostgreSQL while retaining local identity a
  assert.deepEqual(result.houses,[])
  assert.equal(result.users[0].activeSession,true)
  assert.equal(result.syncQueue.length,1)
+ assert.equal(result.syncQueue[0].companyId,'org-1')
  assert.equal(result.operationalLedgerEntries.length,1)
  assert.equal(result.operationalLedgerEntries[0].id,'event-1')
  assert.equal(result.timelineEntries.length,1)
