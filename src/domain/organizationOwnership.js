@@ -26,13 +26,20 @@ export function organizationForCandidates(state,organizationIds=[]){
 
 export function resolveOrganizationId(state,{record=null,siteId=null,label='objeto'}={}){
  const explicit=explicitOrganizationId(record)
+ const active=text(state?.currentContext?.companyId)
  const resolvedSiteId=text(siteId||record?.siteId)
  const siteCandidates=resolvedSiteId?list(state?.sites).filter(item=>item?.id===resolvedSiteId):[]
  const siteOwners=[...new Set(siteCandidates.map(explicitOrganizationId).filter(Boolean))]
- if(explicit&&siteOwners.length===1&&siteOwners[0]!==explicit)throw new Error(`Ownership organizacional contradictorio para ${label}.`)
- if(explicit)return explicit
+ if(explicit){
+  if(siteOwners.length&&!siteOwners.includes(explicit))throw new Error(`Ownership organizacional contradictorio para ${label}.`)
+  return explicit
+ }
  if(siteOwners.length===1)return siteOwners[0]
- if(siteOwners.length>1)throw new Error(`La sede de ${label} es ambigua entre organizaciones.`)
+ if(siteOwners.length>1){
+  if(active&&siteOwners.includes(active))return active
+  throw new Error(`La sede de ${label} es ambigua entre organizaciones.`)
+ }
+ if(active)return active
  const companies=list(state?.companies)
  if(companies.length===1)return text(companies[0]?.id)
  if(companies.length===0)return'local-installation'
