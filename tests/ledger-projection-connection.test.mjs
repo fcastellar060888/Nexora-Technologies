@@ -2,12 +2,12 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{createDomainEvent}from'../src/core/events/index.js'
 import{createMemoryLedgerRepository}from'../src/core/ledger/index.js'
-import{createProjector,createProjectionEngine,connectLedgerToProjectionEngine}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine,connectLedgerToProjectionEngine}from'../src/core/projectionEngine/index.js'
 
 const event=id=>createDomainEvent({name:'cultivation.plant.updated',aggregateType:'cultivation.plant',aggregateId:id,organizationId:'org-1',eventId:`evt-${id}`})
 
 test('proyecta en orden cada entrada nueva del Ledger y permite flush',async()=>{
- const ledger=createMemoryLedgerRepository(),engine=createProjectionEngine(),calls=[]
+ const ledger=createMemoryLedgerRepository(),engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'audit',supports:()=>true,project:(value,context)=>calls.push([value.eventId,context.ledgerSequence])}))
  const connection=connectLedgerToProjectionEngine(ledger,engine)
  ledger.append(event('1'))
@@ -22,7 +22,7 @@ test('proyecta en orden cada entrada nueva del Ledger y permite flush',async()=>
 })
 
 test('disconnect es reversible y no afecta la escritura del Ledger',async()=>{
- const ledger=createMemoryLedgerRepository(),engine=createProjectionEngine(),calls=[]
+ const ledger=createMemoryLedgerRepository(),engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'audit',supports:()=>true,project:value=>calls.push(value.eventId)}))
  const connection=connectLedgerToProjectionEngine(ledger,engine)
  assert.equal(connection.disconnect(),true)
@@ -46,8 +46,8 @@ test('un fallo inesperado del motor no bloquea el Ledger y queda observable',asy
  assert.deepEqual(errors,['motor fuera de servicio'])
 })
 
-test('la idempotencia del Projection Engine se conserva frente a eventos repetidos',async()=>{
- const ledger=createMemoryLedgerRepository(),engine=createProjectionEngine(),calls=[]
+test('la idempotencia local del Projection Engine volátil se conserva frente a eventos repetidos',async()=>{
+ const ledger=createMemoryLedgerRepository(),engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'audit',supports:()=>true,project:value=>calls.push(value.eventId)}))
  const connection=connectLedgerToProjectionEngine(ledger,engine)
  const value=event('1')
