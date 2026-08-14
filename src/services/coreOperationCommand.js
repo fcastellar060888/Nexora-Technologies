@@ -10,7 +10,7 @@ function normalizeSpec(input={}){
  if(!aggregateType||!aggregateId)throw new Error('aggregateType y aggregateId son obligatorios.')
  if(!isKnownDomainEvent(completedEventName)||completedEventName===DomainEvents.CORE_OPERATION_REQUESTED)throw new Error('completedEventName no pertenece al catálogo de eventos finales.')
  if(typeof input.apply!=='function')throw new TypeError('apply es obligatorio y debe ser función idempotente.')
- return Object.freeze({commandId,organizationId,siteId,aggregateType,aggregateId,completedEventName,occurredAt:input.occurredAt||new Date().toISOString(),payload:plainObject(input.payload)?input.payload:{},metadata:plainObject(input.metadata)?input.metadata:{},audit:plainObject(input.audit)?input.audit:{},apply:input.apply})
+ return Object.freeze({commandId,organizationId,siteId,aggregateType,aggregateId,completedEventName,occurredAt:input.occurredAt||new Date().toISOString(),payload:plainObject(input.payload)?input.payload:{},metadata:plainObject(input.metadata)?input.metadata:{},apply:input.apply})
 }
 
 function eventSpec(spec,phase){
@@ -35,7 +35,7 @@ export async function executeCoreOperationCommand(input,{publishEvent,commit}={}
  if(typeof commit!=='function')throw new TypeError('commit es obligatorio.')
  const spec=normalizeSpec(input)
  await publishEvent(eventSpec(spec,'requested'))
- commit(current=>spec.apply(current),spec.audit)
+ commit(current=>spec.apply(current),{audit:false})
  await publishEvent(eventSpec(spec,'completed'))
  return Object.freeze({ok:true,commandId:spec.commandId,aggregateId:spec.aggregateId})
 }
