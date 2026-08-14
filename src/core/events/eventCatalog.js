@@ -1,4 +1,5 @@
 export const DomainEvents=Object.freeze({
+ CORE_OPERATION_REQUESTED:'core.operation.requested',
  COMPANY_CREATED:'organization.company.created',
  COMPANY_UPDATED:'organization.company.updated',
  COMPANY_ARCHIVED:'organization.company.archived',
