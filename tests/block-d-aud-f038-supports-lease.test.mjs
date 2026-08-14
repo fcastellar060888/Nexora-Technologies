@@ -1,12 +1,12 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createProjector,createProjectionEngine}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine}from'../src/core/projectionEngine/index.js'
 
 const event=id=>({eventId:id,type:'PlantUpdated'})
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 
 test('AUD-F038: timeout durante supports aborta la señal y nunca inicia project',async()=>{
- const engine=createProjectionEngine();let observedAbort=false,projectCalls=0
+ const engine=createVolatileProjectionEngine();let observedAbort=false,projectCalls=0
  engine.registerProjector(createProjector({
   id:'slow-supports',
   policy:{timeoutMs:5},
@@ -22,7 +22,7 @@ test('AUD-F038: timeout durante supports aborta la señal y nunca inicia project
 })
 
 test('AUD-F038: una excepción de supports usa la política de reintentos completa',async()=>{
- const engine=createProjectionEngine(),attempts=[];let projectCalls=0
+ const engine=createVolatileProjectionEngine(),attempts=[];let projectCalls=0
  engine.registerProjector(createProjector({
   id:'retry-supports',
   policy:{maxAttempts:3},
@@ -38,7 +38,7 @@ test('AUD-F038: una excepción de supports usa la política de reintentos comple
 })
 
 test('AUD-F038: supports y project consumen un único presupuesto de timeout',async()=>{
- const engine=createProjectionEngine();let lateCommitError=null
+ const engine=createVolatileProjectionEngine();let lateCommitError=null
  engine.registerProjector(createProjector({
   id:'shared-budget',
   policy:{timeoutMs:30},
@@ -53,7 +53,7 @@ test('AUD-F038: supports y project consumen un único presupuesto de timeout',as
 })
 
 test('AUD-F038: supports false es una decisión normal y no se reintenta',async()=>{
- const engine=createProjectionEngine();let supportsCalls=0,projectCalls=0
+ const engine=createVolatileProjectionEngine();let supportsCalls=0,projectCalls=0
  engine.registerProjector(createProjector({
   id:'unsupported',
   policy:{maxAttempts:3},
