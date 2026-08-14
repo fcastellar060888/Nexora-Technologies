@@ -27,6 +27,7 @@ export function organizationForCandidates(state,organizationIds=[]){
 export function resolveOrganizationId(state,{record=null,siteId=null,label='objeto'}={}){
  const explicit=explicitOrganizationId(record)
  const active=text(state?.currentContext?.companyId)
+ const companies=list(state?.companies)
  const resolvedSiteId=text(siteId||record?.siteId)
  const siteCandidates=resolvedSiteId?list(state?.sites).filter(item=>item?.id===resolvedSiteId):[]
  const siteOwners=[...new Set(siteCandidates.map(explicitOrganizationId).filter(Boolean))]
@@ -39,11 +40,10 @@ export function resolveOrganizationId(state,{record=null,siteId=null,label='obje
   if(active&&siteOwners.includes(active))return active
   throw new Error(`La sede de ${label} es ambigua entre organizaciones.`)
  }
+ if(companies.length>1)throw new Error(`No se puede determinar organizationId de ${label} en un estado multiempresa.`)
  if(active)return active
- const companies=list(state?.companies)
  if(companies.length===1)return text(companies[0]?.id)
- if(companies.length===0)return'local-installation'
- throw new Error(`No se puede determinar organizationId de ${label} en un estado multiempresa.`)
+ return'local-installation'
 }
 
 export function assertActiveOrganization(state,organizationId,{label='objeto'}={}){
