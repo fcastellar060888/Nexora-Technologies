@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createProjector,createProjectionEngine}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine}from'../src/core/projectionEngine/index.js'
 
 const event={eventId:'evt-1',type:'PlantUpdated'}
 
@@ -13,7 +13,7 @@ test('valida el contrato mínimo de un proyector',()=>{
 })
 
 test('ordena por dependencias y luego por prioridad e id',async()=>{
- const engine=createProjectionEngine(),calls=[]
+ const engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'timeline',priority:10,supports:()=>true,project:()=>calls.push('timeline')}))
  engine.registerProjector(createProjector({id:'passport',priority:1,dependencies:['timeline'],supports:()=>true,project:()=>calls.push('passport')}))
  engine.registerProjector(createProjector({id:'graph',priority:100,dependencies:['passport'],supports:()=>true,project:()=>calls.push('graph')}))
@@ -23,10 +23,10 @@ test('ordena por dependencias y luego por prioridad e id',async()=>{
 })
 
 test('rechaza dependencias ausentes y ciclos sin alterar parcialmente el registro',()=>{
- const missing=createProjectionEngine()
+ const missing=createVolatileProjectionEngine()
  assert.throws(()=>missing.registerProjector(createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>null})),/Dependencia no registrada/)
  assert.deepEqual(missing.listProjectors(),[])
- const cycle=createProjectionEngine()
+ const cycle=createVolatileProjectionEngine()
  const a=createProjector({id:'a',supports:()=>true,project:()=>null})
  cycle.registerProjector(a)
  cycle.registerProjector(createProjector({id:'b',dependencies:['a'],supports:()=>true,project:()=>null}))
@@ -36,7 +36,7 @@ test('rechaza dependencias ausentes y ciclos sin alterar parcialmente el registr
 })
 
 test('AUD-F035: impide retirar un proyector requerido sin alterar el grafo',()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  const timeline=createProjector({id:'timeline',supports:()=>true,project:()=>null})
  const passport=createProjector({id:'passport',dependencies:['timeline'],supports:()=>true,project:()=>null})
  const graph=createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>null})
@@ -48,7 +48,7 @@ test('AUD-F035: impide retirar un proyector requerido sin alterar el grafo',()=>
 })
 
 test('AUD-F035: permite retirar en orden inverso de dependencias y no deja referencias huérfanas',()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>null}))
  engine.registerProjector(createProjector({id:'passport',dependencies:['timeline'],supports:()=>true,project:()=>null}))
  engine.registerProjector(createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>null}))
@@ -60,7 +60,7 @@ test('AUD-F035: permite retirar en orden inverso de dependencias y no deja refer
 })
 
 test('es idempotente por evento proyector y versión',async()=>{
- const engine=createProjectionEngine(),calls=[]
+ const engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'passport',version:2,supports:()=>true,project:()=>calls.push('run')}))
  const first=await engine.execute(event),second=await engine.execute(event)
  assert.equal(first.results[0].status,'succeeded')
@@ -71,7 +71,7 @@ test('es idempotente por evento proyector y versión',async()=>{
 })
 
 test('omite proyectores que no soportan el evento sin marcarlos procesados',async()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  engine.registerProjector(createProjector({id:'inventory',supports:value=>value.type==='InventoryMoved',project:()=>null}))
  const result=await engine.execute(event)
  assert.equal(result.results[0].status,'skipped')
@@ -80,7 +80,7 @@ test('omite proyectores que no soportan el evento sin marcarlos procesados',asyn
 })
 
 test('una falla bloquea solo sus dependientes y permite continuar ramas independientes',async()=>{
- const engine=createProjectionEngine(),calls=[]
+ const engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>{calls.push('timeline');throw new Error('timeline roto')}}))
  engine.registerProjector(createProjector({id:'passport',dependencies:['timeline'],supports:()=>true,project:()=>calls.push('passport')}))
  engine.registerProjector(createProjector({id:'graph',dependencies:['passport'],supports:()=>true,project:()=>calls.push('graph')}))
@@ -100,7 +100,7 @@ test('una falla bloquea solo sus dependientes y permite continuar ramas independ
 })
 
 test('reintenta hasta éxito sin romper idempotencia',async()=>{
- const engine=createProjectionEngine();let attempts=0
+ const engine=createVolatileProjectionEngine();let attempts=0
  engine.registerProjector(createProjector({id:'retry',supports:()=>true,policy:{maxAttempts:3},project:()=>{attempts++;if(attempts<3)throw new Error('temporal');return'OK'}}))
  const result=await engine.execute({...event,eventId:'evt-retry'})
  assert.equal(result.results[0].status,'succeeded')
@@ -110,7 +110,7 @@ test('reintenta hasta éxito sin romper idempotencia',async()=>{
 })
 
 test('aplica timeout y no marca el proyector como procesado',async()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  engine.registerProjector(createProjector({id:'slow',supports:()=>true,policy:{timeoutMs:5},project:()=>new Promise(resolve=>setTimeout(()=>resolve('late'),30))}))
  const result=await engine.execute({...event,eventId:'evt-timeout'})
  assert.equal(result.results[0].status,'failed')
@@ -119,7 +119,7 @@ test('aplica timeout y no marca el proyector como procesado',async()=>{
 })
 
 test('AUD-F032: el timeout aborta la señal antes de devolver el fallo',async()=>{
- const engine=createProjectionEngine();let observedAbort=false
+ const engine=createVolatileProjectionEngine();let observedAbort=false
  engine.registerProjector(createProjector({id:'abort-aware',supports:()=>true,policy:{timeoutMs:5},project:(_,context)=>new Promise(resolve=>{
   context.signal.addEventListener('abort',()=>{observedAbort=true;resolve('aborted')},{once:true})
  })}))
@@ -130,7 +130,7 @@ test('AUD-F032: el timeout aborta la señal antes de devolver el fallo',async()=
 })
 
 test('AUD-F032: un commit tardío queda invalidado después del timeout',async()=>{
- const engine=createProjectionEngine(),writes=[];let lateError=null
+ const engine=createVolatileProjectionEngine(),writes=[];let lateError=null
  engine.registerProjector(createProjector({id:'late-writer',supports:()=>true,policy:{timeoutMs:5},project:(_,context)=>new Promise(resolve=>setTimeout(()=>{
   try{context.commit(()=>writes.push('corrupt'))}catch(error){lateError=error}
   resolve('late')
@@ -144,7 +144,7 @@ test('AUD-F032: un commit tardío queda invalidado después del timeout',async()
 })
 
 test('continue permite ejecutar dependientes pese al fallo',async()=>{
- const engine=createProjectionEngine(),calls=[]
+ const engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'optional',supports:()=>true,policy:{failStrategy:'continue'},project:()=>{throw new Error('optional failed')}}))
  engine.registerProjector(createProjector({id:'after',dependencies:['optional'],supports:()=>true,project:()=>calls.push('after')}))
  const result=await engine.execute({...event,eventId:'evt-continue'})
@@ -154,7 +154,7 @@ test('continue permite ejecutar dependientes pese al fallo',async()=>{
 })
 
 test('stop-all bloquea toda ejecución posterior',async()=>{
- const engine=createProjectionEngine(),calls=[]
+ const engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'critical',priority:100,supports:()=>true,policy:{failStrategy:'stop-all'},project:()=>{throw new Error('critical')}}))
  engine.registerProjector(createProjector({id:'independent',supports:()=>true,project:()=>calls.push('independent')}))
  const result=await engine.execute({...event,eventId:'evt-stop-all'})
@@ -165,7 +165,7 @@ test('stop-all bloquea toda ejecución posterior',async()=>{
 })
 
 test('expone snapshots inmutables y registro reversible',()=>{
- const engine=createProjectionEngine(),projector=createProjector({id:'timeline',supports:()=>true,project:()=>null})
+ const engine=createVolatileProjectionEngine(),projector=createProjector({id:'timeline',supports:()=>true,project:()=>null})
  engine.registerProjector(projector)
  assert.equal(engine.getProjector('timeline'),projector)
  const snapshot=engine.snapshot()
