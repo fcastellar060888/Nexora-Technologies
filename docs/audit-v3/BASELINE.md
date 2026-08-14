@@ -9,8 +9,10 @@
 - Audited source SHA: `7dcc0e30c7073b71dc8ebae0caafa2f9fb363545`
 - Audit branch: `audit/v3-foundation-m0`
 - Method: Audit → Fix → Test → Quality Gate → Re-Audit → Close
+- Closure code head: `a6c943e7d85b0109a836eeaa14fbb8b0de87ef5b`
+- Closure Quality: workflow `Quality` run `#1477` (`31762778127`) — success
 
-No historical finding is inherited as Closed without fresh verification against the current code and AH-001.
+No historical finding was inherited as Closed. Every closure below was revalidated against the current implementation and the M0 acceptance method.
 
 ## M0 inventory
 
@@ -29,78 +31,154 @@ No historical finding is inherited as Closed without fresh verification against 
 
 | ID | Severity | Area | Finding | Status |
 |---|---:|---|---|---|
-| AUD3-F001 | P0 | Operational Ledger / persistence | Canonical domain-event history is not durably persisted as an organization-wide server authority. Ledger entries are stored through `sync:false`, are absent from `SYNCABLE_COLLECTIONS`, and currently survive through device-local cache. The in-memory Ledger also assigns numeric sequence locally, so blindly syncing entries through generic `erp_records` would create cross-device sequence collisions. | Fixed |
-| AUD3-F002 | P1 | Runtime / tenancy | Event Bus and Operational Ledger runtime identity is `organizationId::actorId`. The actor is event context, but currently also partitions infrastructure authority, creating separate buses/ledgers for users of the same organization and breaking workspace-wide live continuity. | Open |
-| AUD3-F003 | P1 | Projection Engine | The public persistent Projection Engine defaults to an in-memory checkpoint store. Historical closure documentation explicitly leaves productive mounting blocked until a durable shared backend is injected. Production adoption is therefore not yet certifiable. | Open |
-| AUD3-F004 | P1 | Git / release | `foundation/event-bus-core` is heavily diverged from `main` and PR #26 is not mergeable. At baseline it is 722 commits ahead and 4 behind `main`, making release review, rollback and integration unsafe until reconciled. | Open |
-| AUD3-F005 | P2 | Deployment docs | Deployment documentation has drifted from the enforced pipeline: it instructs `npm install --no-audit` while CI uses lockfile-based `npm ci`; it also does not document the Supabase variables already declared mandatory by the environment contract. | Open |
-| AUD3-F006 | P1 / verification | Quality Gate | The audited head `7dcc0e30...` has no observable combined status/checks through the connected GitHub status APIs at audit time. The current head cannot be treated as Quality-certified until an actual run is located or executed. | Open |
-| AUD3-F007 | P0 | Offline cache / Ledger retention | `lightweightCache` applies a generic 1,500-record cap to every non-internal company collection while `operationalLedgerEntries` is designed to retain up to 10,000 entries. Ledger records expose `recordedAt`, but the generic cache ordering does not use it; once the cap is crossed, canonical local history can be silently truncated with incorrect recency ordering. | Fixed |
-| AUD3-F008 | P0 | Remote bootstrap / Ledger | PostgreSQL bootstrap treats `operationalLedgerEntries` as a generic operational collection even though no matching generic `erp_records` authority exists, so authoritative hydration can replace the active Ledger partition with an empty collection. | Fixed |
-| AUD3-F009 | P1 | Tenant isolation / cache | Segmented cache ownership resolution ignores `event.context.organizationId`. Ledger entries therefore look unowned and can be copied into every active-company cache instead of remaining in their organization partition. | Fixed |
-| AUD3-F010 | P1 | Quality / test discovery | The recursive test runner only discovers `.test.mjs`, while the repository still contains active `.test.js` suites such as `remoteBootstrap.test.js`; those tests can silently fall outside Quality and coverage. | Fixed |
-| AUD3-F011 | P0 | Ledger outbox / concurrent sync | A shallow `syncMeta` commit can overwrite `ledgerOutboxByCompany` with the processed snapshot and silently remove eventIds appended while synchronization is in flight. A newly generated canonical event can therefore disappear from the upload outbox before reaching PostgreSQL. | Fixed |
+| AUD3-F001 | P0 | Operational Ledger / persistence | Canonical domain-event history was not durably persisted as an organization-wide server authority. Ledger entries were device-local and local numeric sequence could collide across devices. | Closed |
+| AUD3-F002 | P1 | Runtime / tenancy | Event Bus and Operational Ledger runtime identity used `organizationId::actorId`, partitioning infrastructure authority by user inside the same organization. | Closed |
+| AUD3-F003 | P1 | Projection Engine | The public persistent Projection Engine silently defaulted to an in-memory checkpoint store, allowing a caller to believe persistence existed when it did not. | Closed |
+| AUD3-F004 | P1 | Git / release | The long-lived foundation/audit line was behind `main`, leaving release ancestry diverged and integration unsafe. | Closed |
+| AUD3-F005 | P2 | Deployment docs | Deployment documentation diverged from the certified pipeline and omitted mandatory Supabase environment variables. | Closed |
+| AUD3-F006 | P1 / verification | Quality Gate | The baseline head had no observable Quality evidence and therefore could not be certified. | Closed |
+| AUD3-F007 | P0 | Offline cache / Ledger retention | Generic cache retention could truncate Ledger history at 1,500 records and did not protect pending outbox entries. | Closed |
+| AUD3-F008 | P0 | Remote bootstrap / Ledger | Generic PostgreSQL bootstrap could replace the active Ledger partition with an empty generic collection. | Closed |
+| AUD3-F009 | P1 | Tenant isolation / cache | Segmented cache ownership ignored nested `event.context.organizationId`, allowing Ledger entries to appear unowned across company snapshots. | Closed |
+| AUD3-F010 | P1 | Quality / test discovery | Recursive Quality discovery omitted active `.test.js` suites. | Closed |
+| AUD3-F011 | P0 | Ledger outbox / concurrent sync | A shallow `syncMeta` commit could drop eventIds appended to the Ledger outbox while synchronization was in flight. | Closed |
 
-## AUD3-F001 evidence chain
+## AUD3-F001 — durable Operational Ledger authority
 
-- Product doctrine: meaningful actions produce immutable domain events and domain events are canonical records.
-- `OperationalLedgerBridge`: Ledger-to-store persistence uses `sync:false`.
-- `syncEngine`: `operationalLedgerEntries` is not a generic syncable collection.
-- `lightweightCache`: non-internal arrays were retained only through device-local segmented cache.
-- `memoryLedgerRepository`: sequence allocation starts locally at 1 per repository instance.
-- Generic Supabase sync persists mutable records independently through `erp_records`; it cannot provide an organization-global append-only Ledger sequence.
+### Correction
 
-### Implemented correction
+- Added dedicated PostgreSQL `operational_ledger_events` authority keyed by organization and immutable `eventId`.
+- Added per-organization monotonic server sequence with a unique organization/sequence constraint.
+- Added server append RPC with organization membership validation, row locking and idempotency by immutable event content.
+- RLS allows member reads; authenticated clients cannot directly insert/update/delete Ledger rows.
+- Database trigger rejects UPDATE and DELETE.
+- Local appends enter explicit `syncMeta.ledgerOutboxByCompany`; remote reconciliation does not contaminate the outbox.
+- Ledger synchronization uploads pending eventIds, then pulls canonical server sequence before mutable `erp_records` synchronization.
+- Interrupted synchronization remains retry-safe by `eventId`.
 
-- Dedicated `operational_ledger_events` PostgreSQL authority with organization/event primary identity.
-- Dedicated organization counter and unique organization/sequence constraint.
-- Server-side append RPC with membership validation, per-organization row lock and idempotency by immutable `eventId` content.
-- RLS read policy and no direct authenticated insert/update/delete grants.
-- Database trigger rejects updates and deletes.
-- `OperationalLedgerBridge` records every newly appended local eventId in `syncMeta.ledgerOutboxByCompany`; remote `reconcileMany()` remains silent and therefore does not contaminate the outbox.
-- Client `operationalLedgerSync` uploads exactly the eventIds present in that explicit outbox, independent of the device-local numeric sequence, then pulls canonical entries ordered by server sequence.
-- Successful confirmation removes the eventId from the outbox; an interrupted post-append pull leaves the original local state/outbox intact so retry is idempotent by eventId.
-- Ledger synchronization runs before mutable `erp_records` synchronization; a Ledger failure prevents the mutable sync phase from starting.
+### Re-audit
 
-### Remaining verification before closure
+Adversarial multi-device, retry, remote/local sequence divergence, tenant validation and concurrent outbox tests are included in Quality. SQL/client ordering and immutability were independently re-read after the fix. No reopening condition was found.
 
-- Run adversarial multi-device tests.
-- Run complete Quality Gate with `.test.js` and `.test.mjs` discovery.
-- Re-audit database/client ordering, retry, concurrent sync and tenant boundaries independently.
+## AUD3-F002 — organization-scoped runtime authority
 
-## AUD3-F007 evidence chain and correction
+### Correction
 
-- `stateMigration` retains up to 10,000 `operationalLedgerEntries`.
-- Old `lightweightCache` capped generic company collections at 1,500 records.
-- Old cache ordering ignored Ledger `recordedAt` and nested `event.occurredAt`.
-- Cache ownership now reads nested Ledger organization identity.
-- Ledger cache now keeps a 10,000-entry confirmed window plus every entry whose eventId is still present in the explicit Ledger outbox; pending events are never inferred from local sequence and are never silently evicted.
+- `eventRuntimeKey()` now resolves runtime identity from `organizationId` only.
+- `ledgerRuntimeKey()` now resolves runtime identity from `organizationId` only.
+- `actorId` remains part of the immutable Domain Event context and remains queryable for attribution; it no longer creates separate Event Bus or Ledger infrastructure.
+- Different organizations still resolve distinct runtime authorities.
 
-## AUD3-F008 correction
+### Re-audit
 
-`operationalLedgerEntries` and derived `timelineEntries` are excluded from generic PostgreSQL bootstrap. Ledger history now has a dedicated remote path instead of being overwritten by the `erp_records` hydration model.
+`tests/block-b-aud-f048-runtime-scope.test.mjs` now proves that two actors in the same organization share Event Bus delivery and Ledger sequence while preserving each actor in `event.context.actorId`; a different organization remains isolated.
 
-## AUD3-F009 correction
+## AUD3-F003 — Projection Engine checkpoint authority
 
-Segmented cache ownership now includes `record.event.context.organizationId`; cross-organization Ledger entries are excluded from the active company snapshot.
+### Correction
 
-## AUD3-F010 correction
+- `createProjectionEngine()` remains the public persistent facade, but it no longer manufactures an implicit in-memory checkpoint store.
+- The persistent facade now fails closed when `checkpointStore` is absent.
+- `createVolatileProjectionEngine()` remains explicitly available for tests and diagnostics where durability is not part of the contract.
+- Persistent idempotency tests continue to inject a shared/hydrated checkpoint store and verify restart, claim concurrency, retry and replay semantics.
 
-The recursive test runner now discovers both `tests/**/*.test.mjs` and `tests/**/*.test.js`. Existing `.test.js` suites become natural sentinels proving that the extension is actually included.
+### Re-audit
 
-## AUD3-F011 evidence chain and correction
+Core execution/timeout/observability/replay tests were made explicit about volatile execution instead of accidentally relying on the public persistent facade. Quality therefore tests both contracts independently: volatile mechanics and persistent authority. Productive mounting cannot silently fall back to memory.
 
-- `commitIncrementalSyncResult()` previously merged `syncMeta` shallowly.
-- During an in-flight sync, the current store can receive a new Ledger append and therefore a new outbox eventId not present in the initial snapshot.
-- The processed sync result can legitimately remove eventIds it confirmed remotely.
-- The corrected merge computes the resulting outbox as `processed retained IDs + current IDs that did not exist at sync start`, preserving concurrent appends while still removing confirmed IDs.
-- Cursor maps are merged per company instead of replacing the whole nested object.
-- A dedicated concurrency regression test covers confirmation of event A while event B is appended during the same synchronization window.
+## AUD3-F004 — Git/release ancestry
+
+### Correction
+
+The four commits previously present only on `main` were compared individually against the audit branch. Their effective content — Nexora One README identity, Safari-safe split date/time controls, associated CSS, and production use in Infrastructure Operations — was already incorporated and superseded by the audited branch.
+
+A no-content regression merge reconciled ancestry using the audited tree as authority and `main` as the second parent. No older implementation was reintroduced.
+
+### Re-audit
+
+Final comparison `main...audit/v3-foundation-m0` reports:
+
+- status: `ahead`;
+- behind: `0`;
+- merge base: current `main` head `58b0bf1a07aa5ef4e4988d7ff0472c7a2b8e7b8d`.
+
+The branch is no longer topologically behind `main`.
+
+## AUD3-F005 — deployment contract
+
+### Correction
+
+`docs/DEPLOYMENT.md` now matches the certified pipeline:
+
+- lockfile installation with `npm ci --no-fund`;
+- production build with `npm run build:production`;
+- Node 24 parity with Quality CI;
+- mandatory `VITE_APP_ENV`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for non-local environments;
+- explicit prohibition on exposing privileged secrets as `VITE_*` variables;
+- documented static, dependency, environment, auth, functional/coverage, production build and artifact gates;
+- Supabase migrations, RLS and RPC treated as versioned production contract.
+
+## AUD3-F006 — observable Quality certification
+
+### Closure evidence
+
+Quality run `#1477` executed against closure code head `a6c943e7d85b0109a836eeaa14fbb8b0de87ef5b` and completed successfully. Every executable gate passed:
+
+- dependency installation from lockfile;
+- Static audit;
+- Dependency audit;
+- Environment contract audit;
+- Authentication and session audit;
+- Functional tests;
+- functional TAP evidence upload;
+- Coverage gate;
+- Production build;
+- Production artifact audit.
+
+No test, coverage threshold, dependency severity threshold or production audit was disabled to obtain the result.
+
+## AUD3-F007 — Ledger cache retention
+
+- Cache ownership reads nested Ledger organization identity.
+- Ledger cache retains a 10,000-entry confirmed window plus every entry whose eventId remains in the explicit outbox.
+- Pending entries are not inferred from local sequence and are never silently evicted by the generic 1,500-record cap.
+
+## AUD3-F008 — remote bootstrap
+
+`operationalLedgerEntries` and derived `timelineEntries` are excluded from generic PostgreSQL bootstrap. Ledger authority uses its dedicated remote synchronization path and cannot be replaced by an empty generic `erp_records` hydration result.
+
+## AUD3-F009 — tenant isolation in segmented cache
+
+Ownership resolution includes `record.event.context.organizationId`; cross-organization Ledger entries are excluded from the active company snapshot.
+
+## AUD3-F010 — complete recursive test discovery
+
+The test runner discovers both `tests/**/*.test.mjs` and `tests/**/*.test.js`. Existing `.test.js` suites participate in Functional and Coverage gates.
+
+## AUD3-F011 — concurrent Ledger outbox commit
+
+`commitIncrementalSyncResult()` merges outbox state as processed retained IDs plus IDs appended after the initial synchronization snapshot. Confirmed IDs can be removed without losing concurrently created IDs. Cursor maps are merged per company. A dedicated concurrency regression test covers confirmation of event A while event B is appended during the same synchronization window.
+
+## Final independent re-audit
+
+The closure pass re-read the critical authority boundaries rather than relying only on green tests:
+
+- PostgreSQL Ledger sequence, membership, RLS, append idempotency and immutable mutation trigger;
+- client Ledger tenant validation, append/pull order, cursor monotonicity and retry semantics;
+- segmented cache retention and nested organization ownership;
+- concurrent sync commit behavior;
+- Event Bus and Ledger organization-scoped runtime identity with actor attribution retained in events;
+- Projection Engine persistent/volatile API boundary;
+- deployment/environment contract;
+- Git ancestry against `main`;
+- final Quality execution and production artifact audit.
+
+No remaining M0 finding in this matrix met its reopening condition after Quality `#1477` and the independent re-audit.
 
 ## Counts
 
-- Open: 5
+- Open: 0
 - Fixing: 0
-- Fixed: 6
+- Fixed: 0
 - Verified: 0
-- Closed: 0
+- Closed: 11
