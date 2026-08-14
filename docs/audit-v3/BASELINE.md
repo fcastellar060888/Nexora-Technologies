@@ -11,8 +11,7 @@
 - Method: Audit → Fix → Test → Quality Gate → Re-Audit → Close
 - Closure code head: `a6c943e7d85b0109a836eeaa14fbb8b0de87ef5b`
 - Closure Quality: workflow `Quality` run `#1477` (`31762778127`) — success
-- Final documentation head before this record: `2e54a488b13e39136ad09b5c3152ebe0025b3353`
-- Final head validation: workflow `Quality` run `#1481` (`31762937710`) — success
+- Final documentation validation: workflow `Quality` run `#1481` (`31762937710`) — success
 
 No historical finding was inherited as Closed. Every closure below was revalidated against the current implementation and the M0 acceptance method.
 
@@ -124,7 +123,7 @@ The branch is no longer topologically behind `main`.
 
 ### Closure evidence
 
-Quality run `#1477` executed against closure code head `a6c943e7d85b0109a836eeaa14fbb8b0de87ef5b` and completed successfully. Quality run `#1481` then validated the final documentation head after the closure records were written. Every executable gate passed in both final validation stages:
+Quality run `#1477` executed against closure code head `a6c943e7d85b0109a836eeaa14fbb8b0de87ef5b` and completed successfully. Quality run `#1481` then validated the documentation state after the closure records were written. Every executable gate passed in both final validation stages:
 
 - dependency installation from lockfile;
 - Static audit;
@@ -175,7 +174,7 @@ The closure pass re-read the critical authority boundaries rather than relying o
 - Git ancestry against `main`;
 - final Quality execution and production artifact audit.
 
-No remaining M0 finding in this matrix met its reopening condition after Quality `#1477`; the subsequent final-head Quality `#1481` also completed successfully.
+No remaining M0 finding in this matrix met its reopening condition after Quality `#1477`; the subsequent documentation-state Quality `#1481` also completed successfully.
 
 ## Counts
 
