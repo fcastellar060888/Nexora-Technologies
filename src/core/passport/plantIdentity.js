@@ -1,6 +1,6 @@
 import{createIntelligentObject,createPassport,DETERMINISTIC_TIMESTAMP}from'./passportContract.js'
 import{MATERIAL_PLANT_TYPES}from'../../domain/materialPlantIdentity.js'
-import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'../../domain/organizationOwnership.js'
+import{explicitOrganizationId,organizationForCandidates,resolveOrganizationId}from'../../domain/organizationOwnership.js'
 
 const COLLECTION_BY_KIND=Object.freeze({grandmother:'grandmotherPlants',mother:'motherPlants'})
 const OBJECT_TYPE_BY_KIND=Object.freeze({grandmother:'cultivation.grandmother',mother:'cultivation.mother'})
@@ -27,23 +27,18 @@ export function expandPlantLot(lot,{kind,organizationId=null}={}){
 
 function canonicalUnit(state,plant){
  const materialType=MATERIAL_TYPE_BY_KIND[plant.kind]
- const candidates=(state?.materialPlantUnits||[]).filter(unit=>unit?.lotId===plant.lotId&&unit?.plantType===materialType&&Number(unit?.unitIndex)===plant.index&&explicitOrganizationId(unit)===plant.organizationId)
+ const candidates=(state?.materialPlantUnits||[]).filter(unit=>unit?.lotId===plant.lotId&&unit?.plantType===materialType&&Number(unit?.unitIndex)+1===plant.index&&explicitOrganizationId(unit)===plant.organizationId)
  if(candidates.length>1)throw new Error('Existen identidades durables duplicadas para la misma planta individual')
  return candidates[0]||null
 }
 
 export function listIndividualPlants(state,{kind,siteId=null,lotId=null,status=null}={}){
- const normalizedKind=normalizeKind(kind),active=activeOrganizationId(state)
+ const normalizedKind=normalizeKind(kind)
  const collection=Array.isArray(state?.[COLLECTION_BY_KIND[normalizedKind]])?state[COLLECTION_BY_KIND[normalizedKind]]:[]
- return Object.freeze(collection
-  .filter(lot=>!siteId||String(lot.siteId)===String(siteId))
-  .filter(lot=>!lotId||String(lot.id)===String(lotId))
-  .filter(lot=>!status||String(lot.status)===String(status))
-  .flatMap(lot=>{
-   const organizationId=resolveOrganizationId(state,{record:lot,siteId:lot.siteId,label:`el lote ${lot.id}`})
-   if(organizationId!==active)return[]
-   return expandPlantLot(lot,{kind:normalizedKind,organizationId}).map(plant=>{const unit=canonicalUnit(state,plant);return unit?Object.freeze({...plant,id:unit.id,legacyId:plant.id,code:unit.code||plant.code,canonicalSource:'materialPlantUnits'}):plant})
-  }))
+ const filtered=collection.filter(lot=>!siteId||String(lot.siteId)===String(siteId)).filter(lot=>!lotId||String(lot.id)===String(lotId)).filter(lot=>!status||String(lot.status)===String(status))
+ const resolved=filtered.map(lot=>({lot,organizationId:resolveOrganizationId(state,{record:lot,siteId:lot.siteId,label:`el lote ${lot.id}`})}))
+ const active=organizationForCandidates(state,resolved.map(item=>item.organizationId))
+ return Object.freeze(resolved.filter(item=>item.organizationId===active).flatMap(({lot,organizationId})=>expandPlantLot(lot,{kind:normalizedKind,organizationId}).map(plant=>{const unit=canonicalUnit(state,plant);return unit?Object.freeze({...plant,id:unit.id,legacyId:plant.id,code:unit.code||plant.code,canonicalSource:'materialPlantUnits'}):plant})))
 }
 
 export function findIndividualPlant(state,{kind,individualId}={}){
