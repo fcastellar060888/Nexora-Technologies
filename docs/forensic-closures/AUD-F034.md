@@ -15,7 +15,7 @@ Se introdujo `ProjectionCheckpointStore` como autoridad externa e inyectable con
 - `hydrate(checkpoints)`;
 - `snapshot()`.
 
-La API pública `createProjectionEngine()` resuelve ahora una fachada persistente. El motor anterior queda expuesto únicamente como `createVolatileProjectionEngine` para pruebas y diagnóstico explícitos.
+La API pública `createProjectionEngine()` resuelve una fachada persistente. El motor sin persistencia queda expuesto únicamente como `createVolatileProjectionEngine` para pruebas y diagnóstico explícitos.
 
 La ejecución live adquiere un claim por `eventId + firma del registro de proyectores`. La firma contiene `projectorId@version`, de modo que una nueva versión puede reproyectar el mismo evento. Una ejecución fallida o bloqueada libera el claim; únicamente una ejecución completa confirma el checkpoint.
 
@@ -32,7 +32,7 @@ Además se mantienen checkpoints por proyector para que `hasProcessed(eventId, p
 - La deduplicación local conserva la razón histórica `already-processed`.
 - Un proyector no soportado no queda marcado como procesado.
 
-## Evidencia
+## Evidencia histórica
 
 - `55caf4e44c4e025519afa0f00ca61ecf30615103` — contrato de checkpoints.
 - `7e2f2d92a4a3985194751de54868945aa16c6825` — fachada persistente.
@@ -40,15 +40,24 @@ Además se mantienen checkpoints por proyector para que `hasProcessed(eventId, p
 - `7ddcb74115b0afb644a0a6fa892d2d11f266b67f` — pruebas adversariales.
 - `23f50d9c8644f661316fb59d772cbdfbfde2ff94` — semántica final por ejecución y proyector.
 
-## Quality
+## Quality histórico
 
 - `#994`: falló al detectar tres incompatibilidades semánticas reales en razones de deduplicación, proyectores no soportados y replay.
-- `#996`: success técnico final.
+- `#996`: success técnico final del cierre original.
 
-## Reauditoría
+## Hardening posterior — AUD3-F003
 
-No se encontraron consumidores normales importando directamente el motor volátil. La API pública utiliza la fachada persistente. La firma versionada evita bloquear nuevas versiones y los fallos parciales no confirman checkpoints.
+La auditoría forense v3 detectó que la fachada persistente todavía fabricaba silenciosamente `createProjectionCheckpointStore()` cuando el caller omitía `checkpointStore`. Ese comportamiento podía convertir una configuración incompleta en una falsa garantía de persistencia.
 
-## Riesgo residual y condición de montaje
+La corrección posterior elimina ese default:
 
-El Core define la autoridad durable e hidratable, pero el Projection Engine continúa sin montaje productivo conforme a `AUD-F051`. Al resolver ese hallazgo, el runtime deberá inyectar un backend persistente y compartido por workspace; no se autorizará un store efímero por defecto en producción.
+- `createProjectionEngine()` exige ahora `checkpointStore` explícito y falla inmediatamente si falta;
+- `createVolatileProjectionEngine()` es la única opción explícita para ejecución no durable;
+- los tests de mecánica interna usan la variante volátil de forma deliberada;
+- los tests de idempotencia persistente inyectan un checkpoint store y prueban hidratación, concurrencia, retry y replay por separado.
+
+Quality `#1477` validó esta separación junto con el resto de M0.
+
+## Reauditoría final
+
+La API pública ya no puede caer silenciosamente a memoria. Un futuro montaje productivo deberá proporcionar una autoridad de checkpoints compatible antes de construir el motor; de lo contrario, la inicialización falla de forma visible. Con este comportamiento fail-closed, el riesgo residual documentado en el cierre original queda eliminado como default inseguro.
