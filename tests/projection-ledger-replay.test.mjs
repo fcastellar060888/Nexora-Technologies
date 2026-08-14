@@ -2,12 +2,12 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{createDomainEvent}from'../src/core/events/index.js'
 import{createMemoryLedgerRepository}from'../src/core/ledger/index.js'
-import{createProjector,createProjectionEngine,replayLedger}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine,replayLedger}from'../src/core/projectionEngine/index.js'
 
 const event=(id,organizationId,siteId,occurredAt)=>createDomainEvent({eventId:id,name:'cultivation.plant.updated',aggregateType:'cultivation.plant',aggregateId:id,organizationId,siteId,occurredAt,payload:{label:id}})
 
 function fixture(){
- const ledger=createMemoryLedgerRepository(),engine=createProjectionEngine(),calls=[]
+ const ledger=createMemoryLedgerRepository(),engine=createVolatileProjectionEngine(),calls=[]
  engine.registerProjector(createProjector({id:'passport',supports:()=>true,project:(value,context)=>calls.push({id:value.eventId,mode:context.projectionMode,sequence:context.ledgerSequence})}))
  ledger.append(event('evt-1','org-a','site-1','2026-08-01T10:00:00.000Z'))
  ledger.append(event('evt-2','org-b','site-2','2026-08-01T11:00:00.000Z'))

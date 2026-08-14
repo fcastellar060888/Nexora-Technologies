@@ -329,8 +329,8 @@ function scopePart(value, label) {
   if (!normalized) throw new Error(`${label} es obligatorio para resolver el runtime`)
   return normalized
 }
-export function ledgerRuntimeKey({ organizationId, actorId = 'system' } = {}) {
-  return `${scopePart(organizationId, 'La empresa')}::${scopePart(actorId, 'El actor')}`
+export function ledgerRuntimeKey({ organizationId } = {}) {
+  return scopePart(organizationId, 'La empresa')
 }
 export function getOperationalLedgerForScope(scope) {
   const key = ledgerRuntimeKey(scope)
@@ -347,4 +347,4 @@ export function releaseOperationalLedgerScope(scope) {
 }
 export function operationalLedgerScopeCount() { return scopedLedgers.size }
 
-export const operationalLedger = getOperationalLedgerForScope({ organizationId: 'local-installation', actorId: 'system' })
+export const operationalLedger = getOperationalLedgerForScope({ organizationId: 'local-installation' })

@@ -5,6 +5,7 @@ const COMPANY_PREFIX=`${PREFIX}:company:`
 const DEFAULT_TTL_MS=30*24*60*60*1000
 const MAX_COMPANIES=3
 const MAX_COLLECTION_RECORDS=1500
+const MAX_LEDGER_RECORDS=10000
 const MAX_QUEUE_RECORDS=1000
 
 const INTERNAL_ARRAYS=new Set(['users','roles','memberships','userSessions','auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'])
@@ -13,9 +14,17 @@ const bytes=value=>new Blob([value||'']).size
 
 function parse(raw,fallback=null){try{return raw?JSON.parse(raw):fallback}catch{return fallback}}
 function companyKey(companyId){return`${COMPANY_PREFIX}${companyId}`}
-function stamp(record){return Date.parse(record?.updatedAt||record?.createdAt||record?.date||0)||0}
-function bounded(records,max=MAX_COLLECTION_RECORDS){return list(records).sort((a,b)=>stamp(b)-stamp(a)).slice(0,max)}
-function recordOrganizationId(record){return String(record?._organizationId||record?.companyId||record?.organizationId||'')}
+function stamp(record){return Date.parse(record?.updatedAt||record?.createdAt||record?.recordedAt||record?.date||record?.event?.occurredAt||0)||0}
+function bounded(records,max=MAX_COLLECTION_RECORDS){return[...list(records)].sort((a,b)=>stamp(b)-stamp(a)).slice(0,max)}
+function eventIdOf(entry){return String(entry?.event?.eventId||entry?.id||'').trim()}
+function boundedLedger(records,max=MAX_LEDGER_RECORDS,pendingIds=[]){
+ const pending=new Set(list(pendingIds).map(value=>String(value||'').trim()).filter(Boolean))
+ const ordered=[...list(records)].sort((a,b)=>Number(a?.sequence||0)-Number(b?.sequence||0)||stamp(a)-stamp(b)||String(a?.id||'').localeCompare(String(b?.id||'')))
+ const confirmed=ordered.filter(entry=>!pending.has(eventIdOf(entry))).slice(-max)
+ const unconfirmed=ordered.filter(entry=>pending.has(eventIdOf(entry)))
+ return[...confirmed,...unconfirmed]
+}
+function recordOrganizationId(record){return String(record?._organizationId||record?.companyId||record?.organizationId||record?.event?.context?.organizationId||'')}
 
 export function cacheCollections(state={}){
  return Object.keys(state).filter(key=>Array.isArray(state[key])&&!INTERNAL_ARRAYS.has(key))
@@ -39,12 +48,14 @@ export function compactIdentity(state={}){
 
 export function compactCompanyState(state={},companyId=''){
  const collections={}
+ const ledgerOutbox=state?.syncMeta?.ledgerOutboxByCompany?.[companyId]||[]
  for(const key of cacheCollections(state)){
   if(key==='companies')continue
-  collections[key]=bounded(list(state[key]).filter(record=>{
+  const scoped=list(state[key]).filter(record=>{
    const owner=recordOrganizationId(record)
    return!owner||owner===companyId
-  }))
+  })
+  collections[key]=key==='operationalLedgerEntries'?boundedLedger(scoped,MAX_LEDGER_RECORDS,ledgerOutbox):bounded(scoped)
  }
  return{companyId,cachedAt:new Date().toISOString(),collections}
 }

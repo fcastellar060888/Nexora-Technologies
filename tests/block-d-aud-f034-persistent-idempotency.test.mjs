@@ -5,6 +5,10 @@ import{createProjector,createProjectionEngine,createProjectionCheckpointStore}fr
 const event={eventId:'evt-persisted',type:'PlantUpdated'}
 const projector=calls=>createProjector({id:'passport',version:2,supports:()=>true,project:async()=>{calls.push('run');return'OK'}})
 
+test('AUD3-F003: el motor persistente no acepta autoridad implícita en memoria',()=>{
+ assert.throws(()=>createProjectionEngine(),/checkpointStore explícito/)
+})
+
 test('AUD-F034: un checkpoint hidratado sobrevive al reinicio del motor',async()=>{
  const calls=[]
  const firstStore=createProjectionCheckpointStore()

@@ -1,11 +1,11 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createProjector,createProjectionEngine}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine}from'../src/core/projectionEngine/index.js'
 
 const projector=createProjector({id:'audit',supports:()=>true,project:event=>event.eventId})
 
 test('AUD-F036: recortar historial no reutiliza executionId',async()=>{
- const engine=createProjectionEngine({historyLimit:2})
+ const engine=createVolatileProjectionEngine({historyLimit:2})
  engine.registerProjector(projector)
  const ids=[]
  for(let index=1;index<=5;index++){
@@ -19,7 +19,7 @@ test('AUD-F036: recortar historial no reutiliza executionId',async()=>{
 })
 
 test('AUD-F036: execute y replay comparten una secuencia de auditoría única',async()=>{
- const engine=createProjectionEngine({historyLimit:1})
+ const engine=createVolatileProjectionEngine({historyLimit:1})
  engine.registerProjector(projector)
  await engine.execute({eventId:'live-1',type:'AuditEvent'})
  const first=engine.getHistory().at(-1).executionId
@@ -33,7 +33,7 @@ test('AUD-F036: execute y replay comparten una secuencia de auditoría única',a
 })
 
 test('AUD-F036: varios proyectores reciben identidades distintas dentro del mismo evento',async()=>{
- const engine=createProjectionEngine({historyLimit:1})
+ const engine=createVolatileProjectionEngine({historyLimit:1})
  engine.registerProjector(createProjector({id:'a',priority:2,supports:()=>true,project:()=>null}))
  engine.registerProjector(createProjector({id:'b',priority:1,supports:()=>true,project:()=>null}))
  await engine.execute({eventId:'evt-shared',type:'AuditEvent'})

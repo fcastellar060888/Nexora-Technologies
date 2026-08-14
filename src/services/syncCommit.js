@@ -12,6 +12,32 @@ function mergeById(processed=[],current=[],initial=[]){
  return[...merged.values()]
 }
 
+function mergeLedgerOutbox(initialState,currentState,processedState){
+ const initial=initialState?.syncMeta?.ledgerOutboxByCompany||{}
+ const current=currentState?.syncMeta?.ledgerOutboxByCompany||{}
+ const processed=processedState?.syncMeta?.ledgerOutboxByCompany||{}
+ const companies=new Set([...Object.keys(initial),...Object.keys(current),...Object.keys(processed)])
+ const result={}
+ for(const companyId of companies){
+  const initialSet=new Set(list(initial[companyId]))
+  const retained=new Set(list(processed[companyId]))
+  for(const eventId of list(current[companyId]))if(!initialSet.has(eventId))retained.add(eventId)
+  result[companyId]=[...retained]
+ }
+ return result
+}
+
+function mergeSyncMeta(initialState,currentState,processedState){
+ const current=currentState?.syncMeta||{}
+ const processed=processedState?.syncMeta||{}
+ return{
+  ...current,
+  ...processed,
+  ledgerCursorByCompany:{...(current.ledgerCursorByCompany||{}),...(processed.ledgerCursorByCompany||{})},
+  ledgerOutboxByCompany:mergeLedgerOutbox(initialState,currentState,processedState)
+ }
+}
+
 export function commitIncrementalSyncResult(initialState,currentState,processedState){
  const startedFor=initialState?.currentContext?.companyId||''
  const activeNow=currentState?.currentContext?.companyId||''
@@ -27,10 +53,12 @@ export function commitIncrementalSyncResult(initialState,currentState,processedS
   memberships:list(currentState.memberships),
   userSessions:list(currentState.userSessions),
   auditLog:list(currentState.auditLog),
+  timelineEntries:mergeById(processedState.timelineEntries,currentState.timelineEntries,initialState.timelineEntries),
+  operationalLedgerEntries:mergeById(processedState.operationalLedgerEntries,currentState.operationalLedgerEntries,initialState.operationalLedgerEntries),
   syncQueue:mergeById(processedState.syncQueue,currentState.syncQueue,initialState.syncQueue),
   syncConflicts:mergeById(processedState.syncConflicts,currentState.syncConflicts,initialState.syncConflicts),
   syncHealthEvents:list(currentState.syncHealthEvents),
   syncDeviceHealth:list(currentState.syncDeviceHealth),
-  syncMeta:{...(currentState.syncMeta||{}),...(processedState.syncMeta||{})}
+  syncMeta:mergeSyncMeta(initialState,currentState,processedState)
  }
 }

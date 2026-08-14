@@ -9,13 +9,18 @@ class MemoryStorage{
  removeItem(key){this.values.delete(key)}
 }
 
+function ledgerEntry(id,organizationId,sequence){
+ const occurredAt=new Date(Date.UTC(2026,0,1,0,0,sequence%60)).toISOString()
+ return{id,sequence,recordedAt:occurredAt,event:{eventId:id,context:{organizationId},occurredAt}}
+}
+
 function state(companyId='c1'){
  return{
   schemaVersion:7,currentContext:{companyId},companies:[{id:'c1'},{id:'c2'}],
   users:[{id:'u1',activeSession:true}],roles:[],memberships:[],userSessions:[],auditLog:[],
   syncQueue:[{id:'q1',companyId,status:'pending',updatedAt:'2026-01-01T00:00:00Z'}],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],syncMeta:{},
   sites:[{id:'s1',companyId:'c1'},{id:'s2',companyId:'c2'}],
-  genetics:[{id:'g1'}]
+  genetics:[{id:'g1'}],operationalLedgerEntries:[]
  }
 }
 
@@ -30,6 +35,24 @@ test('writes identity and company data separately',()=>{
  const diagnostics=cacheDiagnostics(storage)
  assert.equal(diagnostics.companies.length,1)
  assert.ok(diagnostics.totalBytes>0)
+})
+
+test('partitions Operational Ledger entries by nested event organization',()=>{
+ const storage=new MemoryStorage(),source=state('c1')
+ source.operationalLedgerEntries=[ledgerEntry('c1-event','c1',1),ledgerEntry('c2-event','c2',2)]
+ writeLightweightCache(source,storage)
+ const restored=readLightweightCache(storage)
+ assert.deepEqual(restored.operationalLedgerEntries.map(item=>item.id),['c1-event'])
+})
+
+test('Operational Ledger is not truncated by the generic 1500-record collection cap',()=>{
+ const storage=new MemoryStorage(),source=state('c1')
+ source.operationalLedgerEntries=Array.from({length:1601},(_,index)=>ledgerEntry(`event-${index+1}`,'c1',index+1))
+ writeLightweightCache(source,storage)
+ const restored=readLightweightCache(storage)
+ assert.equal(restored.operationalLedgerEntries.length,1601)
+ assert.equal(restored.operationalLedgerEntries[0].sequence,1)
+ assert.equal(restored.operationalLedgerEntries.at(-1).sequence,1601)
 })
 
 test('keeps at most three company caches',()=>{

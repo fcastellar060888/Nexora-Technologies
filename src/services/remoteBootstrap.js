@@ -4,6 +4,7 @@ import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
+ 'operationalLedgerEntries','timelineEntries',
  'companies','users','roles','memberships'
 ])
 
@@ -77,8 +78,12 @@ export function overlayConcurrentChanges(initialState,currentState,base,{company
 
 export function overlayPendingMutations(state,base){
  const next={...base}
- const companyId=state?.currentContext?.companyId||''
- const queue=list(state?.syncQueue).filter(item=>item.companyId===companyId&&['pending','failed','conflict'].includes(item.status))
+ const companyId=String(state?.currentContext?.companyId||'').trim()
+ if(!companyId)return next
+ const queue=list(state?.syncQueue).filter(item=>{
+  const owner=String(item?.companyId||companyId).trim()
+  return owner===companyId&&['pending','failed','conflict'].includes(item.status)
+ })
  for(const item of queue){
   if(!item.collection||!Array.isArray(next[item.collection]))continue
   if(item.operation==='delete')next[item.collection]=next[item.collection].filter(record=>recordKey(record,companyId)!==`${companyId}:${item.recordId}`)
@@ -101,16 +106,18 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  const authoritative={...localState}
  for(const collection of collections)authoritative[collection]=replaceCompanyPartition(localState[collection],grouped[collection],companyId)
  const concurrent=overlayConcurrentChanges(initialState,localState,authoritative,{companyId})
- const reconciled=overlayPendingMutations(localState,concurrent)
+ const reconciled=overlayPendingMutations({...localState,currentContext:{...(localState.currentContext||{}),companyId}},concurrent)
  return migrateMaterialPlantIdentity(migrateState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId},
-  syncQueue:list(localState.syncQueue),
+  syncQueue:list(localState.syncQueue).map(item=>item?.companyId?item:{...item,companyId}),
   syncConflicts:list(localState.syncConflicts),
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
   companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
   auditLog:list(localState.auditLog),
+  operationalLedgerEntries:list(localState.operationalLedgerEntries),
+  timelineEntries:list(localState.timelineEntries),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId}
  }))
 }

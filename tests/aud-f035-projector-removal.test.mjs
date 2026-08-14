@@ -1,11 +1,11 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createProjector,createProjectionEngine,createProjectionCheckpointStore}from'../src/core/projectionEngine/index.js'
+import{createProjector,createProjectionEngine,createVolatileProjectionEngine,createProjectionCheckpointStore}from'../src/core/projectionEngine/index.js'
 
 const projector=(id,dependencies=[])=>createProjector({id,dependencies,supports:()=>true,project:()=>id})
 
 test('AUD-F035: reporta todos los dependientes directos de forma determinista y no altera el registro',()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  const root=projector('root'),beta=projector('beta',['root']),alpha=projector('alpha',['root'])
  engine.registerProjector(root);engine.registerProjector(beta);engine.registerProjector(alpha)
  const before=engine.snapshot()
@@ -19,7 +19,7 @@ test('AUD-F035: reporta todos los dependientes directos de forma determinista y 
 })
 
 test('AUD-F035: una cadena transitiva solo puede retirarse desde las hojas',()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  engine.registerProjector(projector('timeline'))
  engine.registerProjector(projector('passport',['timeline']))
  engine.registerProjector(projector('graph',['passport']))
@@ -47,7 +47,7 @@ test('AUD-F035: la fachada persistente conserva checkpoints y firma cuando la re
 })
 
 test('AUD-F035: retirar una hoja cambia el registro sin dejar una dependencia huérfana',()=>{
- const engine=createProjectionEngine()
+ const engine=createVolatileProjectionEngine()
  engine.registerProjector(projector('timeline'))
  engine.registerProjector(projector('passport',['timeline']))
  assert.equal(engine.unregisterProjector('passport'),true)

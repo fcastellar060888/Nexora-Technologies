@@ -216,7 +216,7 @@ export function createEventBus({
 
 const scopedEventBuses=new Map()
 function scopePart(value,label){const normalized=String(value??'').trim();if(!normalized)throw new Error(`${label} es obligatorio para resolver el runtime`);return normalized}
-export function eventRuntimeKey({organizationId,actorId='system'}={}){return`${scopePart(organizationId,'La empresa')}::${scopePart(actorId,'El actor')}`}
+export function eventRuntimeKey({organizationId}={}){return scopePart(organizationId,'La empresa')}
 export function getEventBusForScope(scope,options){
  const key=eventRuntimeKey(scope)
  if(!scopedEventBuses.has(key))scopedEventBuses.set(key,createEventBus(options))
@@ -229,4 +229,4 @@ export function releaseEventBusScope(scope){
 }
 export function eventBusScopeCount(){return scopedEventBuses.size}
 
-export const eventBus=getEventBusForScope({organizationId:'local-installation',actorId:'system'})
+export const eventBus=getEventBusForScope({organizationId:'local-installation'})

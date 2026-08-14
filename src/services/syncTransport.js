@@ -1,5 +1,6 @@
 import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{applyRemoteRecords,compactQueue}from'./syncEngine.js'
+import{synchronizeOperationalLedger}from'./operationalLedgerSync.js'
 
 const MAX_ATTEMPTS=6
 const PULL_PAGE_SIZE=1000
@@ -128,12 +129,13 @@ export async function pullRemote(state,companyId){
 }
 
 export async function runIncrementalSync(state,{companyId=state.currentContext?.companyId}={}){
- if(!supabaseEnabled)return{state,skipped:true,pushed:0,pulled:0}
+ if(!supabaseEnabled)return{state,skipped:true,pushed:0,pulled:0,ledgerPushed:0,ledgerPulled:0}
  if(!companyId)throw new Error('Selecciona una empresa antes de sincronizar')
  if(state.currentContext?.companyId&&state.currentContext.companyId!==companyId)throw new Error('La empresa solicitada no coincide con el contexto activo')
- const pushed=await pushPending(state,companyId)
+ const ledger=await synchronizeOperationalLedger(state,{companyId})
+ const pushed=await pushPending(ledger.state,companyId)
  const pulled=await pullRemote(pushed.state,companyId)
- return{state:purgeCompleted(pulled.state),pushed:pushed.pushed,pulled:pulled.pulled,skipped:false}
+ return{state:purgeCompleted(pulled.state),pushed:pushed.pushed,pulled:pulled.pulled,ledgerPushed:ledger.pushed,ledgerPulled:ledger.pulled,skipped:false}
 }
 
 export function purgeCompleted(state,keep=100){

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TEST_ROOT = path.join(ROOT, 'tests');
+const TEST_FILE_PATTERN = /\.test\.(?:mjs|js)$/;
 
 async function discoverTests(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -18,7 +19,7 @@ async function discoverTests(dir) {
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.test.mjs')) {
+    if (entry.isFile() && TEST_FILE_PATTERN.test(entry.name)) {
       files.push(fullPath);
     }
   }
@@ -30,7 +31,7 @@ const coverage = process.argv.includes('--coverage');
 const tests = (await discoverTests(TEST_ROOT)).sort();
 
 if (tests.length === 0) {
-  console.error('No test files discovered under tests/**/*.test.mjs');
+  console.error('No test files discovered under tests/**/*.test.{js,mjs}');
   process.exit(1);
 }
 
