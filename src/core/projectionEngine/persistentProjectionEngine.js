@@ -18,7 +18,8 @@ function confirm(store,key){
  try{store.complete(claim)}catch(error){store.release(claim);throw error}
 }
 
-export function createPersistentProjectionEngine({checkpointStore=createProjectionCheckpointStore(),...options}={}){
+export function createPersistentProjectionEngine({checkpointStore,...options}={}){
+ if(checkpointStore===undefined)throw new Error('El Projection Engine persistente requiere checkpointStore explícito; usa createVolatileProjectionEngine solo para pruebas o diagnóstico')
  if(!isProjectionCheckpointStore(checkpointStore))throw new Error('Se requiere un Projection Checkpoint Store válido')
  const engine=createVolatileProjectionEngine(options)
  async function execute(event,context={}){
