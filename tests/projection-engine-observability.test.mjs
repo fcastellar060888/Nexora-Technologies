@@ -1,11 +1,11 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{createProjector,createProjectionEngine}from'../src/core/projectionEngine/index.js'
+import{createProjector,createVolatileProjectionEngine}from'../src/core/projectionEngine/index.js'
 
 function clock(){let value=Date.parse('2026-08-02T18:00:00.000Z');return()=>{const current=value;value+=5;return current}}
 
 test('registra historial limitado y permite filtrarlo',async()=>{
- const engine=createProjectionEngine({historyLimit:2,now:clock()})
+ const engine=createVolatileProjectionEngine({historyLimit:2,now:clock()})
  engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>null}))
  await engine.execute({eventId:'evt-1'})
  await engine.execute({eventId:'evt-2'})
@@ -19,7 +19,7 @@ test('registra historial limitado y permite filtrarlo',async()=>{
 })
 
 test('acumula métricas de éxito reintento y fallo',async()=>{
- const engine=createProjectionEngine({now:clock()}),attempts=new Map()
+ const engine=createVolatileProjectionEngine({now:clock()}),attempts=new Map()
  engine.registerProjector(createProjector({id:'passport',policy:{maxAttempts:2},supports:()=>true,project:event=>{const count=(attempts.get(event.eventId)??0)+1;attempts.set(event.eventId,count);if(event.eventId==='retry'&&count===1)throw new Error('temporal');if(event.eventId==='fail')throw new Error('permanente')}}))
  await engine.execute({eventId:'ok'})
  await engine.execute({eventId:'retry'})
@@ -35,7 +35,7 @@ test('acumula métricas de éxito reintento y fallo',async()=>{
 })
 
 test('registra timeout y degrada la salud',async()=>{
- const engine=createProjectionEngine({now:clock()})
+ const engine=createVolatileProjectionEngine({now:clock()})
  engine.registerProjector(createProjector({id:'slow',policy:{timeoutMs:5},supports:()=>true,project:()=>new Promise(resolve=>setTimeout(resolve,20))}))
  await engine.execute({eventId:'evt-timeout'})
  const metrics=engine.getMetrics('slow'),health=engine.health(),record=engine.getHistory()[0]
@@ -47,11 +47,11 @@ test('registra timeout y degrada la salud',async()=>{
 })
 
 test('reporta healthy sin fallos y degraded con bloqueos parciales',async()=>{
- const healthy=createProjectionEngine({now:clock()})
+ const healthy=createVolatileProjectionEngine({now:clock()})
  healthy.registerProjector(createProjector({id:'ok',supports:()=>true,project:()=>null}))
  await healthy.execute({eventId:'evt-ok'})
  assert.equal(healthy.health().status,'healthy')
- const degraded=createProjectionEngine({now:clock()})
+ const degraded=createVolatileProjectionEngine({now:clock()})
  degraded.registerProjector(createProjector({id:'root',supports:()=>true,project:()=>{throw new Error('fallo')}}))
  degraded.registerProjector(createProjector({id:'child',dependencies:['root'],supports:()=>true,project:()=>null}))
  degraded.registerProjector(createProjector({id:'audit',supports:()=>true,project:()=>null}))
@@ -61,7 +61,7 @@ test('reporta healthy sin fallos y degraded con bloqueos parciales',async()=>{
 })
 
 test('incluye observabilidad inmutable en snapshot',async()=>{
- const engine=createProjectionEngine({now:clock()})
+ const engine=createVolatileProjectionEngine({now:clock()})
  engine.registerProjector(createProjector({id:'timeline',supports:()=>true,project:()=>null}))
  await engine.execute({eventId:'evt-1'})
  const snapshot=engine.snapshot()
