@@ -2,9 +2,11 @@ const text=value=>String(value??'').trim()
 const positive=(value,label)=>{const number=Number(value);if(!Number.isFinite(number)||number<=0)throw new Error(`${label} debe ser mayor que cero.`);return number}
 const nonNegative=(value,label)=>{const number=Number(value);if(!Number.isFinite(number)||number<0)throw new Error(`${label} no puede ser negativo.`);return number}
 const required=(value,label)=>{const normalized=text(value);if(!normalized)throw new Error(`${label} es obligatorio.`);return normalized}
+const civilDate=(value,label)=>{const normalized=required(value,label);if(!/^\d{4}-\d{2}-\d{2}$/.test(normalized)||Number.isNaN(Date.parse(`${normalized}T00:00:00Z`)))throw new Error(`${label} debe ser una fecha YYYY-MM-DD válida.`);return normalized}
 
 export const GROWING_MEDIUM_KINDS=Object.freeze({COCO:'COCO',PEAT:'PEAT',SOIL:'SOIL',MIX:'MIX',JIFFY:'JIFFY',PLUG:'PLUG',CUSTOM:'CUSTOM'})
 export const REUSE_ACTIONS=Object.freeze({REPLENISH:'REPLENISH',FULL_REPLACEMENT:'FULL_REPLACEMENT'})
+export const PURCHASE_SCOPES=Object.freeze({SITE:'SITE',HOUSE:'HOUSE',BED:'BED',TRAY:'TRAY'})
 
 export function createGrowingMediumProduct(input={}){
  const organizationId=required(input.organizationId,'organizationId'),name=required(input.name,'name'),kind=required(input.kind,'kind')
@@ -67,4 +69,16 @@ export function calculatePurchaseRequirement({organizationId,siteId,plans=[],res
  const reserve=nonNegative(reservePercent,'reservePercent');if(reserve>100)throw new Error('reservePercent no puede superar 100%.')
  const freshVolumeLiters=plans.reduce((sum,plan)=>sum+nonNegative(plan?.freshVolumeLiters??0,'freshVolumeLiters'),0)
  return Object.freeze({organizationId,siteId,baseVolumeLiters:freshVolumeLiters,reservePercent:reserve,requiredVolumeLiters:freshVolumeLiters*(1+reserve/100)})
+}
+
+export function createPurchaseRequirement(input={}){
+ const organizationId=required(input.organizationId,'organizationId'),siteId=required(input.siteId,'siteId'),scopeType=required(input.scopeType,'scopeType')
+ if(!Object.values(PURCHASE_SCOPES).includes(scopeType))throw new Error('scopeType de requerimiento de compra inválido.')
+ const scopeId=required(input.scopeId||siteId,'scopeId'),periodStart=civilDate(input.periodStart,'periodStart'),periodEnd=civilDate(input.periodEnd,'periodEnd')
+ if(periodEnd<periodStart)throw new Error('periodEnd no puede ser anterior a periodStart.')
+ const plans=Array.isArray(input.plans)?input.plans:[]
+ if(!plans.length)throw new Error('El requerimiento necesita al menos un plan de consumo.')
+ const normalizedPlans=plans.map(plan=>Object.freeze({assignmentId:required(plan.assignmentId,'assignmentId'),targetType:required(plan.targetType,'targetType'),targetId:required(plan.targetId,'targetId'),batchId:required(plan.batchId,'batchId'),supplierId:text(plan.supplierId),supplierLot:text(plan.supplierLot),action:required(plan.action,'action'),currentUse:Math.max(1,Math.trunc(Number(plan.currentUse)||1)),freshVolumeLiters:nonNegative(plan.freshVolumeLiters,'freshVolumeLiters'),reusedVolumeLiters:nonNegative(plan.reusedVolumeLiters??0,'reusedVolumeLiters')}))
+ const totals=calculatePurchaseRequirement({organizationId,siteId,plans:normalizedPlans,reservePercent:input.reservePercent})
+ return Object.freeze({id:required(input.id,'id'),organizationId,siteId,scopeType,scopeId,periodStart,periodEnd,plans:Object.freeze(normalizedPlans),baseVolumeLiters:totals.baseVolumeLiters,reservePercent:totals.reservePercent,requiredVolumeLiters:totals.requiredVolumeLiters,status:text(input.status)||'OPEN',createdAt:input.createdAt||new Date().toISOString(),createdBy:text(input.createdBy)})
 }
