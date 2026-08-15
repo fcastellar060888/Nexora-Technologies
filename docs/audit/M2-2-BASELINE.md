@@ -78,11 +78,12 @@ incluyendo volumen, lote proveedor, enlace de inventario, costo y ciclo de reuti
 - #1826 — PurchaseRequirement + sync restaurado: verde.
 - #1830 — rojo detectó nomenclatura inválida de `targetType` (`growing_medium.*`) en Passport; se corrigió al contrato `growing.medium.*`.
 - #1832 — Passport/Graph F009 y todos los gates: verde.
+- #1834 — Quality final del expediente de cierre: verde.
 
 ## Diff re-audit contra main
 
 - Estado: ahead, **0 behind**.
-- 36 commits del bloque antes del cierre documental.
+- 36 commits funcionales antes del cierre documental.
 - 20 archivos modificados/agregados.
 - `syncEngine.js`: únicamente una colección adicional frente al motor certificado.
 - No se detectaron cambios fuera del alcance M2.2 que requieran reapertura.
@@ -93,4 +94,5 @@ incluyendo volumen, lote proveedor, enlace de inventario, costo y ciclo de reuti
 - Closed/Verified: **9**
 - P0 abiertos: **0**
 - P1 abiertos: **0**
-- Criterios de salida M2.2: **cumplidos**, sujeto al Quality final del commit documental de cierre.
+- Criterios de salida M2.2: **cumplidos**.
+- Quality final: **#1834 verde**.
