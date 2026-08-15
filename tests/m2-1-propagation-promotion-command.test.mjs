@@ -130,9 +130,11 @@ test('M21-F008: invalid production location is rejected before commit',()=>{
  assert.throws(()=>preparePropagationPromotion(wrongBed,input({unitIds:['u1']}),{commandId:'x'}),/cama no pertenece/)
 })
 
-test('M21-F007/F008 re-audit: promotion panel delegates to command and does not call legacy mutation',async()=>{
+test('M21-F007/F008/F009 re-audit: promotion panel delegates through Action Engine without legacy mutation',async()=>{
  const panel=await readFile(new URL('../src/components/RootedCuttingPromotionPanel.jsx',import.meta.url),'utf8')
- assert.match(panel,/executePropagationPromotionCommand/)
+ assert.match(panel,/executePlantAction/)
+ assert.match(panel,/PlantActions\.PROMOTE_PROPAGATION_UNITS/)
+ assert.doesNotMatch(panel,/executePropagationPromotionCommand/)
  assert.doesNotMatch(panel,/promotePropagationUnits/)
  assert.doesNotMatch(panel,/update\(store=>/)
  assert.match(panel,/posiciones canónicas libres/)
