@@ -1,3 +1,5 @@
+import{hasPermission as hasScopedPermission}from'../domain/accessControl.js'
+
 export const ROLE_PERMISSIONS={
  'Administrador':['*'],
  'Gerente':['view_dashboards','view_costs','view_audit','export_data'],
@@ -9,15 +11,46 @@ export const ROLE_PERMISSIONS={
  'Inventario':['manage_inventory','view_costs']
 }
 
+const text=value=>String(value??'').trim()
+const list=value=>Array.isArray(value)?value:[]
+
 export function activeUser(state){
- return(state.users||[]).find(x=>x.activeSession&&x.active!==false)||null
+ return list(state?.users).find(user=>user?.activeSession&&user?.active!==false)||null
 }
 
-export function hasPermission(state,permission){
- const users=state.users||[]
- if(users.length===0)return true // modo de instalación inicial hasta crear el primer usuario
+export function isInstallationMode(state){
+ return list(state?.users).length===0&&list(state?.memberships).length===0&&list(state?.companies).length===0
+}
+
+export function activeAuthorizationScope(state){
+ const companyId=text(state?.currentContext?.companyId)
+ const siteId=text(state?.currentContext?.siteId)
+ return{companyId,siteId}
+}
+
+function legacyAccessState(state,user){
+ const companyId=activeAuthorizationScope(state).companyId||text(state?.companies?.[0]?.id)||'local-installation'
+ const roleId=`legacy:${text(user?.role)||'unknown'}`
+ return{
+  ...state,
+  roles:[...(list(state?.roles)),{id:roleId,permissions:ROLE_PERMISSIONS[user?.role]||[]}],
+  memberships:[{id:`legacy-membership:${user.id}`,userId:user.id,companyId,roleId,siteIds:user.siteId?[user.siteId]:[],status:'active'}]
+ }
+}
+
+export function hasPermission(state,permission,{companyId,siteId}={}){
+ if(isInstallationMode(state))return true
  const user=activeUser(state)
  if(!user)return false
- const list=ROLE_PERMISSIONS[user.role]||[]
- return list.includes('*')||list.includes(permission)
+ const scope=activeAuthorizationScope(state)
+ const organizationId=text(companyId||scope.companyId)
+ const locationId=text(siteId??scope.siteId)
+ if(!organizationId)return false
+ const memberships=list(state?.memberships).filter(item=>item?.userId===user.id&&item?.status!=='inactive')
+ if(memberships.length){
+  return hasScopedPermission({state,userId:user.id,companyId:organizationId,siteId:locationId,permission})
+ }
+ if(user.remote)return false
+ const adapted=legacyAccessState(state,user)
+ return hasScopedPermission({state:adapted,userId:user.id,companyId:organizationId,siteId:locationId,permission})
 }
