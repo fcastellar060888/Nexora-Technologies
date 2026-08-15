@@ -1,15 +1,39 @@
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
-import{createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,assignmentFromBatch,createReusePolicy,planReuseCycle}from'../domain/growingMedium.js'
+import{createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,assignmentFromBatch,createReusePolicy,planReuseCycle,createPurchaseRequirement,REUSE_ACTIONS}from'../domain/growingMedium.js'
 import{hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
 
-export const GROWING_MEDIUM_OPERATIONS=Object.freeze({CREATE_PRODUCT:'CREATE_PRODUCT',UPDATE_PRODUCT:'UPDATE_PRODUCT',ARCHIVE_PRODUCT:'ARCHIVE_PRODUCT',CREATE_FORMULA:'CREATE_FORMULA',CREATE_FORMULA_VERSION:'CREATE_FORMULA_VERSION',REGISTER_BATCH:'REGISTER_BATCH',CREATE_ASSIGNMENT:'CREATE_ASSIGNMENT',ARCHIVE_ASSIGNMENT:'ARCHIVE_ASSIGNMENT',CREATE_REUSE_POLICY:'CREATE_REUSE_POLICY',RECORD_REUSE:'RECORD_REUSE'})
+export const GROWING_MEDIUM_OPERATIONS=Object.freeze({CREATE_PRODUCT:'CREATE_PRODUCT',UPDATE_PRODUCT:'UPDATE_PRODUCT',ARCHIVE_PRODUCT:'ARCHIVE_PRODUCT',CREATE_FORMULA:'CREATE_FORMULA',CREATE_FORMULA_VERSION:'CREATE_FORMULA_VERSION',REGISTER_BATCH:'REGISTER_BATCH',CREATE_ASSIGNMENT:'CREATE_ASSIGNMENT',ARCHIVE_ASSIGNMENT:'ARCHIVE_ASSIGNMENT',CREATE_REUSE_POLICY:'CREATE_REUSE_POLICY',RECORD_REUSE:'RECORD_REUSE',CREATE_PURCHASE_REQUIREMENT:'CREATE_PURCHASE_REQUIREMENT'})
 
 const list=(state,key)=>Array.isArray(state?.[key])?state[key]:[]
 const text=value=>String(value??'').trim()
 const tenantItem=(items,id,organizationId,label)=>{const found=items.find(item=>item.id===id&&item.organizationId===organizationId);if(!found)throw new Error(`${label} no existe en la organización activa.`);return found}
 const upsert=(items,value)=>items.some(item=>item.id===value.id&&item.organizationId===value.organizationId)?items.map(item=>item.id===value.id&&item.organizationId===value.organizationId?value:item):[...items,value]
+
+function purchaseScopeAssignments(state,organizationId,input){
+ const assignments=list(state,'growingMediumAssignments').filter(item=>item.organizationId===organizationId&&item.active!==false)
+ const siteId=text(input.siteId),scopeType=text(input.scopeType||'SITE'),scopeId=text(input.scopeId||siteId)
+ if(!siteId)throw new Error('siteId es obligatorio para planificar compra.')
+ if(scopeType==='SITE')return assignments.filter(item=>item.siteId===siteId)
+ if(scopeType==='BED')return assignments.filter(item=>item.siteId===siteId&&item.targetType==='BED'&&item.targetId===scopeId)
+ if(scopeType==='TRAY')return assignments.filter(item=>item.siteId===siteId&&item.targetType==='TRAY'&&item.targetId===scopeId)
+ if(scopeType==='HOUSE'){
+  const bedIds=new Set(list(state,'beds').filter(item=>item.houseId===scopeId&&item.active!==false).map(item=>item.id))
+  return assignments.filter(item=>item.siteId===siteId&&item.targetType==='BED'&&bedIds.has(item.targetId))
+ }
+ throw new Error('scopeType de requerimiento de compra inválido.')
+}
+
+function purchasePlans(state,organizationId,input){
+ const assignments=purchaseScopeAssignments(state,organizationId,input)
+ if(!assignments.length)throw new Error('No existen asignaciones activas para el alcance seleccionado.')
+ return assignments.map(assignment=>{
+  const policy=assignment.reusePolicyId?tenantItem(list(state,'growingMediumReusePolicies'),assignment.reusePolicyId,organizationId,'La política de reutilización'):null
+  const plan=policy?planReuseCycle({assignment,policy,completedUses:assignment.currentUse}):{action:REUSE_ACTIONS.FULL_REPLACEMENT,reusedVolumeLiters:0,freshVolumeLiters:Number(assignment.volumeLiters),replacementPercent:100}
+  return{assignmentId:assignment.id,targetType:assignment.targetType,targetId:assignment.targetId,batchId:assignment.batchId,supplierId:assignment.supplierId,supplierLot:assignment.supplierLot,action:plan.action,currentUse:assignment.currentUse,freshVolumeLiters:plan.freshVolumeLiters,reusedVolumeLiters:plan.reusedVolumeLiters}
+ })
+}
 
 export async function executeGrowingMediumCommand(state,{operation,input={},entityId='',commandId=crypto.randomUUID(),occurredAt=new Date().toISOString()}={},deps={}){
  if(!hasPermission(state,'manage_cultivation'))throw new Error('No tienes permiso para administrar medios de cultivo.')
@@ -64,6 +88,10 @@ export async function executeGrowingMediumCommand(state,{operation,input={},enti
   const assignment=tenantItem(list(state,'growingMediumAssignments'),input.assignmentId,organizationId,'La asignación'),policy=tenantItem(list(state,'growingMediumReusePolicies'),assignment.reusePolicyId,organizationId,'La política de reutilización'),plan=planReuseCycle({assignment,policy,completedUses:input.completedUses})
   const cycle=Object.freeze({id:aggregateId,organizationId,siteId:assignment.siteId,assignmentId:assignment.id,completedUses:Number(input.completedUses??assignment.currentUse),action:plan.action,reusedVolumeLiters:plan.reusedVolumeLiters,freshVolumeLiters:plan.freshVolumeLiters,replacementPercent:plan.replacementPercent,responsibleId:text(input.responsibleId),recordedAt:occurredAt})
   eventName=DomainEvents.GROWING_MEDIUM_REUSE_RECORDED;payload={reuseCycleId:cycle.id,assignmentId:assignment.id,action:cycle.action,freshVolumeLiters:cycle.freshVolumeLiters,reusedVolumeLiters:cycle.reusedVolumeLiters};apply=current=>list(current,'growingMediumReuseCycles').some(item=>item.id===cycle.id&&item.organizationId===organizationId)?current:{...current,growingMediumReuseCycles:[...list(current,'growingMediumReuseCycles'),cycle],growingMediumAssignments:upsert(list(current,'growingMediumAssignments'),{...assignment,currentUse:plan.nextUse,updatedAt:occurredAt})}
+ }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_PURCHASE_REQUIREMENT){
+  const plans=purchasePlans(state,organizationId,input),requirement=createPurchaseRequirement({...input,id:aggregateId,organizationId,plans,createdAt:occurredAt,createdBy:text(input.createdBy)})
+  eventName=DomainEvents.GROWING_MEDIUM_PURCHASE_REQUIREMENT_CREATED;payload={purchaseRequirementId:requirement.id,siteId:requirement.siteId,scopeType:requirement.scopeType,scopeId:requirement.scopeId,periodStart:requirement.periodStart,periodEnd:requirement.periodEnd,baseVolumeLiters:requirement.baseVolumeLiters,reservePercent:requirement.reservePercent,requiredVolumeLiters:requirement.requiredVolumeLiters,assignmentIds:requirement.plans.map(plan=>plan.assignmentId)}
+  apply=current=>list(current,'growingMediumPurchaseRequirements').some(item=>item.id===requirement.id&&item.organizationId===organizationId)?current:{...current,growingMediumPurchaseRequirements:[...list(current,'growingMediumPurchaseRequirements'),requirement]}
  }else throw new Error('Operación de medio de cultivo no soportada.')
 
  await executeCoreOperationCommand({commandId,organizationId,siteId:text(input.siteId)||null,aggregateType:'growing-medium',aggregateId,completedEventName:eventName,occurredAt,payload,metadata:{module:'growing-medium'},apply},{publishEvent,commit})
