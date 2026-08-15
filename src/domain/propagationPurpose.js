@@ -1,4 +1,5 @@
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'./materialPlantIdentity.js'
+import{activeOrganizationId,assertActiveOrganization,explicitOrganizationId}from'./organizationOwnership.js'
 
 export const PROPAGATION_PURPOSES=Object.freeze({
  PRODUCTION:'PRODUCTION',
@@ -31,20 +32,25 @@ export function propagationSourceEligibility(unit){
  return Object.freeze({eligible:true,reason:'Disponible para corte.'})
 }
 
-export function propagationSourceUnits(state,{siteId='',activeOnly=true,eligibleOnly=true}={}){
+export function propagationSourceUnits(state,{organizationId=activeOrganizationId(state),siteId='',activeOnly=true,eligibleOnly=true}={}){
+ assertActiveOrganization(state,organizationId,{label:'La organización de propagación'})
  const overrides=state.materialPlantUnits||[]
  const lots=[
   ...(state.grandmotherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,overrides})),
   ...(state.motherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,overrides}))
  ]
- return lots.filter(unit=>(!siteId||unit.siteId===siteId)&&(!activeOnly||!retiredStatuses.has(unit.status))&&(!eligibleOnly||propagationSourceEligibility(unit).eligible))
+ return lots.filter(unit=>explicitOrganizationId(unit)===organizationId&&(!siteId||unit.siteId===siteId)&&(!activeOnly||!retiredStatuses.has(unit.status))&&(!eligibleOnly||propagationSourceEligibility(unit).eligible))
 }
 
-export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId='',sourceUnit=null}){
+export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId='',sourceUnit=null,organizationId=''}){
  if(!sourcePlantId)throw new Error('Selecciona la planta individual de origen.')
  if(!allowedSourceTypes.has(sourcePlantType))throw new Error('El tipo de planta de origen no es válido.')
  if(!allowedPurposes.has(purpose))throw new Error('Selecciona el propósito de los esquejes.')
- if(sourceUnit){const eligibility=propagationSourceEligibility(sourceUnit);if(!eligibility.eligible)throw new Error(`La planta no puede originar esquejes. ${eligibility.reason}`)}
+ if(sourceUnit){
+  const owner=explicitOrganizationId(sourceUnit)
+  if(organizationId&&owner!==organizationId)throw new Error('La planta de origen pertenece a otra organización.')
+  const eligibility=propagationSourceEligibility(sourceUnit);if(!eligibility.eligible)throw new Error(`La planta no puede originar esquejes. ${eligibility.reason}`)
+ }
  if(purpose===PROPAGATION_PURPOSES.PRODUCTION&&productionLotId===null)throw new Error('El destino productivo no es válido.')
  return true
 }
@@ -57,11 +63,12 @@ export function propagationDestination(purpose){
  return Object.freeze({entersProduction:false,targetLifecycleStage:'EVALUATION',batchClass:'EVALUATION'})
 }
 
-export function createPurposeAwareBatch(base,{sourceUnit,purpose,productionLotId=''}){
- validatePropagationIntent({sourcePlantId:sourceUnit?.id,sourcePlantType:sourceUnit?.plantType,purpose,productionLotId,sourceUnit})
+export function createPurposeAwareBatch(base,{sourceUnit,purpose,productionLotId='',organizationId=explicitOrganizationId(sourceUnit)}={}){
+ validatePropagationIntent({sourcePlantId:sourceUnit?.id,sourcePlantType:sourceUnit?.plantType,purpose,productionLotId,sourceUnit,organizationId})
  const destination=propagationDestination(purpose)
  return{
   ...base,
+  organizationId,
   sourcePlantId:sourceUnit.id,
   sourcePlantType:sourceUnit.plantType,
   sourceLotId:sourceUnit.lotId,
