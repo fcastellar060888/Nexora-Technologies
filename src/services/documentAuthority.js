@@ -2,7 +2,7 @@ import{authenticatedBinaryRequest,authenticatedRequest,supabaseEnabled}from'./su
 
 export const DOCUMENT_BUCKET='documents'
 export const MAX_DOCUMENT_BYTES=25*1024*1024
-export const DOCUMENT_STATUS=Object.freeze({ACTIVE:'active',ARCHIVED:'archived'})
+export const DOCUMENT_STATUS=Object.freeze({PENDING:'pending',ACTIVE:'active',ARCHIVED:'archived'})
 const ALLOWED_EXACT=new Set(['application/pdf'])
 const text=value=>String(value??'').trim()
 const safeSegment=value=>text(value).normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,120)||'unknown'
@@ -59,21 +59,18 @@ export async function uploadDocument({state,file,entityType,entityId,organizatio
  const id=text(documentId);if(!id)throw new Error('documentId es obligatorio.')
  const checksum=await sha256Document(file)
  const storagePath=documentStoragePath({...scope,entityType,entityId,documentId:id,fileName:file.name})
- const base={id,organizationId:scope.organizationId,siteId:scope.siteId,entityType:text(entityType),entityId:text(entityId),name:text(file.name),mimeType:text(file.type),size:Number(file.size),checksum,storageBucket:DOCUMENT_BUCKET,storagePath,status:DOCUMENT_STATUS.ACTIVE}
+ const base={id,organizationId:scope.organizationId,siteId:scope.siteId,entityType:text(entityType),entityId:text(entityId),name:text(file.name),mimeType:text(file.type),size:Number(file.size),checksum,storageBucket:DOCUMENT_BUCKET,storagePath,status:DOCUMENT_STATUS.PENDING}
  if(!base.entityType||!base.entityId)throw new Error('El documento necesita una entidad de destino.')
  if(!enabled){
   const objectUrl=URL.createObjectURL(file)
-  return Object.freeze({...base,createdAt:new Date().toISOString(),createdBy:'local-installation',storageMode:'memory',objectUrl})
+  return Object.freeze({...base,status:DOCUMENT_STATUS.ACTIVE,createdAt:new Date().toISOString(),createdBy:'local-installation',storageMode:'memory',objectUrl})
  }
+ const row={id,organization_id:scope.organizationId,site_id:scope.siteId,entity_type:base.entityType,entity_id:base.entityId,name:base.name,mime_type:base.mimeType,size_bytes:base.size,checksum_sha256:checksum,storage_bucket:DOCUMENT_BUCKET,storage_path:storagePath,status:DOCUMENT_STATUS.PENDING}
+ await jsonRequest('/rest/v1/documents?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:row})
  const objectPath=storagePath.split('/').map(encodeURIComponent).join('/')
- await binaryRequest(`/storage/v1/object/${DOCUMENT_BUCKET}/${objectPath}`,{method:'POST',body:file,contentType:file.type,headers:{'x-upsert':'false'}})
- try{
-  const rows=await jsonRequest('/rest/v1/documents',{method:'POST',headers:{Prefer:'return=representation'},body:{id,organization_id:scope.organizationId,site_id:scope.siteId,entity_type:base.entityType,entity_id:base.entityId,name:base.name,mime_type:base.mimeType,size_bytes:base.size,checksum_sha256:checksum,storage_bucket:DOCUMENT_BUCKET,storage_path:storagePath,status:DOCUMENT_STATUS.ACTIVE}})
-  return mapRemoteDocument(rows?.[0]||{...base,organization_id:scope.organizationId,site_id:scope.siteId,entity_type:base.entityType,entity_id:base.entityId,mime_type:base.mimeType,size_bytes:base.size,checksum_sha256:checksum,storage_bucket:DOCUMENT_BUCKET,storage_path:storagePath})
- }catch(error){
-  await binaryRequest(`/storage/v1/object/${DOCUMENT_BUCKET}/${objectPath}`,{method:'DELETE',body:undefined,contentType:'application/octet-stream'}).catch(()=>{})
-  throw error
- }
+ await binaryRequest(`/storage/v1/object/${DOCUMENT_BUCKET}/${objectPath}`,{method:'POST',body:file,contentType:file.type,headers:{'x-upsert':'true'}})
+ const rows=await jsonRequest(`/rest/v1/documents?id=eq.${encodeURIComponent(id)}&organization_id=eq.${encodeURIComponent(scope.organizationId)}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:{status:DOCUMENT_STATUS.ACTIVE,activated_at:new Date().toISOString()}})
+ return mapRemoteDocument(rows?.[0]||{...row,status:DOCUMENT_STATUS.ACTIVE})
 }
 
 export async function listDocuments({state,entityType,entityId,organizationId='',siteId=''},{jsonRequest=authenticatedRequest,enabled=supabaseEnabled}={}){
