@@ -6,6 +6,7 @@ import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{assertBankCapacity,archivePropagationBank}from'../domain/facilityLifecycle.js'
 import{areaSquareMeters,bankCapacity,formatArea,occupancyPercent,plantDensity,formatDensity}from'../domain/spaceMetrics.js'
 import{bankOccupancy}from'../domain/propagationAllocation.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 
 const emptyTray=()=>({id:crypto.randomUUID(),quantity:1,cellsPerTray:30,label:'Bandeja',substrate:'Turba',usesJiffy:false,plugType:'Plug estándar',plugSize:'',volumePerCavityMl:0,mediumLot:''})
 const emptyBank=siteId=>({siteId:siteId||'',name:'Banco 1',dimensionUnit:'m',length:0,width:0,height:0,currentPlants:0,trays:[emptyTray()],notes:''})
@@ -17,35 +18,38 @@ export default function PropagationBankManager({state,update}){
  const defaultSite=state.currentContext?.siteId||activeSites[0]?.id||''
  const[bank,setBank]=useState(()=>emptyBank(defaultSite)),[editingBankId,setEditingBankId]=useState(null)
  const banks=state.propagationBanks||[]
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
  function normalizeTrays(){return bank.trays.map(item=>({...item,id:item.id||crypto.randomUUID(),label:String(item.label||'Bandeja').trim()||'Bandeja',quantity:Math.max(0,Number(item.quantity)||0),cellsPerTray:Math.max(0,Number(item.cellsPerTray)||0),substrate:String(item.substrate||'').trim(),usesJiffy:Boolean(item.usesJiffy),plugType:String(item.plugType||'').trim(),plugSize:String(item.plugSize||'').trim(),volumePerCavityMl:Math.max(0,Number(item.volumePerCavityMl)||0),mediumLot:String(item.mediumLot||'').trim()}))}
- function saveBank(event){
+ async function saveBank(event){
   event.preventDefault()
   const site=activeSites.find(item=>item.id===bank.siteId),name=bank.name.trim()
   if(!site)return alert('Selecciona una sede activa.')
   if(!name)return alert('Escribe el nombre del banco.')
   if(banks.some(item=>item.id!==editingBankId&&item.active!==false&&item.siteId===bank.siteId&&item.name.trim().toLowerCase()===name.toLowerCase()))return alert('Ya existe un banco activo con ese nombre en la sede.')
+  const organizationId=site.companyId||''
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria del banco.')
   const trays=normalizeTrays()
   if(trays.some(item=>item.quantity<=0||item.cellsPerTray<=0))return alert('Cada tipo de bandeja debe tener cantidad y cavidades mayores que cero.')
-  const payload={...bank,name,length:Math.max(0,Number(bank.length)||0),width:Math.max(0,Number(bank.width)||0),height:Math.max(0,Number(bank.height)||0),trays,updatedAt:new Date().toISOString()}
+  const payload={...bank,organizationId,siteId:site.id,name,length:Math.max(0,Number(bank.length)||0),width:Math.max(0,Number(bank.width)||0),height:Math.max(0,Number(bank.height)||0),trays,updatedAt:new Date().toISOString()}
   try{assertBankCapacity({...payload,id:editingBankId||'new-bank'},state.propagationUnits)}catch(error){return alert(error.message)}
-  if(editingBankId){
-   const previous=banks.find(item=>item.id===editingBankId),after={...previous,...payload}
-   update(store=>({...store,propagationBanks:store.propagationBanks.map(item=>item.id===editingBankId?after:item)}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.PROPAGATION_BANK_UPDATED,aggregateType:'propagation.bank',aggregateId:editingBankId,organizationId:site.companyId,siteId:site.id,payload:{label:name,before:previous,after},metadata:{collections:['propagationBanks']}})
-  }else{
-   const id=crypto.randomUUID(),createdAt=new Date().toISOString(),created={id,active:true,createdAt,...payload}
-   update(store=>({...store,propagationBanks:[...store.propagationBanks,created]}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.PROPAGATION_BANK_CREATED,aggregateType:'propagation.bank',aggregateId:id,organizationId:site.companyId,siteId:site.id,payload:{label:name,bank:created},metadata:{collections:['propagationBanks']}})
-  }
-  setEditingBankId(null);setBank(emptyBank(bank.siteId))
+  try{
+   if(editingBankId){
+    const previous=banks.find(item=>item.id===editingBankId),after={...previous,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:site.id,aggregateType:'propagation.bank',aggregateId:editingBankId,completedEventName:DomainEvents.PROPAGATION_BANK_UPDATED,payload:{label:name,before:previous,after},metadata:{collections:['propagationBanks']},apply:store=>({...store,propagationBanks:(store.propagationBanks||[]).map(item=>item.id===editingBankId?after:item)})})
+   }else{
+    const id=crypto.randomUUID(),createdAt=new Date().toISOString(),created={id,active:true,createdAt,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:site.id,aggregateType:'propagation.bank',aggregateId:id,completedEventName:DomainEvents.PROPAGATION_BANK_CREATED,payload:{label:name,bank:created},metadata:{collections:['propagationBanks']},apply:store=>(store.propagationBanks||[]).some(item=>item.id===id)?store:{...store,propagationBanks:[...(store.propagationBanks||[]),created]}})
+   }
+   setEditingBankId(null);setBank(emptyBank(bank.siteId))
+  }catch(error){alert(error.message||'No fue posible guardar el banco.')}
  }
  function editBank(item){setEditingBankId(item.id);setBank({...emptyBank(item.siteId),...item,trays:(item.trays?.length?item.trays:[{...emptyTray(),quantity:item.trayCount||1,cellsPerTray:item.cavitiesPerTray||30,substrate:item.substrate||'Turba',usesJiffy:Boolean(item.usesJiffy),plugType:item.plugType||'',plugSize:item.plugSize||'',volumePerCavityMl:item.volumePerCavityMl||0,mediumLot:item.mediumLot||''}]).map(tray=>({...emptyTray(),...tray,id:tray.id||crypto.randomUUID()}))})}
- function archiveBank(item){
+ async function archiveBank(item){
   if(!confirm(`¿Archivar el banco ${item.name}? Su configuración e historial se conservarán.`))return
   try{
-   const next=archivePropagationBank(state,item.id),after=next.propagationBanks.find(value=>value.id===item.id),site=state.sites.find(value=>value.id===item.siteId)
-   update(()=>next,{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.PROPAGATION_BANK_ARCHIVED,aggregateType:'propagation.bank',aggregateId:item.id,organizationId:site?.companyId||state.currentContext?.companyId,siteId:item.siteId,payload:{label:item.name,before:item,after},metadata:{collections:['propagationBanks']}})
+   const preview=archivePropagationBank(state,item.id),after=preview.propagationBanks.find(value=>value.id===item.id),site=state.sites.find(value=>value.id===item.siteId),organizationId=site?.companyId||item.organizationId||state.currentContext?.companyId||''
+   if(!organizationId)throw new Error('No se puede demostrar la empresa propietaria del banco.')
+   await execute({commandId:crypto.randomUUID(),organizationId,siteId:item.siteId,aggregateType:'propagation.bank',aggregateId:item.id,completedEventName:DomainEvents.PROPAGATION_BANK_ARCHIVED,payload:{label:item.name,before:item,after:{...after,organizationId}},metadata:{collections:['propagationBanks']},apply:current=>archivePropagationBank(current,item.id)})
    if(editingBankId===item.id){setEditingBankId(null);setBank(emptyBank(defaultSite))}
   }catch(error){alert(error.message)}
  }
