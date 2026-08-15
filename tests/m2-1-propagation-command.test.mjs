@@ -81,6 +81,57 @@ test('M21-F004/F005: capacity and permission are enforced before commit',async()
  assert.equal(commits,0)
 })
 
+test('M21-F004/F005: malformed intent, genetic mismatch, inactive genetic and code collisions fail closed',()=>{
+ const state=stateFixture()
+ assert.throws(()=>preparePropagationBatch(state,commandInput({siteId:''}),{commandId:'missing-site'}),/Sede, banco y planta/)
+ assert.throws(()=>preparePropagationBatch(state,commandInput({quantity:0}),{commandId:'zero'}),/cantidad debe ser mayor/)
+ assert.throws(()=>preparePropagationBatch(state,commandInput({cutDate:'15-08-2026'}),{commandId:'bad-date'}),/fecha de corte/)
+ assert.throws(()=>preparePropagationBatch(state,commandInput({geneticId:'other'}),{commandId:'bad-genetic'}),/no coincide/)
+ const inactive=stateFixture();inactive.genetics=inactive.genetics.map(item=>item.organizationId==='org-a'?{...item,active:false}:item)
+ assert.throws(()=>preparePropagationBatch(inactive,commandInput(),{commandId:'inactive'}),/no está activa/)
+ const duplicate=stateFixture();duplicate.propagationBatches=[{id:'other',organizationId:'org-a',code:'LP-VIL-GEN-A-20260815-001'}]
+ const generated=preparePropagationBatch(state,commandInput(),{commandId:'reference'})
+ duplicate.propagationBatches[0].code=generated.batch.code
+ assert.throws(()=>preparePropagationBatch(duplicate,commandInput({commandId:'another'}),{commandId:'another'}),/código de lote ya existe/)
+})
+
+test('M21-F004: direct grandmother production requires explicit traceable authorization',()=>{
+ const state=stateFixture()
+ state.grandmotherPlants=[{id:'grand-lot',organizationId:'org-a',siteId:'site-a',geneticId:'gen-1',lotCode:'GA',quantity:1,status:'Activa',healthStatus:'Sana'}]
+ state.materialPlantUnits.push({id:'grand-plant',organizationId:'org-a',plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,unitIndex:0,lotId:'grand-lot',siteId:'site-a',geneticId:'gen-1',code:'GA-A001',status:'Activa',healthStatus:'Sana',operationalAvailability:'Disponible para corte'})
+ assert.throws(()=>preparePropagationBatch(state,commandInput({sourcePlantId:'grand-plant'}),{commandId:'grand-no-auth'}),/autorización explícita/)
+ const prepared=preparePropagationBatch(state,commandInput({sourcePlantId:'grand-plant',authorizedGrandmotherProduction:true,quantity:1}),{commandId:'grand-auth'})
+ assert.equal(prepared.batch.authorizedGrandmotherProduction,true)
+ assert.equal(prepared.batch.sourcePlantType,MATERIAL_PLANT_TYPES.GRANDMOTHER)
+})
+
+test('M21-F004: batch identity collisions are tenant-aware and command-aware',()=>{
+ const foreign=stateFixture();foreign.propagationBatches=[{id:'cut-cmd-1',organizationId:'org-b',commandId:'other',code:'foreign'}]
+ assert.throws(()=>preparePropagationBatch(foreign,commandInput(),{commandId:'cut-cmd-1'}),/otra organización/)
+ const local=stateFixture();local.propagationBatches=[{id:'cut-cmd-1',organizationId:'org-a',commandId:'other',code:'local'}]
+ assert.throws(()=>preparePropagationBatch(local,commandInput(),{commandId:'cut-cmd-1'}),/otra operación/)
+})
+
+test('M21-F004: concurrent batch or clone collision aborts the commit after durable intent',async()=>{
+ const base=stateFixture()
+ let events=[]
+ await assert.rejects(()=>executePropagationBatchCommand(base,commandInput({quantity:1}),{
+  publishEvent:async event=>events.push(event),
+  commit:recipe=>recipe({...base,propagationBatches:[{id:'cut-cmd-1',organizationId:'org-a',commandId:'racing-command'}]})
+ }),/Colisión de batch durante el commit/)
+ assert.equal(events[0].name,'core.operation.requested')
+ events=[]
+ await assert.rejects(()=>executePropagationBatchCommand(base,commandInput({quantity:1}),{
+  publishEvent:async event=>events.push(event),
+  commit:recipe=>recipe({...base,propagationUnits:[{id:'cut-cmd-1:clone:1',organizationId:'org-a',batchId:'other'}]})
+ }),/Colisión de identidad de esqueje/)
+ assert.equal(events[0].name,'core.operation.requested')
+})
+
+test('M21-F004: missing commit is rejected before state mutation',async()=>{
+ await assert.rejects(()=>executePropagationBatchCommand(stateFixture(),commandInput(),{publishEvent:async()=>{}}),/commit es obligatorio/)
+})
+
 test('M21-F004 re-audit: propagation form delegates creation and cannot mutate Store directly',async()=>{
  const source=await readFile(new URL('../src/components/PurposeAwarePropagationForm.jsx',import.meta.url),'utf8')
  assert.match(source,/executePropagationBatchCommand/)
