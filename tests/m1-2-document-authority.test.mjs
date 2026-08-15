@@ -56,7 +56,7 @@ test('M12-F004: archive changes lifecycle metadata and never requires physical d
  const archived=await archiveDocument({state,document:current},{enabled:true,jsonRequest:async(path,options)=>[{...current,organization_id:'org-a',site_id:'site-a',status:options.body.status,archived_at:options.body.archived_at}]})
  assert.equal(archived.status,DOCUMENT_STATUS.ARCHIVED)
  assert.ok(archived.archivedAt)
- assert.throws(()=>archiveDocument({state,document:{...current,organizationId:'org-b'}},{enabled:false}),/otra organización/)
+ await assert.rejects(archiveDocument({state,document:{...current,organizationId:'org-b'}},{enabled:false}),/otra organización/)
 })
 
 test('M12-F003/F004 re-audit: uploader cannot serialize bytes into Store',async()=>{
