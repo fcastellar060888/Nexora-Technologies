@@ -1,4 +1,4 @@
-import{createGrowingMediumAssignment}from'../domain/growingMedium.js'
+import{assignmentFromBatch}from'../domain/growingMedium.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
@@ -16,13 +16,13 @@ export async function executeGrowingMediumTargetAssignment(state,{targetType,tar
  const batch=tenantItem(list(state,'growingMediumBatches'),batchId,organizationId,'El batch')
  if(batch.active===false)throw new Error('El batch de medio está archivado.')
  if(reusePolicyId)tenantItem(list(state,'growingMediumReusePolicies'),reusePolicyId,organizationId,'La política de reutilización')
- const assignment=createGrowingMediumAssignment({id:assignmentId||`${commandId}:assignment`,organizationId,siteId,targetType,targetId,batchId,volumeLiters,reusePolicyId,assignedAt:occurredAt})
+ const assignment=assignmentFromBatch({id:assignmentId||`${commandId}:assignment`,organizationId,siteId,targetType,targetId,batchId,volumeLiters,reusePolicyId,assignedAt:occurredAt},batch)
  if(Number(batch.availableVolumeLiters)<assignment.volumeLiters)throw new Error('El batch no tiene volumen suficiente para la asignación.')
  const publishEvent=deps.publishEvent||((event)=>publishDomainEvent(state,event)),commit=deps.commit
  if(typeof commit!=='function')throw new TypeError('commit es obligatorio para asignar medio de cultivo.')
  await executeCoreOperationCommand({
   commandId,organizationId,siteId,aggregateType:'growing-medium-assignment',aggregateId:assignment.id,completedEventName,occurredAt,
-  payload:{assignmentId:assignment.id,targetType,targetId,batchId,volumeLiters:assignment.volumeLiters},metadata:{module:'growing-medium'},
+  payload:{assignmentId:assignment.id,targetType,targetId,batchId,volumeLiters:assignment.volumeLiters,supplierLot:assignment.supplierLot,totalCost:assignment.totalCost,currency:assignment.currency},metadata:{module:'growing-medium'},
   apply:current=>{
    if(list(current,'growingMediumAssignments').some(item=>item.id===assignment.id&&item.organizationId===organizationId))return current
    const currentBatch=tenantItem(list(current,'growingMediumBatches'),batchId,organizationId,'El batch')
