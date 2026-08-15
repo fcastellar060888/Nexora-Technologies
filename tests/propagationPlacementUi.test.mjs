@@ -2,12 +2,14 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 
-test('la página delega la asignación física al formulario y el formulario al comando canónico',async()=>{
+test('la página delega la asignación física al formulario y el formulario al Action Engine canónico',async()=>{
  const page=await readFile(new URL('../src/pages/PropagationPage.jsx',import.meta.url),'utf8')
  const form=await readFile(new URL('../src/components/PurposeAwarePropagationForm.jsx',import.meta.url),'utf8')
  const command=await readFile(new URL('../src/services/propagationBatchCommand.js',import.meta.url),'utf8')
  assert.match(page,/PurposeAwarePropagationForm/)
- assert.match(form,/executePropagationBatchCommand/)
+ assert.match(form,/executePlantAction/)
+ assert.match(form,/CREATE_PROPAGATION_BATCH/)
+ assert.doesNotMatch(form,/executePropagationBatchCommand/)
  assert.match(form,/bankId/)
  assert.match(form,/posiciones libres/)
  assert.match(form,/Crear corte y ubicar esquejes/)
