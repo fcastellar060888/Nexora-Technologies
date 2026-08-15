@@ -25,5 +25,6 @@ test('producción exige nave y cama y los propósitos no confirmados no se ejecu
  assert.match(source,/PROMOTION_TARGETS\.PRODUCTION/)
  assert.match(source,/Selecciona nave y cama/)
  assert.match(source,/permanece en evaluación/)
- assert.match(source,/promotePropagationUnits/)
+ assert.match(source,/executePropagationPromotionCommand/)
+ assert.doesNotMatch(source,/\bpromotePropagationUnits\b/)
 })
