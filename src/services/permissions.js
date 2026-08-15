@@ -33,7 +33,7 @@ function legacyAccessState(state,user){
  const roleId=`legacy:${text(user?.role)||'unknown'}`
  return{
   ...state,
-  roles:[...(list(state?.roles)),{id:roleId,permissions:ROLE_PERMISSIONS[user?.role]||[]}],
+  roles:[...list(state?.roles),{id:roleId,permissions:ROLE_PERMISSIONS[user?.role]||[]}],
   memberships:[{id:`legacy-membership:${user.id}`,userId:user.id,companyId,roleId,siteIds:user.siteId?[user.siteId]:[],status:'active'}]
  }
 }
@@ -43,10 +43,11 @@ export function hasPermission(state,permission,{companyId,siteId}={}){
  const user=activeUser(state)
  if(!user)return false
  const scope=activeAuthorizationScope(state)
- const organizationId=text(companyId||scope.companyId)
+ const memberships=list(state?.memberships).filter(item=>item?.userId===user.id&&item?.status!=='inactive')
+ const legacyStandalone=!user.remote&&memberships.length===0&&list(state?.companies).length===0
+ const organizationId=text(companyId||scope.companyId||(legacyStandalone?'local-installation':''))
  const locationId=text(siteId??scope.siteId)
  if(!organizationId)return false
- const memberships=list(state?.memberships).filter(item=>item?.userId===user.id&&item?.status!=='inactive')
  if(memberships.length){
   return hasScopedPermission({state,userId:user.id,companyId:organizationId,siteId:locationId,permission})
  }
