@@ -18,6 +18,8 @@ export const DomainEvents=Object.freeze({
  PROPAGATION_BANK_CREATED:'propagation.bank.created',
  PROPAGATION_BANK_UPDATED:'propagation.bank.updated',
  PROPAGATION_BANK_ARCHIVED:'propagation.bank.archived',
+ PROPAGATION_BATCH_CREATED:'propagation.batch.created',
+ PROPAGATION_BATCH_PROMOTED:'propagation.batch.promoted',
  GENETIC_PROFILE_CREATED:'genetic.profile.created',
  GENETIC_PROFILE_UPDATED:'genetic.profile.updated',
  GENETIC_PROFILE_ARCHIVED:'genetic.profile.archived',
