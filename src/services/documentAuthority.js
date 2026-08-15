@@ -32,6 +32,7 @@ export function resolveDocumentScope(state,{organizationId='',siteId=''}={}){
   if((state?.companies||[]).length===0&&(state?.memberships||[]).length===0)return{organizationId:'local-installation',siteId:requestedSite||null}
   throw new Error('No se puede demostrar la organización del documento.')
  }
+ if(contextOrg&&organization!==contextOrg)throw new Error('No se puede adjuntar un documento a otra organización.')
  if(siteOrg&&siteOrg!==organization)throw new Error('La sede del documento pertenece a otra organización.')
  if(requestedOrg&&contextOrg&&requestedOrg!==contextOrg)throw new Error('No se puede adjuntar un documento a otra organización.')
  return{organizationId:organization,siteId:requestedSite||null}
