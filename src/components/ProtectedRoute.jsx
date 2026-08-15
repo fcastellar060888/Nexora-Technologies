@@ -1,13 +1,12 @@
 import { Navigate, useLocation } from 'react-router-dom'
-import { activeUser, hasPermission } from '../services/permissions'
+import { activeUser, hasPermission, isInstallationMode } from '../services/permissions'
 import { useStore } from '../services/store'
 
 export default function ProtectedRoute({ children, permission = '' }) {
   const { state } = useStore()
   const location = useLocation()
-  const users = state.users || []
   const user = activeUser(state)
-  const installationMode = users.length === 0
+  const installationMode = isInstallationMode(state)
 
   if (!installationMode && !user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
