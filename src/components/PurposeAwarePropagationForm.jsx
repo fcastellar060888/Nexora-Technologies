@@ -5,7 +5,7 @@ import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'..
 import{bankOccupancy}from'../domain/propagationAllocation.js'
 import{PROPAGATION_PURPOSES,PROPAGATION_PURPOSE_LABELS,propagationSourceUnits}from'../domain/propagationPurpose.js'
 import{geneticProfilesForOrganization}from'../domain/geneticProfile.js'
-import{executePropagationBatchCommand}from'../services/propagationBatchCommand.js'
+import{executePlantAction,PlantActions}from'../services/plantActionEngine.js'
 
 const nextSeq=(items,organizationId)=>Math.max(0,...items.filter(item=>!explicitOrganizationId(item)||explicitOrganizationId(item)===organizationId).map(item=>Number(item.sequence)||0))+1
 const emptyForm=(state,today,organizationId)=>({sourcePlantId:'',purpose:PROPAGATION_PURPOSES.PRODUCTION,siteId:state.currentContext?.siteId||state.sites.find(site=>!explicitOrganizationId(site)||explicitOrganizationId(site)===organizationId)?.id||'',bankId:'',cutDate:today,sequence:nextSeq(state.propagationBatches||[],organizationId),quantity:1,productionLotId:'',substrate:'',hormone:'',operator:'',expectedRootDate:'',notes:'',authorized:false})
@@ -30,8 +30,8 @@ export default function PurposeAwarePropagationForm({state,update,onCreated}){
   event.preventDefault();if(busy)return
   setBusy(true);setNotice('')
   try{
-   const result=await executePropagationBatchCommand(state,{...form,geneticId:source?.geneticId||'',authorizedGrandmotherProduction:form.authorized,commandId:crypto.randomUUID()},{commit:update})
-   setForm(emptyForm(state,today,organizationId));onCreated?.(result.batch)
+   const action=await executePlantAction(state,PlantActions.CREATE_PROPAGATION_BATCH,{target:{type:'material-plant',id:source?.id||'',organizationId,siteId:form.siteId,snapshot:{plantType:source?.plantType||'',geneticId:source?.geneticId||''}},input:{...form,geneticId:source?.geneticId||'',authorizedGrandmotherProduction:form.authorized,commandId:crypto.randomUUID()}},{commit:update})
+   setForm(emptyForm(state,today,organizationId));onCreated?.(action.result.batch)
   }catch(error){setNotice(error instanceof Error?error.message:'No fue posible crear el corte.')}
   finally{setBusy(false)}
  }
