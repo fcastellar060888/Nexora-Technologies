@@ -4,7 +4,7 @@ import Field from'./Field'
 import{clearSelection,createBulkActionRequest,createSelection,isSelected,selectAll,selectionSummary,toggleSelection}from'../core/selection/index.js'
 import{PROMOTION_TARGETS,promotablePropagationUnits,promotionTargetForBatch}from'../domain/propagationPromotion.js'
 import{activeOrganizationId,resolveOrganizationId}from'../domain/organizationOwnership.js'
-import{executePropagationPromotionCommand}from'../services/propagationPromotionCommand.js'
+import{executePlantAction,PlantActions}from'../services/plantActionEngine.js'
 
 const TARGET_LABELS={
  [PROMOTION_TARGETS.MOTHER]:'renovación de madres',
@@ -33,8 +33,8 @@ export default function RootedCuttingPromotionPanel({state,update,batch}){
    if(!supported)throw new Error('Este propósito todavía no tiene una promoción operativa confirmada.')
    if(target===PROMOTION_TARGETS.PRODUCTION&&(!form.houseId||!form.bedId))throw new Error('Selecciona nave y cama para promover a producción.')
    if(!form.confirmed)throw new Error('Confirma explícitamente la promoción antes de continuar.')
-   const request=createBulkActionRequest({selection,actionType:'propagation.promote',availableIds,requiresConfirmation:true,metadata:{batchId:batch.id,target}})
-   await executePropagationPromotionCommand(state,{batchId:batch.id,unitIds:request.targetIds,effectiveDate:form.effectiveDate,responsible:form.responsible,notes:form.notes,houseId:form.houseId,bedId:form.bedId,commandId:crypto.randomUUID()},{commit:update})
+   const request=createBulkActionRequest({selection,actionType:PlantActions.PROMOTE_PROPAGATION_UNITS,availableIds,requiresConfirmation:true,metadata:{batchId:batch.id,target}})
+   await executePlantAction(state,PlantActions.PROMOTE_PROPAGATION_UNITS,{target:{type:'propagation-batch',id:batch.id,organizationId,siteId:batch.siteId,snapshot:{purpose:batch.purpose,promotionTarget:target}},input:{batchId:batch.id,unitIds:request.targetIds,effectiveDate:form.effectiveDate,responsible:form.responsible,notes:form.notes,houseId:form.houseId,bedId:form.bedId,commandId:crypto.randomUUID()}},{commit:update})
    setSelection(current=>clearSelection(current));setForm(current=>({...current,notes:'',confirmed:false}));setNotice('Promoción registrada con trazabilidad.')
   }catch(error){setNotice(error instanceof Error?error.message:'No fue posible promover los esquejes.')}
   finally{setBusy(false)}
