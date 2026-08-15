@@ -12,14 +12,19 @@ test('houses page manages beds independently from house creation',async()=>{
  assert.match(source,/tantas naves y tantas camas por nave/)
 })
 
-test('bed manager supports multiple beds inside the same house',async()=>{
+test('bed manager supports multiple beds inside the same house through canonical audited creation',async()=>{
  const source=await read('src/components/BedManager.jsx')
  assert.match(source,/Agregar cama a una nave/)
  assert.match(source,/state\.beds\.some\(b=>b\.id!==editingId&&b\.houseId===form\.houseId/)
- assert.match(source,/beds:\[\.\.\.s\.beds,bed\]/)
+ assert.match(source,/createProductionPositions/)
+ assert.match(source,/executeCoreOperationCommand/)
+ assert.match(source,/beds:\[\.\.\.store\.beds,bed\]/)
+ assert.match(source,/plantPositions:\[\.\.\.store\.plantPositions,\.\.\.positions\]/)
  assert.match(source,/FACILITY_BED_CREATED/)
  assert.match(source,/FACILITY_BED_UPDATED/)
  assert.match(source,/FACILITY_BED_ARCHIVED/)
+ assert.match(source,/organizationId/)
+ assert.match(source,/siteId/)
 })
 
 test('cultivation map starts from the whole site and keeps MIPE risk visible',async()=>{

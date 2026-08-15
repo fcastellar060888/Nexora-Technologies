@@ -5,6 +5,7 @@ import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{TimelineFeed}from'../core/timeline/ui.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 import{useStore}from'../services/store'
 
 const empty={name:'',taxId:''}
@@ -18,19 +19,39 @@ export default function CompaniesPage(){
  const[message,setMessage]=useState(null)
  const siteCountByCompany=useMemo(()=>state.sites.filter(site=>site.active!==false).reduce((counts,site)=>({...counts,[site.companyId]:(counts[site.companyId]||0)+1}),{}),[state.sites])
  function resetForm(){setEditingId(null);setForm(empty);setMessage(null)}
- function save(event){
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
+ async function save(event){
   event.preventDefault()
   const name=normalize(form.name),taxId=normalizeTaxId(form.taxId)
   if(!name){setMessage({tone:'error',text:'Escribe la razón social de la empresa.'});return}
   if(state.companies.some(company=>company.id!==editingId&&normalize(company.name).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage({tone:'error',text:'Ya existe una empresa con esa razón social.'});return}
   if(taxId&&state.companies.some(company=>company.id!==editingId&&normalizeTaxId(company.taxId||'')===taxId)){setMessage({tone:'error',text:'Ya existe una empresa registrada con ese NIT.'});return}
   const payload={name,taxId}
-  if(editingId){const previous=state.companies.find(company=>company.id===editingId);update(store=>({...store,companies:store.companies.map(company=>company.id===editingId?{...company,...payload}:company)}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.COMPANY_UPDATED,aggregateType:'company',aggregateId:editingId,organizationId:editingId,payload:{label:name,before:previous,after:{...previous,...payload}},metadata:{collections:['companies']}});setMessage({tone:'success',text:'Empresa actualizada correctamente.'})}
-  else{const id=crypto.randomUUID(),company={id,active:true,...payload};update(store=>({...store,companies:[...store.companies,company]}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.COMPANY_CREATED,aggregateType:'company',aggregateId:id,organizationId:id,payload:{label:name,company},metadata:{collections:['companies']}});setMessage({tone:'success',text:'Empresa creada correctamente.'})}
-  setEditingId(null);setForm(empty)
+  try{
+   if(editingId){
+    const previous=state.companies.find(company=>company.id===editingId),after={...previous,...payload},commandId=crypto.randomUUID()
+    await execute({commandId,organizationId:editingId,aggregateType:'company',aggregateId:editingId,completedEventName:DomainEvents.COMPANY_UPDATED,payload:{label:name,before:previous,after},metadata:{collections:['companies']},audit:{module:'Empresas',action:'Empresa actualizada',detail:name},apply:store=>({...store,companies:store.companies.map(company=>company.id===editingId?after:company)})})
+    setMessage({tone:'success',text:'Empresa actualizada correctamente.'})
+   }else{
+    const id=crypto.randomUUID(),company={id,active:true,...payload},commandId=crypto.randomUUID()
+    await execute({commandId,organizationId:id,aggregateType:'company',aggregateId:id,completedEventName:DomainEvents.COMPANY_CREATED,payload:{label:name,company},metadata:{collections:['companies']},audit:{module:'Empresas',action:'Empresa creada',detail:name},apply:store=>store.companies.some(item=>item.id===id)?store:{...store,companies:[...store.companies,company]}})
+    setMessage({tone:'success',text:'Empresa creada correctamente.'})
+   }
+   setEditingId(null);setForm(empty)
+  }catch(error){setMessage({tone:'error',text:error.message||'No fue posible confirmar la operación.'})}
  }
  function edit(company){setEditingId(company.id);setForm({name:company.name,taxId:company.taxId||''});setMessage(null);window.scrollTo({top:0,behavior:'smooth'})}
- function archive(company){const siteCount=siteCountByCompany[company.id]||0;if(siteCount){setMessage({tone:'error',text:`No se puede archivar ${company.name}: tiene ${siteCount} sede${siteCount===1?'':'s'} activa${siteCount===1?'':'s'}. Archiva primero sus sedes activas.`});return}if(confirm(`¿Archivar la empresa ${company.name}? Su identidad e historial se conservarán.`)){const archivedAt=new Date().toISOString(),previous=company,after={...company,active:false,archivedAt};update(store=>({...store,companies:store.companies.map(item=>item.id===company.id?after:item)}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.COMPANY_ARCHIVED,aggregateType:'company',aggregateId:company.id,organizationId:company.id,payload:{label:company.name,before:previous,after},metadata:{collections:['companies']}});if(editingId===company.id)resetForm();setMessage({tone:'success',text:'Empresa archivada. Su historial fue preservado.'})}}
+ async function archive(company){
+  const siteCount=siteCountByCompany[company.id]||0
+  if(siteCount){setMessage({tone:'error',text:`No se puede archivar ${company.name}: tiene ${siteCount} sede${siteCount===1?'':'s'} activa${siteCount===1?'':'s'}. Archiva primero sus sedes activas.`});return}
+  if(!confirm(`¿Archivar la empresa ${company.name}? Su identidad e historial se conservarán.`))return
+  const archivedAt=new Date().toISOString(),after={...company,active:false,archivedAt}
+  try{
+   await execute({commandId:crypto.randomUUID(),organizationId:company.id,aggregateType:'company',aggregateId:company.id,completedEventName:DomainEvents.COMPANY_ARCHIVED,occurredAt:archivedAt,payload:{label:company.name,before:company,after},metadata:{collections:['companies']},audit:{module:'Empresas',action:'Empresa archivada',detail:company.name},apply:store=>({...store,companies:store.companies.map(item=>item.id===company.id?after:item)})})
+   if(editingId===company.id)resetForm()
+   setMessage({tone:'success',text:'Empresa archivada. Su historial fue preservado.'})
+  }catch(error){setMessage({tone:'error',text:error.message||'No fue posible archivar la empresa.'})}
+ }
  return <>
   <PageHeader eyebrow="Estructura organizacional" title="Empresas" subtitle="Administra las organizaciones que operan dentro de Nexora One."/>
   <div className="management-summary" aria-label="Resumen de empresas"><div><span>Empresas registradas</span><strong>{state.companies.length}</strong></div><div><span>Sedes relacionadas</span><strong>{state.sites.length}</strong></div></div>

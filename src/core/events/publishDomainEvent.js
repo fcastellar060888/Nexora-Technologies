@@ -6,7 +6,7 @@ export function activeActor(state){
  return{id:user?.remoteId||user?.id||'system',name:user?.name||'Sistema'}
 }
 
-export function publishDomainEvent(state,{name,aggregateType,aggregateId,organizationId,siteId=null,payload={},metadata={}}){
+export function publishDomainEvent(state,{name,aggregateType,aggregateId,organizationId,siteId=null,payload={},metadata={},eventId,occurredAt,correlationId=null,causationId=null}={}){
  const actor=activeActor(state)
  const resolvedOrganizationId=organizationId||state.currentContext?.companyId||'local-installation'
  const event=createDomainEvent({
@@ -16,6 +16,10 @@ export function publishDomainEvent(state,{name,aggregateType,aggregateId,organiz
   organizationId:resolvedOrganizationId,
   siteId,
   actorId:actor.id,
+  ...(eventId?{eventId}:{}),
+  ...(occurredAt?{occurredAt}:{}),
+  correlationId,
+  causationId,
   payload,
   metadata:{...metadata,actorName:actor.name}
  })

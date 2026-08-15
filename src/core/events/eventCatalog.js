@@ -1,4 +1,5 @@
 export const DomainEvents=Object.freeze({
+ CORE_OPERATION_REQUESTED:'core.operation.requested',
  COMPANY_CREATED:'organization.company.created',
  COMPANY_UPDATED:'organization.company.updated',
  COMPANY_ARCHIVED:'organization.company.archived',
@@ -24,6 +25,8 @@ export const DomainEvents=Object.freeze({
  USER_SESSION_SELECTED:'identity.user.session_selected',
  CROP_LOT_CREATED:'cultivation.lot.created',
  CROP_PHASE_CHANGED:'cultivation.lot.phase_changed',
+ PLANT_EVENT_REQUESTED:'cultivation.plant.event_requested',
+ PLANT_EVENT_RECORDED:'cultivation.plant.event_recorded',
  MIPE_FINDING_RECORDED:'mipe.finding.recorded',
  MIRFE_APPLICATION_COMPLETED:'mirfe.application.completed',
  INVENTORY_MOVEMENT_RECORDED:'inventory.movement.recorded',

@@ -22,11 +22,18 @@ test('el evento de selección de sesión pertenece al catálogo',()=>{
 })
 
 test('los dominios publican eventos y auditoría proyecta desde el Ledger del workspace',async()=>{
- for(const path of['../src/pages/CompaniesPage.jsx','../src/pages/SitesPage.jsx','../src/pages/UsersPage.jsx']){
-  const source=await readFile(new URL(path,import.meta.url),'utf8')
+ const companies=await readFile(new URL('../src/pages/CompaniesPage.jsx',import.meta.url),'utf8')
+ const sites=await readFile(new URL('../src/pages/SitesPage.jsx',import.meta.url),'utf8')
+ const users=await readFile(new URL('../src/pages/UsersPage.jsx',import.meta.url),'utf8')
+ const boundary=await readFile(new URL('../src/services/coreOperationCommand.js',import.meta.url),'utf8')
+ for(const source of[companies,sites]){
   assert.match(source,/publishDomainEvent/)
-  assert.match(source,/audit:false/)
+  assert.match(source,/executeCoreOperationCommand/)
  }
+ assert.match(users,/publishDomainEvent/)
+ assert.match(users,/audit:false/)
+ assert.match(boundary,/commit\(current=>spec\.apply\(current\),\{audit:false\}\)/)
+ assert.match(boundary,/CORE_OPERATION_REQUESTED/)
  const bridge=await readFile(new URL('../src/core/audit/DomainEventAuditBridge.jsx',import.meta.url),'utf8')
  assert.match(bridge,/getOperationalLedgerForScope\(scope\)/)
  assert.match(bridge,/ledger\.subscribe/)

@@ -8,6 +8,7 @@ import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{areaSquareMeters,formatArea,formatDensity,plantDensity}from'../domain/spaceMetrics'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 import{useStore}from'../services/store'
 
 export default function HousesPage(){
@@ -20,34 +21,40 @@ export default function HousesPage(){
  const availableAreas=(state.facilityAreas||[]).filter(area=>area.siteId===house.siteId&&area.active!==false)
  const organizationIdForSite=siteId=>state.sites.find(site=>site.id===siteId)?.companyId||''
  function reset(siteId=house.siteId){setEditingId(null);setHouse(empty(siteId))}
- function save(e){
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
+ async function save(e){
   e.preventDefault()
   const site=activeSites.find(item=>item.id===house.siteId),name=house.name.trim()
   if(!site)return alert('Selecciona una sede activa para la nave.')
   if(!name)return alert('Escribe el nombre de la nave.')
   if(state.houses.some(x=>x.id!==editingId&&x.siteId===house.siteId&&x.active!==false&&String(x.name||'').trim().toLowerCase()===name.toLowerCase()))return alert('Ya existe una nave activa con ese nombre en la sede.')
   if(house.areaId&&!availableAreas.some(area=>area.id===house.areaId))return alert('Selecciona un área física activa de la misma sede.')
+  const organizationId=organizationIdForSite(house.siteId)
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria de la nave.')
   const dimensions={dimensionUnit:house.dimensionUnit||'m',length:Math.max(0,Number(house.length)||0),width:Math.max(0,Number(house.width)||0),height:Math.max(0,Number(house.height)||0)}
-  if(editingId){
-   const previous=state.houses.find(item=>item.id===editingId),after={...previous,...house,...dimensions,name}
-   update(s=>({...s,houses:s.houses.map(x=>x.id===editingId?after:x)}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_HOUSE_UPDATED,aggregateType:'facility.house',aggregateId:editingId,organizationId:organizationIdForSite(house.siteId),siteId:house.siteId,payload:{label:name,before:previous,after},metadata:{collections:['houses']}})
-  }else{
-   const id=crypto.randomUUID(),created={id,...house,...dimensions,name,layout:'Visual',active:true,createdAt:new Date().toISOString()}
-   update(s=>({...s,houses:[...s.houses,created]}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_HOUSE_CREATED,aggregateType:'facility.house',aggregateId:id,organizationId:organizationIdForSite(house.siteId),siteId:house.siteId,payload:{label:name,house:created},metadata:{collections:['houses']}})
-  }
-  reset(house.siteId)
+  try{
+   if(editingId){
+    const previous=state.houses.find(item=>item.id===editingId),after={...previous,...house,...dimensions,organizationId,siteId:house.siteId,name}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:house.siteId,aggregateType:'facility.house',aggregateId:editingId,completedEventName:DomainEvents.FACILITY_HOUSE_UPDATED,payload:{label:name,before:previous,after},metadata:{collections:['houses']},apply:store=>({...store,houses:store.houses.map(x=>x.id===editingId?after:x)})})
+   }else{
+    const id=crypto.randomUUID(),created={id,...house,...dimensions,organizationId,siteId:house.siteId,name,layout:'Visual',active:true,createdAt:new Date().toISOString()}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:house.siteId,aggregateType:'facility.house',aggregateId:id,completedEventName:DomainEvents.FACILITY_HOUSE_CREATED,payload:{label:name,house:created},metadata:{collections:['houses']},apply:store=>store.houses.some(item=>item.id===id)?store:{...store,houses:[...store.houses,created]}})
+   }
+   reset(house.siteId)
+  }catch(error){alert(error.message||'No fue posible guardar la nave.')}
  }
  function edit(h){setEditingId(h.id);setHouse({siteId:h.siteId,areaId:h.areaId||'',name:h.name,notes:h.notes||'',dimensionUnit:h.dimensionUnit||'m',length:h.length||0,width:h.width||0,height:h.height||0})}
- function archive(h){
+ async function archive(h){
   const activeBeds=state.beds.filter(b=>b.houseId===h.id&&b.active!==false)
   if(activeBeds.length)return alert(`No se puede archivar ${h.name}: tiene ${activeBeds.length} cama${activeBeds.length===1?'':'s'} activa${activeBeds.length===1?'':'s'}. Archiva primero sus camas.`)
   if(!confirm(`¿Archivar la nave ${h.name}? Su identidad e historial se conservarán.`))return
-  const archivedAt=new Date().toISOString(),after={...h,active:false,archivedAt}
-  update(s=>({...s,houses:s.houses.map(x=>x.id===h.id?after:x)}),{audit:false})
-  void publishDomainEvent(state,{name:DomainEvents.FACILITY_HOUSE_ARCHIVED,aggregateType:'facility.house',aggregateId:h.id,organizationId:organizationIdForSite(h.siteId),siteId:h.siteId,payload:{label:h.name,before:h,after},metadata:{collections:['houses']}})
-  if(editingId===h.id)reset(h.siteId)
+  const organizationId=organizationIdForSite(h.siteId)||h.organizationId||''
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria de la nave.')
+  const archivedAt=new Date().toISOString(),after={...h,organizationId,active:false,archivedAt}
+  try{
+   await execute({commandId:crypto.randomUUID(),organizationId,siteId:h.siteId,aggregateType:'facility.house',aggregateId:h.id,completedEventName:DomainEvents.FACILITY_HOUSE_ARCHIVED,occurredAt:archivedAt,payload:{label:h.name,before:h,after},metadata:{collections:['houses']},apply:store=>({...store,houses:store.houses.map(x=>x.id===h.id?after:x)})})
+   if(editingId===h.id)reset(h.siteId)
+  }catch(error){alert(error.message||'No fue posible archivar la nave.')}
  }
  const previewArea=areaSquareMeters(house.length,house.width,house.dimensionUnit)
  return <>

@@ -3,8 +3,9 @@ import Card from'./Card'
 import CrudActions from'./CrudActions'
 import Field from'./Field'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
+import{createProductionPositions}from'../domain/facilityEngine.js'
 import{archiveBed}from'../domain/facilityLifecycle.js'
-import{generatePlantPositions}from'../domain/map.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 
 const emptyBed=houseId=>({houseId:houseId||'',name:'',rows:2,plantsPerRow:25,activePlants:0,geneticId:'',side:'Centro',order:1,containerType:'Matera',containerVolumeLiters:10,plantsPerContainer:1,growingMedium:'Coco'})
 
@@ -13,7 +14,8 @@ export default function BedManager({state,update}){
  const[form,setForm]=useState(()=>emptyBed(activeHouses[0]?.id)),[editingId,setEditingId]=useState(null)
  const houseById=useMemo(()=>Object.fromEntries(state.houses.map(h=>[h.id,h])),[state.houses])
  function reset(houseId=form.houseId){setEditingId(null);setForm(emptyBed(houseId))}
- function save(e){
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
+ async function save(e){
   e.preventDefault()
   const house=houseById[form.houseId],name=form.name.trim()
   if(!house||house.active===false)return alert('Selecciona una nave activa.')
@@ -22,29 +24,30 @@ export default function BedManager({state,update}){
   const rows=Math.max(1,Number(form.rows)||1),plantsPerRow=Math.max(1,Number(form.plantsPerRow)||1),capacity=rows*plantsPerRow
   const activePlants=Math.max(0,Math.min(capacity,Number(form.activePlants)||0))
   const profile={containerType:form.containerType||'Matera',containerVolumeLiters:Math.max(0,Number(form.containerVolumeLiters)||10),plantsPerContainer:Math.max(1,Number(form.plantsPerContainer)||1),growingMedium:form.growingMedium||'Coco'}
-  const site=state.sites.find(s=>s.id===house.siteId)
-  if(editingId){
-   const previous=state.beds.find(b=>b.id===editingId)
-   const positions=state.plantPositions.filter(p=>p.bedId===editingId)
-   if(positions.length&&(rows!==Number(previous.rows)||plantsPerRow!==Number(previous.plantsPerRow)))return alert('No puedes cambiar filas o posiciones de una cama que ya tiene posiciones creadas. Crea una nueva cama si necesitas otra distribución.')
-   const after={...previous,...form,name,...profile,rows,plantsPerRow,order:Number(form.order)||1}
-   update(s=>({...s,beds:s.beds.map(b=>b.id===editingId?after:b)}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_BED_UPDATED,aggregateType:'facility.bed',aggregateId:editingId,organizationId:site?.companyId||'',siteId:house.siteId,payload:{label:name,before:previous,after},metadata:{collections:['beds']}})
-  }else{
-   const id=crypto.randomUUID(),createdAt=new Date().toISOString(),bed={id,active:true,createdAt,...form,name,...profile,rows,plantsPerRow,activePlants,order:Number(form.order)||1,containerProfileId:`${profile.containerType.toLowerCase()}-${profile.containerVolumeLiters}l`}
-   const positions=generatePlantPositions(id,rows,plantsPerRow,activePlants,form.geneticId).map(p=>({...p,...profile}))
-   update(s=>({...s,beds:[...s.beds,bed],plantPositions:[...s.plantPositions,...positions]}),{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_BED_CREATED,aggregateType:'facility.bed',aggregateId:id,organizationId:site?.companyId||'',siteId:house.siteId,payload:{label:name,bed},metadata:{collections:['beds','plantPositions']}})
-  }
-  reset(form.houseId)
+  const site=state.sites.find(s=>s.id===house.siteId),organizationId=site?.companyId||house.organizationId||''
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria de la cama.')
+  try{
+   if(editingId){
+    const previous=state.beds.find(b=>b.id===editingId)
+    const positions=state.plantPositions.filter(p=>p.bedId===editingId)
+    if(positions.length&&(rows!==Number(previous.rows)||plantsPerRow!==Number(previous.plantsPerRow)))return alert('No puedes cambiar filas o posiciones de una cama que ya tiene posiciones creadas. Crea una nueva cama si necesitas otra distribución.')
+    const after={...previous,...form,name,...profile,rows,plantsPerRow,order:Number(form.order)||1,organizationId,siteId:house.siteId}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:house.siteId,aggregateType:'facility.bed',aggregateId:editingId,completedEventName:DomainEvents.FACILITY_BED_UPDATED,payload:{label:name,before:previous,after},metadata:{collections:['beds']},apply:store=>({...store,beds:store.beds.map(b=>b.id===editingId?after:b)})})
+   }else{
+    const id=crypto.randomUUID(),createdAt=new Date().toISOString(),bed={id,organizationId,siteId:house.siteId,active:true,createdAt,...form,name,...profile,rows,plantsPerRow,activePlants,order:Number(form.order)||1,containerProfileId:`${profile.containerType.toLowerCase()}-${profile.containerVolumeLiters}l`}
+    const positions=createProductionPositions({organizationId,siteId:house.siteId,bedId:id,rows,plantsPerRow,activePlants,geneticId:form.geneticId,containerProfileId:bed.containerProfileId,containerType:profile.containerType,volumeLiters:profile.containerVolumeLiters,plantsPerContainer:profile.plantsPerContainer,growingMedium:profile.growingMedium}).map(position=>({...position,containerVolumeLiters:profile.containerVolumeLiters}))
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:house.siteId,aggregateType:'facility.bed',aggregateId:id,completedEventName:DomainEvents.FACILITY_BED_CREATED,payload:{label:name,bed},metadata:{collections:['beds','plantPositions']},apply:store=>store.beds.some(item=>item.id===id)?store:{...store,beds:[...store.beds,bed],plantPositions:[...store.plantPositions,...positions]}})
+   }
+   reset(form.houseId)
+  }catch(error){alert(error.message||'No fue posible guardar la cama.')}
  }
  function edit(b){setEditingId(b.id);setForm({...emptyBed(b.houseId),...b,activePlants:state.plantPositions.filter(p=>p.bedId===b.id&&p.active!==false&&p.status!=='Vacía').length})}
- function archive(b){
+ async function archive(b){
   if(!confirm(`¿Archivar la cama ${b.name}? Sus posiciones e historial se conservarán.`))return
   try{
-   const next=archiveBed(state,b.id),house=houseById[b.houseId],site=state.sites.find(s=>s.id===house?.siteId),after=next.beds.find(x=>x.id===b.id)
-   update(()=>next,{audit:false})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_BED_ARCHIVED,aggregateType:'facility.bed',aggregateId:b.id,organizationId:site?.companyId||'',siteId:house?.siteId||'',payload:{label:b.name,before:b,after},metadata:{collections:['beds']}})
+   const preview=archiveBed(state,b.id),house=houseById[b.houseId],site=state.sites.find(s=>s.id===house?.siteId),organizationId=site?.companyId||b.organizationId||'',after=preview.beds.find(x=>x.id===b.id)
+   if(!organizationId)throw new Error('No se puede demostrar la empresa propietaria de la cama.')
+   await execute({commandId:crypto.randomUUID(),organizationId,siteId:house?.siteId||b.siteId||'',aggregateType:'facility.bed',aggregateId:b.id,completedEventName:DomainEvents.FACILITY_BED_ARCHIVED,payload:{label:b.name,before:b,after},metadata:{collections:['beds']},apply:current=>archiveBed(current,b.id)})
    if(editingId===b.id)reset(b.houseId)
   }catch(error){alert(error.message)}
  }

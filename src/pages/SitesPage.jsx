@@ -5,6 +5,7 @@ import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{TimelineFeed}from'../core/timeline/ui.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 import{useStore}from'../services/store'
 
 const normalize=value=>value.trim().replace(/\s+/g,' ')
@@ -18,19 +19,39 @@ export default function SitesPage(){
  const houseCountBySite=useMemo(()=>state.houses.filter(house=>house.active!==false).reduce((counts,house)=>({...counts,[house.siteId]:(counts[house.siteId]||0)+1}),{}),[state.houses])
  const companyById=useMemo(()=>Object.fromEntries(state.companies.map(company=>[company.id,company])),[state.companies])
  function resetForm(){setEditingId(null);setForm(createEmpty(state.companies.filter(company=>company.active!==false)));setMessage(null)}
- function save(event){
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
+ async function save(event){
   event.preventDefault()
   const company=companyById[form.companyId],name=normalize(form.name),location=normalize(form.location),manager=normalize(form.manager)
   if(!company||company.active===false){setMessage({tone:'error',text:'Selecciona una empresa activa y válida para la sede.'});return}
   if(!name){setMessage({tone:'error',text:'Escribe el nombre de la sede.'});return}
   if(state.sites.some(site=>site.id!==editingId&&site.companyId===form.companyId&&site.active!==false&&normalize(site.name).toLocaleLowerCase('es')===name.toLocaleLowerCase('es'))){setMessage({tone:'error',text:`Ya existe una sede activa llamada ${name} dentro de ${company.name}.`});return}
   const payload={companyId:form.companyId,name,location,manager}
-  if(editingId){const previous=state.sites.find(site=>site.id===editingId);update(store=>({...store,sites:store.sites.map(site=>site.id===editingId?{...site,...payload}:site)}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.SITE_UPDATED,aggregateType:'site',aggregateId:editingId,organizationId:form.companyId,siteId:editingId,payload:{label:`${company.name} · ${name}`,before:previous,after:{...previous,...payload}},metadata:{collections:['sites']}});setMessage({tone:'success',text:'Sede actualizada correctamente.'})}
-  else{const id=crypto.randomUUID(),site={id,active:true,...payload};update(store=>({...store,sites:[...store.sites,site]}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.SITE_CREATED,aggregateType:'site',aggregateId:id,organizationId:form.companyId,siteId:id,payload:{label:`${company.name} · ${name}`,site},metadata:{collections:['sites']}});setMessage({tone:'success',text:'Sede creada correctamente.'})}
-  setEditingId(null);setForm(createEmpty(state.companies.filter(company=>company.active!==false)))
+  try{
+   if(editingId){
+    const previous=state.sites.find(site=>site.id===editingId),after={...previous,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId:form.companyId,siteId:editingId,aggregateType:'site',aggregateId:editingId,completedEventName:DomainEvents.SITE_UPDATED,payload:{label:`${company.name} · ${name}`,before:previous,after},metadata:{collections:['sites']},audit:{module:'Sedes',action:'Sede actualizada',detail:name},apply:store=>({...store,sites:store.sites.map(site=>site.id===editingId?after:site)})})
+    setMessage({tone:'success',text:'Sede actualizada correctamente.'})
+   }else{
+    const id=crypto.randomUUID(),site={id,active:true,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId:form.companyId,siteId:id,aggregateType:'site',aggregateId:id,completedEventName:DomainEvents.SITE_CREATED,payload:{label:`${company.name} · ${name}`,site},metadata:{collections:['sites']},audit:{module:'Sedes',action:'Sede creada',detail:name},apply:store=>store.sites.some(item=>item.id===id)?store:{...store,sites:[...store.sites,site]}})
+    setMessage({tone:'success',text:'Sede creada correctamente.'})
+   }
+   setEditingId(null);setForm(createEmpty(state.companies.filter(company=>company.active!==false)))
+  }catch(error){setMessage({tone:'error',text:error.message||'No fue posible confirmar la operación.'})}
  }
  function edit(site){setEditingId(site.id);setForm({companyId:site.companyId||'',name:site.name,location:site.location||'',manager:site.manager||''});setMessage(null);window.scrollTo({top:0,behavior:'smooth'})}
- function archive(site){const houseCount=houseCountBySite[site.id]||0;if(houseCount){setMessage({tone:'error',text:`No se puede archivar ${site.name}: tiene ${houseCount} nave${houseCount===1?'':'s'} activa${houseCount===1?'':'s'}. Archiva primero sus espacios dependientes activos.`});return}if(confirm(`¿Archivar la sede ${site.name}? Su identidad e historial se conservarán.`)){const archivedAt=new Date().toISOString(),previous=site,after={...site,active:false,archivedAt};update(store=>({...store,sites:store.sites.map(item=>item.id===site.id?after:item)}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.SITE_ARCHIVED,aggregateType:'site',aggregateId:site.id,organizationId:site.companyId,siteId:site.id,payload:{label:site.name,before:previous,after},metadata:{collections:['sites']}});if(editingId===site.id)resetForm();setMessage({tone:'success',text:'Sede archivada. Su historial fue preservado.'})}}
+ async function archive(site){
+  const houseCount=houseCountBySite[site.id]||0
+  if(houseCount){setMessage({tone:'error',text:`No se puede archivar ${site.name}: tiene ${houseCount} nave${houseCount===1?'':'s'} activa${houseCount===1?'':'s'}. Archiva primero sus espacios dependientes activos.`});return}
+  if(!confirm(`¿Archivar la sede ${site.name}? Su identidad e historial se conservarán.`))return
+  const archivedAt=new Date().toISOString(),after={...site,active:false,archivedAt}
+  try{
+   await execute({commandId:crypto.randomUUID(),organizationId:site.companyId,siteId:site.id,aggregateType:'site',aggregateId:site.id,completedEventName:DomainEvents.SITE_ARCHIVED,occurredAt:archivedAt,payload:{label:site.name,before:site,after},metadata:{collections:['sites']},audit:{module:'Sedes',action:'Sede archivada',detail:site.name},apply:store=>({...store,sites:store.sites.map(item=>item.id===site.id?after:item)})})
+   if(editingId===site.id)resetForm()
+   setMessage({tone:'success',text:'Sede archivada. Su historial fue preservado.'})
+  }catch(error){setMessage({tone:'error',text:error.message||'No fue posible archivar la sede.'})}
+ }
  const activeCompanies=state.companies.filter(company=>company.active!==false)
  const groupedSites=state.companies.map(company=>({company,sites:state.sites.filter(site=>site.companyId===company.id)})).filter(group=>group.sites.length)
  return <>

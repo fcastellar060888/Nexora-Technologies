@@ -13,10 +13,13 @@ test('la ficha visual consume la proyección universal de Passport',async()=>{
  assert.doesNotMatch(source,/tracePlant\(/)
 })
 
-test('la ficha conserva fotografías y escritura de eventos compatibles',async()=>{
+test('la ficha conserva fotografías y enruta escritura por command boundary auditado',async()=>{
  const source=await readFile('src/pages/PlantProfilePage.jsx','utf8')
  assert.match(source,/AttachmentUploader entityType="plant" entityId=\{plantId\}/)
- assert.match(source,/plantEvents:\[\.\.\.\(s\.plantEvents\|\|\[\]\)/)
+ assert.match(source,/executePlantEventCommand/)
+ assert.match(source,/publishDomainEvent/)
+ assert.match(source,/hasPermission\(state,'record_observations'\)/)
+ assert.doesNotMatch(source,/plantEvents:\[\.\.\.\(s\.plantEvents\|\|\[\]\)/)
  assert.match(source,/MIPE/)
  assert.match(source,/MIRFE/)
 })
