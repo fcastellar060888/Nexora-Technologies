@@ -21,28 +21,32 @@ test('M1.1-B: catálogo expone ciclo de vida no destructivo para área y nave', 
   }
 })
 
-test('M1.1-B: FacilityAreaManager archiva y nunca elimina físicamente áreas', async () => {
+test('M1.1-B: FacilityAreaManager archiva por command boundary y nunca elimina físicamente áreas', async () => {
   const source = await readSource('src/components/FacilityAreaManager.jsx')
   assert.match(source, /activeSites=.*filter\(site=>site\.active!==false\)/)
+  assert.match(source, /executeCoreOperationCommand/)
   assert.match(source, /FACILITY_AREA_CREATED/)
   assert.match(source, /FACILITY_AREA_UPDATED/)
   assert.match(source, /FACILITY_AREA_ARCHIVED/)
-  assert.match(source, /facilityAreas:areas\.map\(item=>item\.id===area\.id\?after:item\)/)
+  assert.match(source, /apply:store=>\(\{\.\.\.store,facilityAreas:\(store\.facilityAreas\|\|\[\]\)\.map\(item=>item\.id===area\.id\?after:item\)\}\)/)
   assert.match(source, /active:false,archivedAt/)
   assert.match(source, /item\.areaId===area\.id&&item\.active!==false/)
+  assert.match(source, /organizationId/)
   assert.doesNotMatch(source, /facilityAreas:areas\.filter\(item=>item\.id!==area\.id\)/)
 })
 
-test('M1.1-B: HousesPage no borra en cascada nave, camas, plantas ni hallazgos', async () => {
+test('M1.1-B: HousesPage archiva por command boundary sin cascada destructiva', async () => {
   const source = await readSource('src/pages/HousesPage.jsx')
   assert.match(source, /activeSites=state\.sites\.filter\(site=>site\.active!==false\)/)
+  assert.match(source, /executeCoreOperationCommand/)
   assert.match(source, /FACILITY_HOUSE_CREATED/)
   assert.match(source, /FACILITY_HOUSE_UPDATED/)
   assert.match(source, /FACILITY_HOUSE_ARCHIVED/)
-  assert.match(source, /houses:s\.houses\.map\([^\n]+active:false,archivedAt|active:false,archivedAt/)
+  assert.match(source, /apply:store=>\(\{\.\.\.store,houses:store\.houses\.map\(x=>x\.id===h\.id\?after:x\)\}\)/)
   assert.match(source, /activeBeds=state\.beds\.filter\(b=>b\.houseId===h\.id&&b\.active!==false\)/)
   assert.match(source, /active:false,archivedAt/)
-  assert.doesNotMatch(source, /houses:s\.houses\.filter\(x=>x\.id!==/)
-  assert.doesNotMatch(source, /beds:s\.beds\.filter\(b=>b\.houseId!==/)
-  assert.doesNotMatch(source, /findings:s\.findings\.filter\(/)
+  assert.match(source, /organizationId/)
+  assert.doesNotMatch(source, /houses:store\.houses\.filter\(x=>x\.id!==/)
+  assert.doesNotMatch(source, /beds:store\.beds\.filter\(b=>b\.houseId!==/)
+  assert.doesNotMatch(source, /findings:store\.findings\.filter\(/)
 })
