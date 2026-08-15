@@ -119,11 +119,12 @@ export async function authenticatedBinaryRequest(path,options={}){
 export async function loadRemoteIdentity(){
   const session=await requireSession()
   const userId=session.user.id
-  const [profiles,memberships]=await Promise.all([
+  const [profiles,memberships,entitlements]=await Promise.all([
     request(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`,{token:session.access_token}),
-    request(`/rest/v1/memberships?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=*,membership_sites(site_id)`,{token:session.access_token})
+    request(`/rest/v1/memberships?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=*,membership_sites(site_id)`,{token:session.access_token}),
+    request('/rest/v1/organization_entitlements?select=*',{token:session.access_token})
   ])
-  return{user:session.user,profile:profiles?.[0]||null,memberships:memberships||[]}
+  return{user:session.user,profile:profiles?.[0]||null,memberships:memberships||[],entitlements:entitlements||[]}
 }
 
 export async function syncSnapshot(state){
