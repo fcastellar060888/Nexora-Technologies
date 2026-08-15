@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{GROWING_MEDIUM_KINDS,REUSE_ACTIONS,createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,createReusePolicy,createGrowingMediumAssignment,assignmentFromBatch,planReuseCycle,calculatePurchaseRequirement}from'../src/domain/growingMedium.js'
+import{GROWING_MEDIUM_KINDS,REUSE_ACTIONS,createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,createReusePolicy,createGrowingMediumAssignment,assignmentFromBatch,planReuseCycle,calculatePurchaseRequirement,createPurchaseRequirement}from'../src/domain/growingMedium.js'
 
 const org='org-a',site='site-a'
 
@@ -22,15 +22,15 @@ test('M22-F004: formulas are deterministic and reject invalid composition',()=>{
  assert.throws(()=>createGrowingMediumFormula({id:'f1',organizationId:org,name:'Bad',components:[{productId:'a',percentage:50},{productId:'a',percentage:50}]}),/repetir/)
 })
 
-test('M22-F004: creating a formula version preserves the previous formula byte-for-byte',()=>{
- const previous=createGrowingMediumFormula({id:'formula-v1',organizationId:org,formulaKey:'coco-peat',name:'Coco/Turba',version:1,components:[{productId:'coco',percentage:70},{productId:'peat',percentage:30}],createdAt:'2026-08-01T00:00:00.000Z'})
- const before=JSON.stringify(previous)
- const next=nextGrowingMediumFormulaVersion(previous,{id:'formula-v2',components:[{productId:'coco',percentage:60},{productId:'peat',percentage:40}],createdAt:'2026-08-15T00:00:00.000Z'})
- assert.equal(JSON.stringify(previous),before)
- assert.notEqual(next.id,previous.id)
- assert.equal(next.formulaKey,previous.formulaKey)
+test('M22-F004: a new formula version preserves immutable history and lineage',()=>{
+ const previous=createGrowingMediumFormula({id:'formula-v1',organizationId:org,formulaKey:'mix-a',name:'Mezcla A',version:1,components:[{productId:'coco',percentage:70},{productId:'peat',percentage:30}],createdAt:'2026-01-01T00:00:00.000Z'})
+ const snapshot=JSON.stringify(previous)
+ const next=nextGrowingMediumFormulaVersion(previous,{id:'formula-v2',components:[{productId:'coco',percentage:60},{productId:'peat',percentage:40}],createdAt:'2026-02-01T00:00:00.000Z'})
+ assert.equal(JSON.stringify(previous),snapshot)
+ assert.equal(next.id,'formula-v2')
+ assert.equal(next.formulaKey,'mix-a')
  assert.equal(next.version,2)
- assert.equal(next.supersedesFormulaId,previous.id)
+ assert.equal(next.supersedesFormulaId,'formula-v1')
  assert.deepEqual(next.components,[{productId:'coco',percentage:60},{productId:'peat',percentage:40}])
 })
 
@@ -58,20 +58,29 @@ test('M22-F006: purchase requirement is reproducible from fresh-volume plans plu
  assert.equal(result.requiredVolumeLiters,165)
 })
 
+test('M22-F006: persistent purchase requirement freezes scope period and source plans',()=>{
+ const requirement=createPurchaseRequirement({id:'req-1',organizationId:org,siteId:site,scopeType:'BED',scopeId:'bed-1',periodStart:'2026-08-15',periodEnd:'2026-08-31',reservePercent:10,plans:[{assignmentId:'a1',targetType:'BED',targetId:'bed-1',batchId:'b1',supplierId:'s1',supplierLot:'LOT-1',action:'REPLENISH',currentUse:2,freshVolumeLiters:30,reusedVolumeLiters:70}],createdAt:'2026-08-15T12:00:00.000Z',createdBy:'u1'})
+ assert.equal(requirement.baseVolumeLiters,30)
+ assert.equal(requirement.requiredVolumeLiters,33)
+ assert.equal(requirement.scopeType,'BED')
+ assert.equal(requirement.scopeId,'bed-1')
+ assert.equal(requirement.plans[0].supplierLot,'LOT-1')
+ assert.equal(Object.isFrozen(requirement),true)
+ assert.equal(Object.isFrozen(requirement.plans),true)
+ assert.throws(()=>createPurchaseRequirement({...requirement,id:'bad',periodStart:'2026-09-01',periodEnd:'2026-08-31'}),/anterior/)
+})
+
 test('M22-F007: batch rejects impossible stock and ambiguous product/formula authority',()=>{
  assert.throws(()=>createGrowingMediumBatch({id:'b1',organizationId:org,productId:'p1',formulaId:'f1',supplierLot:'L1',receivedVolumeLiters:100}),/exactamente un producto o una fórmula/)
  assert.throws(()=>createGrowingMediumBatch({id:'b1',organizationId:org,productId:'p1',supplierLot:'L1',receivedVolumeLiters:100,availableVolumeLiters:101}),/no puede superar/)
 })
 
-test('M22-F007: assignment freezes supplier lot, inventory lot and cost from the batch at assignment time',()=>{
- const batch=createGrowingMediumBatch({id:'batch-cost',organizationId:org,productId:'p1',supplierId:'supplier-a',supplierLot:'LOT-A',inventoryLotId:'inv-a',receivedVolumeLiters:100,unitCostPerLiter:850,currency:'COP'})
- const assignment=assignmentFromBatch({id:'assignment-cost',organizationId:org,siteId:site,targetType:'BED',targetId:'bed-1',batchId:batch.id,volumeLiters:40},batch)
- const editedBatch={...batch,supplierId:'supplier-b',supplierLot:'LOT-B',inventoryLotId:'inv-b',unitCostPerLiter:1200,currency:'USD'}
- assert.equal(editedBatch.unitCostPerLiter,1200)
- assert.equal(assignment.supplierId,'supplier-a')
- assert.equal(assignment.supplierLot,'LOT-A')
- assert.equal(assignment.inventoryLotId,'inv-a')
- assert.equal(assignment.unitCostPerLiter,850)
- assert.equal(assignment.currency,'COP')
- assert.equal(assignment.totalCost,34000)
+test('M22-F007: assignment freezes batch supplier lot inventory linkage and cost snapshot',()=>{
+ const batch=createGrowingMediumBatch({id:'batch-cost',organizationId:org,productId:'p1',supplierId:'supplier-1',supplierLot:'LOT-A',inventoryLotId:'inv-lot-1',receivedVolumeLiters:100,unitCostPerLiter:1234,currency:'COP'})
+ const assignment=assignmentFromBatch({id:'assign-cost',organizationId:org,siteId:site,targetType:'BED',targetId:'bed-1',batchId:batch.id,volumeLiters:25},batch)
+ const original={supplierId:assignment.supplierId,supplierLot:assignment.supplierLot,inventoryLotId:assignment.inventoryLotId,unitCostPerLiter:assignment.unitCostPerLiter,currency:assignment.currency,totalCost:assignment.totalCost}
+ const editedBatch={...batch,supplierId:'supplier-2',supplierLot:'LOT-B',inventoryLotId:'inv-lot-2',unitCostPerLiter:9999,currency:'USD'}
+ assert.deepEqual({supplierId:assignment.supplierId,supplierLot:assignment.supplierLot,inventoryLotId:assignment.inventoryLotId,unitCostPerLiter:assignment.unitCostPerLiter,currency:assignment.currency,totalCost:assignment.totalCost},original)
+ assert.equal(assignment.totalCost,25*1234)
+ assert.notEqual(editedBatch.unitCostPerLiter,assignment.unitCostPerLiter)
 })
