@@ -32,6 +32,8 @@ function intelligentObjectEvidence(object){
  }
 }
 
+function passportActionEvidence(passport){return list(passport.actions).map(action=>({id:text(action.id),label:text(action.label),targetType:text(action.targetType)||null})).filter(action=>action.id)}
+
 function objectNode(passport){
  const object=passport.object
  return createGraphNode({
@@ -47,7 +49,8 @@ function objectNode(passport){
    source:'passport',
    passportId:passport.passportId,
    objectVersion:object.version,
-   intelligentObject:intelligentObjectEvidence(object)
+   intelligentObject:intelligentObjectEvidence(object),
+   passportActions:passportActionEvidence(passport)
   }
  })
 }
