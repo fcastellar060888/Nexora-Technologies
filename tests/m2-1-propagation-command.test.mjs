@@ -132,9 +132,11 @@ test('M21-F004: missing commit is rejected before state mutation',async()=>{
  await assert.rejects(()=>executePropagationBatchCommand(stateFixture(),commandInput(),{publishEvent:async()=>{}}),/commit es obligatorio/)
 })
 
-test('M21-F004 re-audit: propagation form delegates creation and cannot mutate Store directly',async()=>{
+test('M21-F004/F009 re-audit: propagation form delegates through Action Engine and cannot mutate Store directly',async()=>{
  const source=await readFile(new URL('../src/components/PurposeAwarePropagationForm.jsx',import.meta.url),'utf8')
- assert.match(source,/executePropagationBatchCommand/)
+ assert.match(source,/executePlantAction/)
+ assert.match(source,/PlantActions\.CREATE_PROPAGATION_BATCH/)
+ assert.doesNotMatch(source,/executePropagationBatchCommand/)
  assert.doesNotMatch(source,/\bupdate\s*\(/)
  assert.doesNotMatch(source,/crypto\.randomUUID\(\).*propagationBatches/s)
  assert.doesNotMatch(source,/propagationUnits:\s*\[/)
