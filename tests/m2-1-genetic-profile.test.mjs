@@ -1,7 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
-import{createGeneticProfile,archiveGeneticProfile,geneticProfilesForOrganization,upsertGeneticProfile}from'../src/domain/geneticProfile.js'
+import{createGeneticProfile,archiveGeneticProfile,geneticProfilesForOrganization,updateGeneticProfile,upsertGeneticProfile}from'../src/domain/geneticProfile.js'
 import{executeGeneticProfileCommand,GENETIC_OPERATIONS}from'../src/services/geneticProfileCommand.js'
 
 const enterpriseState=()=>({
@@ -44,6 +44,20 @@ test('M21-F002: archive preserves identity instead of deleting the profile',()=>
  assert.equal(final.genetics[0].archivedAt,'2026-08-16T00:00:00.000Z')
 })
 
+test('M21-F003: update preserves stable identity and ownership while changing agronomic profile',()=>{
+ const state=enterpriseState(),profile=createGeneticProfile(state,{name:'Original',classification:'THC',agronomicParameters:{floweringDays:60}},{id:'g1',now:'2026-08-15T00:00:00.000Z'})
+ const withProfile=upsertGeneticProfile(state,profile)
+ const updated=updateGeneticProfile(withProfile,'g1',{name:'Updated',classification:'MIXED',agronomicParameters:{floweringDays:63,cbdTargetPercent:4.5}},{now:'2026-08-16T00:00:00.000Z'})
+ assert.equal(updated.id,'g1')
+ assert.equal(updated.organizationId,'org-a')
+ assert.equal(updated.createdAt,'2026-08-15T00:00:00.000Z')
+ assert.equal(updated.updatedAt,'2026-08-16T00:00:00.000Z')
+ assert.equal(updated.classification,'MIXED')
+ assert.equal(updated.agronomicParameters.floweringDays,63)
+ assert.equal(updated.agronomicParameters.cbdTargetPercent,4.5)
+ assert.throws(()=>updateGeneticProfile(withProfile,'missing',{name:'Nope'}),/no existe/)
+})
+
 test('M21-F001/F002: command requires cultivation permission and publishes requested then completed',async()=>{
  let state=enterpriseState(),events=[]
  const commit=recipe=>{state=recipe(state)}
@@ -54,6 +68,29 @@ test('M21-F001/F002: command requires cultivation permission and publishes reque
  assert.deepEqual(events.map(event=>event.eventId),['cmd-1:requested','cmd-1:completed'])
  const denied=enterpriseState();denied.roles=[{id:'viewer',permissions:[]}];denied.memberships=[{id:'m1',userId:'u1',companyId:'org-a',roleId:'viewer',siteIds:['site-a'],status:'active'}]
  await assert.rejects(()=>executeGeneticProfileCommand(denied,{operation:GENETIC_OPERATIONS.CREATE,input:{name:'Denied'}},{commit:()=>{},publishEvent:async()=>{}}),/permiso/)
+})
+
+test('M21-F001/F002: update and archive commands use canonical final events and preserve one profile',async()=>{
+ let state=enterpriseState(),events=[]
+ state.genetics=[createGeneticProfile(state,{name:'Command Genetic'},{id:'g1',now:'2026-08-15T00:00:00.000Z'})]
+ const commit=recipe=>{state=recipe(state)}
+ await executeGeneticProfileCommand(state,{operation:GENETIC_OPERATIONS.UPDATE,geneticId:'g1',input:{name:'Renamed'},commandId:'cmd-update',occurredAt:'2026-08-16T00:00:00.000Z'},{commit,publishEvent:async event=>events.push(event)})
+ assert.equal(state.genetics.length,1)
+ assert.equal(state.genetics[0].name,'Renamed')
+ assert.equal(events.at(-1).name,'genetic.profile.updated')
+ events=[]
+ await executeGeneticProfileCommand(state,{operation:GENETIC_OPERATIONS.ARCHIVE,geneticId:'g1',commandId:'cmd-archive',occurredAt:'2026-08-17T00:00:00.000Z'},{commit,publishEvent:async event=>events.push(event)})
+ assert.equal(state.genetics.length,1)
+ assert.equal(state.genetics[0].active,false)
+ assert.equal(events.at(-1).name,'genetic.profile.archived')
+})
+
+test('M21-F001: invalid command shapes fail before commit',async()=>{
+ const state=enterpriseState()
+ let commits=0
+ await assert.rejects(()=>executeGeneticProfileCommand(state,{operation:'DELETE',geneticId:'g1'},{commit:()=>{commits++},publishEvent:async()=>{}}),/no soportada/)
+ await assert.rejects(()=>executeGeneticProfileCommand(state,{operation:GENETIC_OPERATIONS.CREATE,input:{name:'No commit'}},{publishEvent:async()=>{}}),/commit es obligatorio/)
+ assert.equal(commits,0)
 })
 
 test('M21-F001 re-audit: genetics UI has no direct store mutation or destructive filter',async()=>{
