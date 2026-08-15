@@ -111,7 +111,7 @@ test('M21-F007: grandmother renewal creates deterministic tenant-owned destinati
 
 test('M21-F007/F008: malformed and unsupported promotion intents fail closed',async()=>{
  const state=fixture()
- assert.throws(()=>preparePropagationPromotion(state,input(),{commandId:''}),/commandId/)
+ assert.throws(()=>preparePropagationPromotion(state,input({commandId:''}),{commandId:''}),/commandId/)
  assert.throws(()=>preparePropagationPromotion(state,input({batchId:''}),{commandId:'x'}),/lote de propagación es obligatorio/)
  assert.throws(()=>preparePropagationPromotion(state,input({unitIds:[]}),{commandId:'x'}),/Selecciona al menos/)
  assert.throws(()=>preparePropagationPromotion(state,input({batchId:'missing'}),{commandId:'x'}),/no existe en la organización activa/)
