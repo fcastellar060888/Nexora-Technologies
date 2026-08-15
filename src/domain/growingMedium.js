@@ -19,7 +19,13 @@ export function createGrowingMediumFormula(input={}){
  const total=normalized.reduce((sum,item)=>sum+item.percentage,0)
  if(Math.abs(total-100)>0.0001)throw new Error('La composición de la fórmula debe sumar 100%.')
  if(new Set(normalized.map(item=>item.productId)).size!==normalized.length)throw new Error('La fórmula no puede repetir el mismo producto.')
- return Object.freeze({id:required(input.id,'id'),organizationId,name:required(input.name,'name'),version:Math.max(1,Math.trunc(Number(input.version)||1)),components:Object.freeze(normalized),active:input.active!==false,createdAt:input.createdAt||new Date().toISOString()})
+ const id=required(input.id,'id'),formulaKey=text(input.formulaKey)||id,version=Math.max(1,Math.trunc(Number(input.version)||1))
+ return Object.freeze({id,organizationId,formulaKey,name:required(input.name,'name'),version,supersedesFormulaId:text(input.supersedesFormulaId),components:Object.freeze(normalized),active:input.active!==false,createdAt:input.createdAt||new Date().toISOString()})
+}
+
+export function nextGrowingMediumFormulaVersion(previous,input={}){
+ if(!previous?.id||!previous?.organizationId)throw new Error('La fórmula anterior es obligatoria.')
+ return createGrowingMediumFormula({...input,id:required(input.id,'id'),organizationId:previous.organizationId,formulaKey:previous.formulaKey||previous.id,name:input.name||previous.name,version:Number(previous.version||1)+1,supersedesFormulaId:previous.id})
 }
 
 export function createGrowingMediumBatch(input={}){
@@ -38,7 +44,13 @@ export function createReusePolicy(input={}){
 }
 
 export function createGrowingMediumAssignment(input={}){
- return Object.freeze({id:required(input.id,'id'),organizationId:required(input.organizationId,'organizationId'),siteId:required(input.siteId,'siteId'),targetType:required(input.targetType,'targetType'),targetId:required(input.targetId,'targetId'),batchId:required(input.batchId,'batchId'),volumeLiters:positive(input.volumeLiters,'volumeLiters'),reusePolicyId:text(input.reusePolicyId),currentUse:Math.max(1,Math.trunc(Number(input.currentUse)||1)),assignedAt:input.assignedAt||new Date().toISOString(),active:input.active!==false})
+ const volumeLiters=positive(input.volumeLiters,'volumeLiters'),unitCostPerLiter=nonNegative(input.unitCostPerLiter??0,'unitCostPerLiter')
+ return Object.freeze({id:required(input.id,'id'),organizationId:required(input.organizationId,'organizationId'),siteId:required(input.siteId,'siteId'),targetType:required(input.targetType,'targetType'),targetId:required(input.targetId,'targetId'),batchId:required(input.batchId,'batchId'),volumeLiters,reusePolicyId:text(input.reusePolicyId),currentUse:Math.max(1,Math.trunc(Number(input.currentUse)||1)),supplierId:text(input.supplierId),supplierLot:text(input.supplierLot),inventoryLotId:text(input.inventoryLotId),unitCostPerLiter,currency:text(input.currency)||'COP',totalCost:nonNegative(input.totalCost??volumeLiters*unitCostPerLiter,'totalCost'),assignedAt:input.assignedAt||new Date().toISOString(),active:input.active!==false})
+}
+
+export function assignmentFromBatch(input={},batch={}){
+ if(input.organizationId!==batch.organizationId)throw new Error('Assignment y batch deben pertenecer a la misma organización.')
+ return createGrowingMediumAssignment({...input,supplierId:batch.supplierId,supplierLot:batch.supplierLot,inventoryLotId:batch.inventoryLotId,unitCostPerLiter:batch.unitCostPerLiter,currency:batch.currency,totalCost:Number(input.volumeLiters)*Number(batch.unitCostPerLiter||0)})
 }
 
 export function planReuseCycle({assignment,policy,completedUses}={}){
