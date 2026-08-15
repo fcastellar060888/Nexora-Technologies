@@ -4,28 +4,84 @@ import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{TimelineFeed}from'../core/timeline/ui.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 import{useStore}from'../services/store'
 
 const roles=['Administrador','Gerente','Agrónomo','Supervisor','Encargado de riego','Encargado MIPE','Operario','Inventario']
 const emptyForm=siteId=>({name:'',email:'',role:'Operario',siteId:siteId||'',active:true})
 const normalize=value=>value.trim().replace(/\s+/g,' ')
+const list=value=>Array.isArray(value)?value:[]
+const enterpriseIdentityState=state=>list(state?.memberships).length>0||list(state?.users).some(user=>user?.remote)
 
 export default function UsersPage(){
  const{state,update}=useStore()
  const[form,setForm]=useState(()=>emptyForm(state.sites[0]?.id))
  const[message,setMessage]=useState({type:'',text:''})
- const activeUser=useMemo(()=>state.users.find(user=>user.activeSession),[state.users])
+ const enterpriseMode=enterpriseIdentityState(state)
+ const activeUser=useMemo(()=>state.users.find(user=>user.activeSession&&user.active!==false),[state.users])
  const activeCount=state.users.filter(user=>user.active!==false).length
- const organizationForSite=siteId=>state.sites.find(site=>site.id===siteId)?.companyId||state.currentContext?.companyId||state.companies[0]?.id||'local-installation'
- function save(e){e.preventDefault();const name=normalize(form.name),email=form.email.trim().toLowerCase();if(!name){setMessage({type:'error',text:'Escribe el nombre del usuario.'});return}if(email&&state.users.some(user=>(user.email||'').trim().toLowerCase()===email)){setMessage({type:'error',text:'Ya existe un usuario con ese correo.'});return}if(form.siteId&&!state.sites.some(site=>site.id===form.siteId)){setMessage({type:'error',text:'La sede seleccionada ya no está disponible.'});return}const user={id:crypto.randomUUID(),activeSession:state.users.length===0,name,email,role:form.role,siteId:form.siteId,active:form.active!==false};update(s=>({...s,users:[...s.users,user]}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.USER_CREATED,aggregateType:'user',aggregateId:user.id,organizationId:organizationForSite(user.siteId),siteId:user.siteId||null,payload:{label:`${name} · ${form.role}`,user},metadata:{collections:['users']}});setForm(emptyForm(state.sites[0]?.id));setMessage({type:'success',text:`Usuario ${name} creado correctamente.`})}
- function session(id){const selected=state.users.find(user=>user.id===id);if(!selected||selected.active===false){setMessage({type:'error',text:'Solo puedes iniciar una sesión local con un usuario activo.'});return}update(s=>({...s,users:s.users.map(user=>({...user,activeSession:user.id===id}))}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.USER_SESSION_SELECTED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,userId:selected.id},metadata:{collections:['users']}});setMessage({type:'success',text:`Ahora estás usando el perfil local de ${selected.name}.`})}
- function toggleActive(id){const selected=state.users.find(user=>user.id===id);if(!selected)return;if(selected.activeSession&&selected.active!==false){setMessage({type:'error',text:'No puedes desactivar el usuario que tiene la sesión local activa.'});return}const nextActive=selected.active===false;update(s=>({...s,users:s.users.map(user=>user.id===id?{...user,active:nextActive}:user)}),{audit:false});void publishDomainEvent(state,{name:nextActive?DomainEvents.USER_ACTIVATED:DomainEvents.USER_DEACTIVATED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,userId:selected.id,active:nextActive},metadata:{collections:['users']}});setMessage({type:'success',text:`Usuario ${nextActive?'activado':'desactivado'} correctamente.`})}
- function remove(id){const selected=state.users.find(user=>user.id===id);if(!selected)return;if(selected.activeSession){setMessage({type:'error',text:'No puedes eliminar el usuario que tiene la sesión local activa.'});return}if(confirm(`¿Eliminar el usuario local ${selected.name}?`)){update(s=>({...s,users:s.users.filter(user=>user.id!==id)}),{audit:false});void publishDomainEvent(state,{name:DomainEvents.USER_DELETED,aggregateType:'user',aggregateId:selected.id,organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,payload:{label:selected.name,user:selected},metadata:{collections:['users']}});setMessage({type:'success',text:'Usuario eliminado correctamente.'})}}
+ const organizationForSite=siteId=>{
+  const site=state.sites.find(item=>item.id===siteId)
+  const organizationId=site?.companyId||state.currentContext?.companyId||state.companies[0]?.id||''
+  if(organizationId)return organizationId
+  if(!enterpriseMode&&state.companies.length===0)return'local-installation'
+  throw new Error('No se puede demostrar la organización del perfil.')
+ }
+ const run=async spec=>executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})
+
+ async function save(e){
+  e.preventDefault()
+  if(enterpriseMode){setMessage({type:'error',text:'La identidad empresarial se administra desde Supabase y memberships; no se crean perfiles locales en este modo.'});return}
+  const name=normalize(form.name),email=form.email.trim().toLowerCase()
+  if(!name){setMessage({type:'error',text:'Escribe el nombre del usuario.'});return}
+  if(email&&state.users.some(user=>(user.email||'').trim().toLowerCase()===email)){setMessage({type:'error',text:'Ya existe un usuario con ese correo.'});return}
+  if(form.siteId&&!state.sites.some(site=>site.id===form.siteId)){setMessage({type:'error',text:'La sede seleccionada ya no está disponible.'});return}
+  try{
+   const user={id:crypto.randomUUID(),activeSession:state.users.length===0,name,email,role:form.role,siteId:form.siteId,active:true}
+   const organizationId=organizationForSite(user.siteId),commandId=crypto.randomUUID()
+   await run({commandId,organizationId,siteId:user.siteId||null,aggregateType:'user',aggregateId:user.id,completedEventName:DomainEvents.USER_CREATED,payload:{label:`${name} · ${form.role}`,user},metadata:{collections:['users'],source:'m1.2-local-installation'},apply:current=>({...current,users:[...current.users,user]})})
+   setForm(emptyForm(state.sites[0]?.id));setMessage({type:'success',text:`Usuario ${name} creado correctamente.`})
+  }catch(error){setMessage({type:'error',text:error.message||'No fue posible crear el perfil.'})}
+ }
+
+ async function session(id){
+  if(enterpriseMode){setMessage({type:'error',text:'La sesión activa proviene de la identidad empresarial y no puede seleccionarse localmente.'});return}
+  const selected=state.users.find(user=>user.id===id)
+  if(!selected||selected.active===false){setMessage({type:'error',text:'Solo puedes iniciar una sesión local con un usuario activo.'});return}
+  try{
+   await run({commandId:crypto.randomUUID(),organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,aggregateType:'user',aggregateId:selected.id,completedEventName:DomainEvents.USER_SESSION_SELECTED,payload:{label:selected.name,userId:selected.id},metadata:{collections:['users'],source:'m1.2-local-installation'},apply:current=>({...current,users:current.users.map(user=>({...user,activeSession:user.id===id}))})})
+   setMessage({type:'success',text:`Ahora estás usando el perfil local de ${selected.name}.`})
+  }catch(error){setMessage({type:'error',text:error.message||'No fue posible cambiar el perfil local.'})}
+ }
+
+ async function toggleActive(id){
+  if(enterpriseMode){setMessage({type:'error',text:'El estado de usuarios empresariales se administra desde la autoridad de identidad.'});return}
+  const selected=state.users.find(user=>user.id===id);if(!selected)return
+  if(selected.activeSession&&selected.active!==false){setMessage({type:'error',text:'No puedes desactivar el usuario que tiene la sesión local activa.'});return}
+  const nextActive=selected.active===false
+  try{
+   await run({commandId:crypto.randomUUID(),organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,aggregateType:'user',aggregateId:selected.id,completedEventName:nextActive?DomainEvents.USER_ACTIVATED:DomainEvents.USER_DEACTIVATED,payload:{label:selected.name,userId:selected.id,active:nextActive},metadata:{collections:['users'],source:'m1.2-local-installation'},apply:current=>({...current,users:current.users.map(user=>user.id===id?{...user,active:nextActive}:user)})})
+   setMessage({type:'success',text:`Usuario ${nextActive?'activado':'desactivado'} correctamente.`})
+  }catch(error){setMessage({type:'error',text:error.message||'No fue posible actualizar el perfil.'})}
+ }
+
+ async function archive(id){
+  if(enterpriseMode){setMessage({type:'error',text:'Los usuarios empresariales no pueden eliminarse ni archivarse desde el Store local.'});return}
+  const selected=state.users.find(user=>user.id===id);if(!selected)return
+  if(selected.activeSession){setMessage({type:'error',text:'No puedes archivar el usuario que tiene la sesión local activa.'});return}
+  if(selected.active===false){setMessage({type:'success',text:'El perfil local ya está archivado.'});return}
+  try{
+   await run({commandId:crypto.randomUUID(),organizationId:organizationForSite(selected.siteId),siteId:selected.siteId||null,aggregateType:'user',aggregateId:selected.id,completedEventName:DomainEvents.USER_DEACTIVATED,payload:{label:selected.name,userId:selected.id,active:false,archived:true},metadata:{collections:['users'],source:'m1.2-local-installation'},apply:current=>({...current,users:current.users.map(user=>user.id===id?{...user,active:false,archivedAt:new Date().toISOString()}:user)})})
+   setMessage({type:'success',text:'Perfil local archivado sin eliminar su historial.'})
+  }catch(error){setMessage({type:'error',text:error.message||'No fue posible archivar el perfil.'})}
+ }
+
  return <>
-  <PageHeader eyebrow="Administración" title="Usuarios y roles" subtitle="Administra perfiles locales, roles y alcance por sede mientras la identidad empresarial se gestiona con Supabase."/>
-  <div className="summary-strip admin-summary"><div><span>Usuarios</span><strong>{state.users.length}</strong></div><div><span>Activos</span><strong>{activeCount}</strong></div><div><span>Roles utilizados</span><strong>{new Set(state.users.map(user=>user.role)).size}</strong></div><div><span>Sesión local</span><strong className="summary-text">{activeUser?.name||'Sin seleccionar'}</strong></div></div>
-  <Card title="Nuevo usuario" subtitle="El correo debe ser único. La sede limita el contexto operativo del perfil local."><form className="form-grid" onSubmit={save}><Field label="Nombre" required help="Nombre visible en tareas, auditoría y actividad."><input value={form.name} autoComplete="name" placeholder="Ej. Laura Martínez" onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field label="Correo" help="Se normaliza en minúsculas y no puede repetirse."><input type="email" value={form.email} autoComplete="email" placeholder="usuario@empresa.com" onChange={e=>setForm({...form,email:e.target.value})}/></Field><Field label="Rol" required><select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>{roles.map(role=><option key={role}>{role}</option>)}</select></Field><Field label="Alcance por sede" help="Selecciona Todas para un perfil con acceso transversal."><select value={form.siteId} onChange={e=>setForm({...form,siteId:e.target.value})}><option value="">Todas las sedes</option>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field><div className="form-actions"><button className="button primary">Guardar usuario</button></div></form>{message.text&&<p className={`validation-message ${message.type}`} role={message.type==='error'?'alert':'status'}>{message.text}</p>}</Card>
-  <Card title="Usuarios locales" subtitle="Estos perfiles sirven para probar permisos y operación local; la autenticación empresarial permanece en Supabase." flush>{state.users.length===0?<div className="empty-state"><strong>No hay usuarios locales</strong><span>Crea el primer usuario para habilitar una sesión administrativa inicial.</span></div>:<div className="table-scroll"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Alcance</th><th>Estado</th><th>Sesión</th><th>Acciones</th></tr></thead><tbody>{state.users.map(user=>{const site=state.sites.find(item=>item.id===user.siteId);return <tr key={user.id}><td><strong>{user.name}</strong><small>{user.email||'Sin correo'}</small></td><td>{user.role}</td><td>{site?.name||'Todas las sedes'}</td><td><span className={`tag ${user.active===false?'':'success'}`}>{user.active===false?'Inactivo':'Activo'}</span></td><td>{user.activeSession?<span className="tag success">En uso</span>:<button className="button secondary compact" disabled={user.active===false} onClick={()=>session(user.id)}>Usar perfil</button>}</td><td><div className="row-actions"><button onClick={()=>toggleActive(user.id)}>{user.active===false?'Activar':'Desactivar'}</button><button className="danger-link" disabled={user.activeSession} onClick={()=>remove(user.id)}>Eliminar</button></div></td></tr>})}</tbody></table></div>}</Card>
-  <TimelineFeed aggregateType="user" category="Identidad" title="Historia de usuarios" subtitle="Creación, activación, desactivación, eliminación y selección de perfiles." emptyText="La actividad de usuarios aparecerá al administrar perfiles o cambiar la sesión local."/>
+  <PageHeader eyebrow="Administración" title="Usuarios y acceso" subtitle={enterpriseMode?'La identidad empresarial y sus memberships son la única autoridad de sesión y autorización.':'Perfiles locales disponibles únicamente para instalación standalone.'}/>
+  <div className="summary-strip admin-summary"><div><span>Usuarios</span><strong>{state.users.length}</strong></div><div><span>Activos</span><strong>{activeCount}</strong></div><div><span>Roles utilizados</span><strong>{new Set(state.users.map(user=>user.role).filter(Boolean)).size}</strong></div><div><span>Identidad activa</span><strong className="summary-text">{activeUser?.name||'Sin sesión'}</strong></div></div>
+  {enterpriseMode?<Card title="Identidad empresarial" subtitle="Supabase + memberships gobiernan quién está autenticado y qué puede hacer."><p className="validation-message success" role="status">La selección de sesión, creación de perfiles locales y eliminación física están deshabilitadas en modo empresarial.</p></Card>:<Card title="Nuevo perfil local" subtitle="Solo para instalación standalone; no sustituye identidad empresarial."><form className="form-grid" onSubmit={save}><Field label="Nombre" required><input value={form.name} autoComplete="name" onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field label="Correo"><input type="email" value={form.email} autoComplete="email" onChange={e=>setForm({...form,email:e.target.value})}/></Field><Field label="Rol" required><select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>{roles.map(role=><option key={role}>{role}</option>)}</select></Field><Field label="Alcance por sede"><select value={form.siteId} onChange={e=>setForm({...form,siteId:e.target.value})}><option value="">Todas las sedes</option>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field><div className="form-actions"><button className="button primary">Guardar perfil</button></div></form></Card>}
+  {message.text&&<p className={`validation-message ${message.type}`} role={message.type==='error'?'alert':'status'}>{message.text}</p>}
+  <Card title={enterpriseMode?'Usuarios empresariales':'Perfiles locales'} flush>{state.users.length===0?<div className="empty-state"><strong>No hay usuarios</strong><span>{enterpriseMode?'La identidad se sincronizará desde el proveedor empresarial.':'Crea el primer perfil local para la instalación standalone.'}</span></div>:<div className="table-scroll"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Alcance</th><th>Estado</th><th>Sesión</th><th>Acciones</th></tr></thead><tbody>{state.users.map(user=>{const site=state.sites.find(item=>item.id===user.siteId);return <tr key={user.id}><td><strong>{user.name}</strong><small>{user.email||'Sin correo'}</small></td><td>{user.role||'Por membership'}</td><td>{site?.name||'Según membership'}</td><td><span className={`tag ${user.active===false?'':'success'}`}>{user.active===false?'Inactivo':'Activo'}</span></td><td>{user.activeSession?<span className="tag success">Autenticado</span>:enterpriseMode?<span className="tag">Sin sesión</span>:<button className="button secondary compact" disabled={user.active===false} onClick={()=>session(user.id)}>Usar perfil</button>}</td><td>{enterpriseMode?<span className="tag">Gestionado externamente</span>:<div className="row-actions"><button onClick={()=>toggleActive(user.id)}>{user.active===false?'Activar':'Desactivar'}</button><button className="danger-link" disabled={user.activeSession||user.active===false} onClick={()=>archive(user.id)}>Archivar</button></div>}</td></tr>})}</tbody></table></div>}</Card>
+  <TimelineFeed aggregateType="user" category="Identidad" title="Historia de usuarios" subtitle="Actividad de identidad y perfiles sin borrado destructivo." emptyText="La actividad de usuarios aparecerá al administrar perfiles o sincronizar identidad."/>
  </>
 }
