@@ -3,6 +3,7 @@ import Card from'./Card'
 import CrudActions from'./CrudActions'
 import Field from'./Field'
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
+import{executeCoreOperationCommand}from'../services/coreOperationCommand.js'
 
 export const SPACE_CAPABILITIES=['Material vegetal','Producción','Recepción','Secado','Destalle','Manicura','Selección','Empaque','Almacenamiento','Cuarentena','Compostaje','Destrucción','Extracción','Laboratorio','Limpieza']
 const emptyArea=siteId=>({siteId:siteId||'',name:'',type:'Área operativa',capabilities:[],shared:false,dimensionUnit:'m',length:0,width:0,height:0,notes:''})
@@ -12,35 +13,41 @@ export default function FacilityAreaManager({state,update}){
  const[form,setForm]=useState(()=>emptyArea(defaultSite)),[editingId,setEditingId]=useState(null)
  const grouped=useMemo(()=>state.sites.map(site=>({site,areas:areas.filter(area=>area.siteId===site.id)})).filter(group=>group.areas.length),[state.sites,areas])
  function organizationIdForSite(siteId){return state.sites.find(site=>site.id===siteId)?.companyId||''}
+ async function execute(spec){return executeCoreOperationCommand(spec,{publishEvent:event=>publishDomainEvent(state,event),commit:update})}
  function toggleCapability(value){setForm(current=>({...current,capabilities:current.capabilities.includes(value)?current.capabilities.filter(item=>item!==value):[...current.capabilities,value]}))}
- function save(event){
+ async function save(event){
   event.preventDefault()
   const name=form.name.trim(),site=activeSites.find(item=>item.id===form.siteId)
   if(!name)return alert('Escribe el nombre del área.')
   if(!site)return alert('Selecciona una sede activa.')
   if(!form.capabilities.length)return alert('Selecciona al menos una capacidad operativa.')
   if(areas.some(item=>item.id!==editingId&&item.siteId===form.siteId&&item.active!==false&&item.name.trim().toLowerCase()===name.toLowerCase()))return alert('Ya existe un área activa con ese nombre en la sede.')
-  const payload={...form,name,shared:form.capabilities.length>1||Boolean(form.shared),length:Math.max(0,Number(form.length)||0),width:Math.max(0,Number(form.width)||0),height:Math.max(0,Number(form.height)||0)}
-  if(editingId){
-   const previous=areas.find(item=>item.id===editingId),after={...previous,...payload}
-   update(store=>({...store,facilityAreas:areas.map(item=>item.id===editingId?after:item)}),{module:'Infraestructura',action:'Área actualizada',detail:`${name} · ${payload.capabilities.join(', ')}`})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_UPDATED,aggregateType:'facility.area',aggregateId:editingId,organizationId:organizationIdForSite(form.siteId),siteId:form.siteId,payload:{label:name,before:previous,after},metadata:{collections:['facilityAreas']}})
-  }else{
-   const id=crypto.randomUUID(),createdAt=new Date().toISOString(),area={id,createdAt,active:true,...payload}
-   update(store=>({...store,facilityAreas:[...areas,area]}),{module:'Infraestructura',action:'Área creada',detail:`${name} · ${payload.capabilities.join(', ')}`})
-   void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_CREATED,aggregateType:'facility.area',aggregateId:id,organizationId:organizationIdForSite(form.siteId),siteId:form.siteId,payload:{label:name,area},metadata:{collections:['facilityAreas']}})
-  }
-  setEditingId(null);setForm(emptyArea(form.siteId))
+  const organizationId=organizationIdForSite(form.siteId)
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria del área.')
+  const payload={...form,organizationId,name,shared:form.capabilities.length>1||Boolean(form.shared),length:Math.max(0,Number(form.length)||0),width:Math.max(0,Number(form.width)||0),height:Math.max(0,Number(form.height)||0)}
+  try{
+   if(editingId){
+    const previous=areas.find(item=>item.id===editingId),after={...previous,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:form.siteId,aggregateType:'facility.area',aggregateId:editingId,completedEventName:DomainEvents.FACILITY_AREA_UPDATED,payload:{label:name,before:previous,after},metadata:{collections:['facilityAreas']},apply:store=>({...store,facilityAreas:(store.facilityAreas||[]).map(item=>item.id===editingId?after:item)})})
+   }else{
+    const id=crypto.randomUUID(),createdAt=new Date().toISOString(),area={id,createdAt,active:true,...payload}
+    await execute({commandId:crypto.randomUUID(),organizationId,siteId:form.siteId,aggregateType:'facility.area',aggregateId:id,completedEventName:DomainEvents.FACILITY_AREA_CREATED,payload:{label:name,area},metadata:{collections:['facilityAreas']},apply:store=>(store.facilityAreas||[]).some(item=>item.id===id)?store:{...store,facilityAreas:[...(store.facilityAreas||[]),area]}})
+   }
+   setEditingId(null);setForm(emptyArea(form.siteId))
+  }catch(error){alert(error.message||'No fue posible guardar el área.')}
  }
  function edit(area){setEditingId(area.id);setForm({...emptyArea(area.siteId),...area,capabilities:[...(area.capabilities||[])]})}
- function archive(area){
+ async function archive(area){
   const linked=(state.houses||[]).filter(item=>item.areaId===area.id&&item.active!==false).length+(state.propagationBanks||[]).filter(item=>item.areaId===area.id&&item.active!==false).length
   if(linked)return alert(`No puedes archivar el área porque tiene ${linked} espacios activos vinculados.`)
   if(!confirm(`¿Archivar el área ${area.name}? Su identidad e historial se conservarán.`))return
-  const archivedAt=new Date().toISOString(),previous=area,after={...area,active:false,archivedAt}
-  update(store=>({...store,facilityAreas:areas.map(item=>item.id===area.id?after:item)}),{module:'Infraestructura',action:'Área archivada',detail:area.name})
-  void publishDomainEvent(state,{name:DomainEvents.FACILITY_AREA_ARCHIVED,aggregateType:'facility.area',aggregateId:area.id,organizationId:organizationIdForSite(area.siteId),siteId:area.siteId,payload:{label:area.name,before:previous,after},metadata:{collections:['facilityAreas']}})
-  if(editingId===area.id){setEditingId(null);setForm(emptyArea(defaultSite))}
+  const organizationId=organizationIdForSite(area.siteId)||area.organizationId||''
+  if(!organizationId)return alert('No se puede demostrar la empresa propietaria del área.')
+  const archivedAt=new Date().toISOString(),after={...area,organizationId,active:false,archivedAt}
+  try{
+   await execute({commandId:crypto.randomUUID(),organizationId,siteId:area.siteId,aggregateType:'facility.area',aggregateId:area.id,completedEventName:DomainEvents.FACILITY_AREA_ARCHIVED,occurredAt:archivedAt,payload:{label:area.name,before:area,after},metadata:{collections:['facilityAreas']},apply:store=>({...store,facilityAreas:(store.facilityAreas||[]).map(item=>item.id===area.id?after:item)})})
+   if(editingId===area.id){setEditingId(null);setForm(emptyArea(defaultSite))}
+  }catch(error){alert(error.message||'No fue posible archivar el área.')}
  }
  return <>
   <Card title={editingId?'Editar área física':'Nueva área física'} subtitle="El espacio es único; sus capacidades pueden ser exclusivas, compartidas o cambiar por programación.">
