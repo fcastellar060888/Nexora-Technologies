@@ -5,14 +5,16 @@ import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'.
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 import{cleanupLegacySeed}from'./legacySeedCleanup.js'
+import{quarantineLegacyInlineDocuments}from'./legacyInlineDocumentMigration.js'
 
 let lastObservedAuditId=''
 let persistenceRuntime=createPersistenceRuntime()
 const persistenceListeners=new Set()
 const normalizeState=value=>cleanupLegacySeed(migrateMaterialPlantIdentity(migrateState(value)))
+const preparePersistedState=value=>normalizeState(quarantineLegacyInlineDocuments(value))
 
 function cloneInitialState(){
- return normalizeState(structuredClone(initialState))
+ return preparePersistedState(structuredClone(initialState))
 }
 
 function publishPersistenceResult(result){
@@ -39,9 +41,9 @@ function readLegacyState(){
   return null
  }
  driver.preserveBackup(raw,'Copia previa a migración hacia caché segmentada')
- try{return normalizeState(parsed)}catch(error){
+ try{return preparePersistedState(parsed)}catch(error){
   console.error('Falló la normalización del estado legado.',error)
-  return normalizeState({...structuredClone(initialState),...parsed,schemaVersion:Number(parsed.schemaVersion||1)})
+  return preparePersistedState({...structuredClone(initialState),...parsed,schemaVersion:Number(parsed.schemaVersion||1)})
  }
 }
 
@@ -67,7 +69,7 @@ export function loadState(){
  try{
   cleanupLightweightCache()
   const cached=readLightweightCache()
-  if(cached)return normalizeState({...structuredClone(initialState),...cached})
+  if(cached)return preparePersistedState({...structuredClone(initialState),...cached})
  }catch(error){console.error('No fue posible cargar la caché segmentada.',error)}
  const legacy=readLegacyState()
  if(legacy){
@@ -79,7 +81,7 @@ export function loadState(){
 
 export function saveState(state){
  try{
-  const normalized=normalizeState(state)
+  const normalized=preparePersistedState(state)
   const result=writeLightweightCache({...normalized,schemaVersion:CURRENT_SCHEMA_VERSION,persistedAt:new Date().toISOString()})
   emitOperationalChange(normalized)
   return publishPersistenceResult({ok:true,...result})

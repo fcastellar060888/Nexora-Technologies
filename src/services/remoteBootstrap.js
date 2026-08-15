@@ -5,7 +5,7 @@ import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
  'operationalLedgerEntries','timelineEntries',
- 'companies','users','roles','memberships'
+ 'companies','users','roles','memberships','entitlements'
 ])
 
 const list=value=>Array.isArray(value)?value:[]
@@ -114,7 +114,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   syncConflicts:list(localState.syncConflicts),
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
-  companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),userSessions:list(localState.userSessions),
+  companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),entitlements:list(localState.entitlements),userSessions:list(localState.userSessions),
   auditLog:list(localState.auditLog),
   operationalLedgerEntries:list(localState.operationalLedgerEntries),
   timelineEntries:list(localState.timelineEntries),

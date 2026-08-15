@@ -45,6 +45,7 @@ export function permissionsForMembership({membership,roles=[]}){
 export function canAccessSite(membership,siteId){
  const normalized=normalizeMembership(membership)
  if(normalized.status!=='active')return false
+ if(!siteId)return normalized.siteIds.length===0
  return normalized.siteIds.length===0||normalized.siteIds.includes(siteId)
 }
 
@@ -57,9 +58,9 @@ export function resolveActiveAccess(state,userId){
 }
 
 export function hasPermission({state,userId,companyId,siteId,permission}){
- return resolveActiveAccess(state,userId).some(access=>
-  access.companyId===companyId&&
-  canAccessSite(access,siteId)&&
-  access.permissions.includes(permission)
- )
+ if(!userId||!companyId||!permission)return false
+ return resolveActiveAccess(state,userId).some(access=>{
+  if(access.companyId!==companyId||!canAccessSite(access,siteId))return false
+  return access.permissions.includes('*')||access.permissions.includes(permission)
+ })
 }

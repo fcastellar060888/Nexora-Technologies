@@ -10,12 +10,15 @@ const EXPIRY_MARGIN_SECONDS = 60
 const authSession=createAuthSessionStorage()
 let refreshPromise=null
 
-function headers(token='') {
+function authHeaders(token='') {
   return {
     apikey: anonKey || '',
     Authorization: `Bearer ${token || anonKey || ''}`,
-    'Content-Type': 'application/json',
   }
+}
+
+function headers(token='') {
+  return {...authHeaders(token),'Content-Type':'application/json'}
 }
 
 function expiresAt(session) {
@@ -29,12 +32,24 @@ function isExpired(session) {
   return expiry>0&&expiry<=Math.floor(Date.now()/1000)+EXPIRY_MARGIN_SECONDS
 }
 
+async function responseError(response){
+  const data=await response.json().catch(()=>null)
+  return new Error(data?.msg||data?.message||data?.error_description||data?.error||`Error de Supabase (${response.status})`)
+}
+
 async function request(path,{method='GET',token='',body,headers:extra={}}={}){
   if(!supabaseEnabled)throw new Error('Supabase no está configurado')
   const response=await fetch(`${url}${path}`,{method,headers:{...headers(token),...extra},body:body===undefined?undefined:JSON.stringify(body)})
-  const data=await response.json().catch(()=>null)
-  if(!response.ok)throw new Error(data?.msg||data?.message||data?.error_description||data?.error||'Error de Supabase')
-  return data
+  if(!response.ok)throw await responseError(response)
+  return response.json().catch(()=>null)
+}
+
+async function requestBinary(path,{method='POST',token='',body,contentType='application/octet-stream',headers:extra={}}={}){
+  if(!supabaseEnabled)throw new Error('Supabase no está configurado')
+  const response=await fetch(`${url}${path}`,{method,headers:{...authHeaders(token),'Content-Type':contentType,...extra},body})
+  if(!response.ok)throw await responseError(response)
+  const type=response.headers.get('content-type')||''
+  return type.includes('application/json')?response.json():response.blob()
 }
 
 async function refreshSession(session) {
@@ -96,14 +111,20 @@ export async function authenticatedRequest(path,options={}){
   return request(path,{...options,token:session.access_token})
 }
 
+export async function authenticatedBinaryRequest(path,options={}){
+  const session=await requireSession()
+  return requestBinary(path,{...options,token:session.access_token})
+}
+
 export async function loadRemoteIdentity(){
   const session=await requireSession()
   const userId=session.user.id
-  const [profiles,memberships]=await Promise.all([
+  const [profiles,memberships,entitlements]=await Promise.all([
     request(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`,{token:session.access_token}),
-    request(`/rest/v1/memberships?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=*,membership_sites(site_id)`,{token:session.access_token})
+    request(`/rest/v1/memberships?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=*,membership_sites(site_id)`,{token:session.access_token}),
+    request('/rest/v1/organization_entitlements?select=*',{token:session.access_token})
   ])
-  return{user:session.user,profile:profiles?.[0]||null,memberships:memberships||[]}
+  return{user:session.user,profile:profiles?.[0]||null,memberships:memberships||[],entitlements:entitlements||[]}
 }
 
 export async function syncSnapshot(state){

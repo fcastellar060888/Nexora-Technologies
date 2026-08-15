@@ -26,12 +26,11 @@ test('los dominios publican eventos y auditoría proyecta desde el Ledger del wo
  const sites=await readFile(new URL('../src/pages/SitesPage.jsx',import.meta.url),'utf8')
  const users=await readFile(new URL('../src/pages/UsersPage.jsx',import.meta.url),'utf8')
  const boundary=await readFile(new URL('../src/services/coreOperationCommand.js',import.meta.url),'utf8')
- for(const source of[companies,sites]){
+ for(const source of[companies,sites,users]){
   assert.match(source,/publishDomainEvent/)
   assert.match(source,/executeCoreOperationCommand/)
  }
- assert.match(users,/publishDomainEvent/)
- assert.match(users,/audit:false/)
+ assert.doesNotMatch(users,/\bupdate\s*\(/)
  assert.match(boundary,/commit\(current=>spec\.apply\(current\),\{audit:false\}\)/)
  assert.match(boundary,/CORE_OPERATION_REQUESTED/)
  const bridge=await readFile(new URL('../src/core/audit/DomainEventAuditBridge.jsx',import.meta.url),'utf8')
