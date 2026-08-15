@@ -13,17 +13,22 @@ test('la página de propagación usa el flujo por propósito y origen individual
 
 test('la administración moderna de bancos y múltiples bandejas permanece disponible en Infraestructura',async()=>{
  const source=await readFile('src/components/PropagationBankManager.jsx','utf8')
- for(const label of['Nuevo banco de propagación','Agregar tipo de bandeja','Bandejas y medio de propagación','Cavidades'])assert.match(source,new RegExp(label))
+ for(const label of['Nuevo banco de propagación','Agregar tipo de bandeja','Bandejas y contenedor de propagación','Cavidades'])assert.match(source,new RegExp(label))
  assert.match(source,/bankCapacity\(bank\.trays\)/)
  assert.match(source,/bankOccupancy/)
+ assert.match(source,/growingMediumAssignmentId/)
 })
 
-test('integra sin pérdida los metadatos de bancos y bandejas provenientes de main',async()=>{
+test('conserva metadatos físicos de bandejas y migra la autoridad del medio a GrowingMediumAssignment',async()=>{
  const source=await readFile('src/components/PropagationBankManager.jsx','utf8')
- for(const field of['substrate','usesJiffy','plugType','plugSize','volumePerCavityMl','mediumLot'])assert.match(source,new RegExp(field))
- for(const label of['Medio','Usa jiffy','Tipo de plug','Tamaño del plug','Volumen/cavidad','Lote del medio'])assert.match(source,new RegExp(label))
+ for(const field of['usesJiffy','plugType','plugSize','volumePerCavityMl','growingMediumAssignmentId'])assert.match(source,new RegExp(field))
+ for(const label of['Usa jiffy','Tipo de plug','Tamaño del plug','Volumen/cavidad'])assert.match(source,new RegExp(label))
+ assert.doesNotMatch(source,/Field label="Medio"/)
+ assert.doesNotMatch(source,/Field label="Lote del medio"/)
  assert.match(source,/item\.trayCount/)
  assert.match(source,/item\.cavitiesPerTray/)
+ assert.match(source,/substrate:item\.substrate/)
+ assert.match(source,/mediumLot:item\.mediumLot/)
 })
 
 test('impide archivar bancos vinculados a lotes o esquejes activos',async()=>{
