@@ -18,11 +18,13 @@ test('separa renovación de producción y protege el uso productivo de abuelas',
  assert.match(source,/grandmotherProduction/)
 })
 
-test('crea lotes y unidades con genealogía y propósito',async()=>{
- const source=await readFile('src/components/PurposeAwarePropagationForm.jsx','utf8')
- assert.match(source,/createPurposeAwareBatch/)
- assert.match(source,/directParentPlantId/)
- assert.match(source,/targetLifecycleStage/)
- assert.match(source,/entersProduction/)
- assert.match(source,/allocateUnitsToBank/)
+test('el comando crea lotes y unidades con genealogía propósito y ubicación física',async()=>{
+ const form=await readFile('src/components/PurposeAwarePropagationForm.jsx','utf8')
+ const command=await readFile('src/services/propagationBatchCommand.js','utf8')
+ assert.match(form,/executePropagationBatchCommand/)
+ assert.match(command,/createPurposeAwareBatch/)
+ assert.match(command,/directParentPlantId/)
+ assert.match(command,/targetLifecycleStage/)
+ assert.match(command,/entersProduction/)
+ assert.match(command,/allocateUnitsToBank/)
 })
