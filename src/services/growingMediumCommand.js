@@ -1,10 +1,10 @@
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
-import{createGrowingMediumProduct,createGrowingMediumFormula,createGrowingMediumBatch,createGrowingMediumAssignment,createReusePolicy,planReuseCycle}from'../domain/growingMedium.js'
+import{createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,assignmentFromBatch,createReusePolicy,planReuseCycle}from'../domain/growingMedium.js'
 import{hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
 
-export const GROWING_MEDIUM_OPERATIONS=Object.freeze({CREATE_PRODUCT:'CREATE_PRODUCT',UPDATE_PRODUCT:'UPDATE_PRODUCT',ARCHIVE_PRODUCT:'ARCHIVE_PRODUCT',CREATE_FORMULA:'CREATE_FORMULA',REGISTER_BATCH:'REGISTER_BATCH',CREATE_ASSIGNMENT:'CREATE_ASSIGNMENT',ARCHIVE_ASSIGNMENT:'ARCHIVE_ASSIGNMENT',CREATE_REUSE_POLICY:'CREATE_REUSE_POLICY',RECORD_REUSE:'RECORD_REUSE'})
+export const GROWING_MEDIUM_OPERATIONS=Object.freeze({CREATE_PRODUCT:'CREATE_PRODUCT',UPDATE_PRODUCT:'UPDATE_PRODUCT',ARCHIVE_PRODUCT:'ARCHIVE_PRODUCT',CREATE_FORMULA:'CREATE_FORMULA',CREATE_FORMULA_VERSION:'CREATE_FORMULA_VERSION',REGISTER_BATCH:'REGISTER_BATCH',CREATE_ASSIGNMENT:'CREATE_ASSIGNMENT',ARCHIVE_ASSIGNMENT:'ARCHIVE_ASSIGNMENT',CREATE_REUSE_POLICY:'CREATE_REUSE_POLICY',RECORD_REUSE:'RECORD_REUSE'})
 
 const list=(state,key)=>Array.isArray(state?.[key])?state[key]:[]
 const text=value=>String(value??'').trim()
@@ -31,7 +31,12 @@ export async function executeGrowingMediumCommand(state,{operation,input={},enti
  }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA){
   const formula=createGrowingMediumFormula({...input,id:aggregateId,organizationId})
   for(const component of formula.components)tenantItem(list(state,'growingMediumProducts'),component.productId,organizationId,'El componente de fórmula')
-  eventName=DomainEvents.GROWING_MEDIUM_FORMULA_CREATED;payload={formulaId:formula.id,name:formula.name,version:formula.version};apply=current=>({...current,growingMediumFormulas:upsert(list(current,'growingMediumFormulas'),formula)})
+  eventName=DomainEvents.GROWING_MEDIUM_FORMULA_CREATED;payload={formulaId:formula.id,formulaKey:formula.formulaKey,name:formula.name,version:formula.version};apply=current=>({...current,growingMediumFormulas:upsert(list(current,'growingMediumFormulas'),formula)})
+ }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA_VERSION){
+  const previous=tenantItem(list(state,'growingMediumFormulas'),input.previousFormulaId,organizationId,'La fórmula anterior'),formula=nextGrowingMediumFormulaVersion(previous,{...input,id:aggregateId,createdAt:occurredAt})
+  for(const component of formula.components)tenantItem(list(state,'growingMediumProducts'),component.productId,organizationId,'El componente de fórmula')
+  if(list(state,'growingMediumFormulas').some(item=>item.organizationId===organizationId&&item.formulaKey===formula.formulaKey&&Number(item.version)===formula.version))throw new Error('Ya existe esa versión de la fórmula.')
+  eventName=DomainEvents.GROWING_MEDIUM_FORMULA_UPDATED;payload={formulaId:formula.id,formulaKey:formula.formulaKey,version:formula.version,supersedesFormulaId:formula.supersedesFormulaId};apply=current=>({...current,growingMediumFormulas:[...list(current,'growingMediumFormulas'),formula]})
  }else if(operation===GROWING_MEDIUM_OPERATIONS.REGISTER_BATCH){
   const batch=createGrowingMediumBatch({...input,id:aggregateId,organizationId})
   if(batch.productId)tenantItem(list(state,'growingMediumProducts'),batch.productId,organizationId,'El producto del batch')
@@ -41,10 +46,10 @@ export async function executeGrowingMediumCommand(state,{operation,input={},enti
   const policy=createReusePolicy({...input,id:aggregateId,organizationId})
   eventName=DomainEvents.GROWING_MEDIUM_REUSE_POLICY_CREATED;payload={reusePolicyId:policy.id,replacementPercent:policy.replacementPercent,maxUses:policy.maxUses};apply=current=>({...current,growingMediumReusePolicies:upsert(list(current,'growingMediumReusePolicies'),policy)})
  }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_ASSIGNMENT){
-  const assignment=createGrowingMediumAssignment({...input,id:aggregateId,organizationId}),batch=tenantItem(list(state,'growingMediumBatches'),assignment.batchId,organizationId,'El batch')
+  const batch=tenantItem(list(state,'growingMediumBatches'),input.batchId,organizationId,'El batch'),assignment=assignmentFromBatch({...input,id:aggregateId,organizationId},batch)
   if(Number(batch.availableVolumeLiters)<assignment.volumeLiters)throw new Error('El batch no tiene volumen suficiente para la asignación.')
   if(assignment.reusePolicyId)tenantItem(list(state,'growingMediumReusePolicies'),assignment.reusePolicyId,organizationId,'La política de reutilización')
-  eventName=DomainEvents.GROWING_MEDIUM_ASSIGNMENT_CREATED;payload={assignmentId:assignment.id,targetType:assignment.targetType,targetId:assignment.targetId,batchId:assignment.batchId,volumeLiters:assignment.volumeLiters}
+  eventName=DomainEvents.GROWING_MEDIUM_ASSIGNMENT_CREATED;payload={assignmentId:assignment.id,targetType:assignment.targetType,targetId:assignment.targetId,batchId:assignment.batchId,volumeLiters:assignment.volumeLiters,supplierLot:assignment.supplierLot,totalCost:assignment.totalCost,currency:assignment.currency}
   apply=current=>{
    if(list(current,'growingMediumAssignments').some(item=>item.id===assignment.id&&item.organizationId===organizationId))return current
    const currentBatch=tenantItem(list(current,'growingMediumBatches'),assignment.batchId,organizationId,'El batch')
