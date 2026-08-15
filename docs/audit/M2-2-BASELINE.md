@@ -1,91 +1,96 @@
 # Nexora One — Auditoría Forense v3 · M2.2 Growing Medium Engine
 
-Estado: **BASELINE — auditoría abierta**
-Base certificada: `main` merge M0→M2.1, commit `8bbed565dfb2cd546579e5a29a452b5ab5c1b313`, Quality #1759 verde.
+Estado: **VERIFIED — 9/9 hallazgos cerrados**
+Base certificada: `main` merge M0→M2.1, commit `8bbed565dfb2cd546579e5a29a452b5ab5c1b313`.
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md`.
 Método: Audit → Fix → Test → Quality Gate → Re-Audit → Close.
 
-## Alcance
+## Alcance certificado
 
-M2.2 audita y sanea la autoridad de medios de cultivo antes de entrar a Irrigation/MIRFE:
+M2.2 establece una autoridad canónica y tenant-aware para:
 
 - GrowingMediumProduct;
-- GrowingMediumFormula;
+- GrowingMediumFormula y versionado inmutable;
 - GrowingMediumBatch;
 - GrowingMediumAssignment;
 - ReusePolicy;
 - ReuseCycle;
 - PurchaseRequirement;
-- coco, turba, tierra, mezclas, jiffy, plug y medios personalizados;
-- volumen, lote proveedor, costo, reutilización, reposición y compra;
-- tenancy, command boundary, eventos, Passport/Graph e inventario.
+- producción y propagación;
+- lote proveedor, costo, inventario, reutilización y compra;
+- command boundary, eventos, sync, Passport y Knowledge Graph.
 
-## Hallazgos iniciales reproducibles
+## Matriz final
 
-| ID | Sev. | Estado | Área | Hallazgo |
+| ID | Sev. | Estado | Área | Evidencia de cierre |
 |---|---:|---|---|---|
-| M22-F001 | P0 | Open | Domain authority | No existe una autoridad `GrowingMediumProduct/Formula/Batch/Assignment`; producción y propagación guardan el medio como texto embebido (`growingMedium`, `substrate`, `mediumLot`). |
-| M22-F002 | P0 | Open | Production assignment | `BedManager` replica `growingMedium` como string en cama y cada Position. No existe asignación durable con producto/fórmula/lote/volumen/costo/ciclo de reutilización ni ownership independiente. |
-| M22-F003 | P0 | Open | Propagation assignment | `PropagationBankManager` guarda por bandeja `substrate`, jiffy/plug, volumen y `mediumLot` como campos libres; no demuestra producto/lote tenant-owned ni trazabilidad de proveedor/costo. |
-| M22-F004 | P1 | Open | Formula/versioning | No existe `GrowingMediumFormula` versionada para mezclas configurables ni composición porcentual. “Mezcla” es una etiqueta, no una fórmula auditable. |
-| M22-F005 | P0 | Open | Reuse lifecycle | No existe `ReusePolicy`/`ReuseCycle`; no hay autoridad para número máximo de usos, reposición parcial 30/70 configurable, renovación total ni alerta de fin de ciclo. |
-| M22-F006 | P1 | Open | Purchase planning | No existe `PurchaseRequirement`; el sistema calcula litros configurados de forma local, pero no convierte asignaciones + política de reposición + rendimiento/proveedor en requerimiento de compra por sede/nave/cama. |
-| M22-F007 | P1 | Open | Cost/provenance | El medio no conserva de forma canónica lote de proveedor, costo unitario/total, proveedor, fecha de recepción ni enlace a InventoryLot; por tanto costo por planta/ciclo no es reproducible. |
-| M22-F008 | P1 | Open | Command/events | Cambiar medio en cama o bandeja ocurre dentro del command de infraestructura, sin command/eventos específicos de `GrowingMediumAssignment`, por lo que la historia técnica del sustrato queda mezclada con la historia física del espacio. |
-| M22-F009 | P1 | Open | Passport/Graph | Passport/Knowledge Graph no tienen una relación canónica planta/Position → GrowingMediumAssignment → Batch/Product/Formula/ReuseCycle; la evidencia agronómica del medio no forma parte del Digital Twin. |
+| M22-F001 | P0 | Closed | Domain authority | `src/domain/growingMedium.js` define Product/Formula/Batch/Assignment con identidad estable y ownership organizacional. Quality #1766/#1776. |
+| M22-F002 | P0 | Closed | Production assignment | `BedManager` dejó de crear `growingMedium` textual; camas/Positions referencian `GrowingMediumAssignment`. Operación target+assignment es atómica. Quality #1784/#1802. |
+| M22-F003 | P0 | Closed | Propagation assignment | Bandejas nuevas ya no capturan `substrate`/`mediumLot` como autoridad; jiffy/plug permanecen como propiedades físicas y el medio se enlaza por Assignment. Quality #1790/#1802. |
+| M22-F004 | P1 | Closed | Formula/versioning | Fórmulas validan composición 100%, tienen `formulaKey`, `version`, `supersedesFormulaId` y crean versiones nuevas sin reescribir historia. Quality #1812. |
+| M22-F005 | P0 | Closed | Reuse lifecycle | `ReusePolicy` y `ReuseCycle` son entidades configurables; 30/70 y 3 usos son parámetros, no constantes universales. Quality #1766/#1776. |
+| M22-F006 | P1 | Closed | Purchase planning | `PurchaseRequirement` persiste período, alcance SITE/HOUSE/BED/TRAY, snapshot de assignments/planes, reserva y litros requeridos; participa del sync tenant-aware. Quality #1826. |
+| M22-F007 | P1 | Closed | Cost/provenance | Assignment congela supplier, supplierLot, inventoryLotId, costo unitario, moneda y costo total desde el batch; cambios posteriores del batch no alteran historia. Quality #1812. |
+| M22-F008 | P1 | Closed | Command/events | Producto, fórmula, batch, assignment, reuse y purchase requirement pasan por command boundary idempotente con eventos canónicos. Quality #1776/#1826. |
+| M22-F009 | P1 | Closed | Passport/Graph | Passport resuelve Assignment→Batch→Product/Formula→ReusePolicy/ReuseCycle por tenant y Knowledge Graph conserva relaciones/evidencia; referencias extranjeras fallan cerrado. Quality #1832. |
 
-## Evidencia de baseline
+## Reauditoría independiente
 
-### Producción
+### Autoridad y compatibilidad
 
-`src/components/BedManager.jsx`:
-- `emptyBed(... growingMedium:'Coco')`;
-- selector de texto Coco/Turba/Tierra/Mezcla/Otro;
-- `createProductionPositions(... growingMedium)` copia el string a cada Position;
-- no existe batch, assignment, cost ni reuse cycle.
+- Nuevas camas no materializan `Coco/Turba/Tierra/Mezcla` como fuente de verdad.
+- Nuevas bandejas no materializan `substrate` ni `mediumLot` como fuente de verdad.
+- Los campos históricos pueden seguir leyéndose para compatibilidad/migración, pero no gobiernan nuevas asignaciones.
+- La ruta `/growing-medium` está protegida por `manage_cultivation`.
 
-`src/domain/facilityEngine.js`:
-- `defaultContainerProfile()` solo referencia opcionalmente `growingMediumId`;
-- `createProductionPositions()` sigue materializando `growingMedium` como string.
+### Tenancy e identidad
 
-### Propagación
+- Product, Formula, Batch, Assignment, ReusePolicy, ReuseCycle y PurchaseRequirement llevan `organizationId`.
+- IDs históricos repetidos entre organizaciones se resuelven siempre con `(organizationId,id)`.
+- Sync rechaza payloads extranjeros y `growingMediumPurchaseRequirements` participa del mismo contrato tenant-aware.
+- Passport falla cerrado si una cama referencia un Assignment inexistente en la organización de la planta.
 
-`src/components/PropagationBankManager.jsx`:
-- `substrate`, `usesJiffy`, `plugType`, `plugSize`, `volumePerCavityMl`, `mediumLot` viven dentro del tray;
-- el volumen total se calcula para UI, pero no crea una asignación ni consumo de lote;
-- `mediumLot` es texto libre.
+### Historia, costo y reutilización
 
-### Modelo normativo
+- Una nueva versión de fórmula nunca sobrescribe la versión anterior.
+- Assignment conserva snapshot de lote/proveedor/inventario/costo.
+- ReuseCycle registra volumen reutilizado y fresco, acción y responsable.
+- PurchaseRequirement conserva snapshot reproducible aun si luego cambian policy, batch o assignment.
 
-`docs/NEXORA_DOMAIN_MODEL_V1.md` exige explícitamente:
-- GrowingMediumProduct;
-- GrowingMediumFormula;
-- GrowingMediumBatch;
-- GrowingMediumAssignment;
-- ReusePolicy;
-- ReuseCycle;
-- PurchaseRequirement;
-- soporte para coco/turba/tierra/mezclas/jiffy/plug/personalizados;
-- volumen, lote proveedor, costo y ciclo de reutilización por asignación.
+### Digital Twin
 
-## Criterios de cierre
+La planta productiva puede explicar en Passport/Graph:
 
-1. Producto/fórmula/batch/assignment tenant-owned y con identidad estable.
-2. Producción y propagación referencian asignaciones canónicas, no strings como autoridad.
-3. Fórmulas de mezcla versionadas, suma de composición validada y no destructivas.
-4. Batch conserva proveedor, lote proveedor, costo, volumen/cantidad y enlace opcional a inventario.
-5. ReusePolicy configurable por organización/producto/uso; sin hardcode universal de 30/70 o 3 ciclos.
-6. ReuseCycle registra uso, volumen recuperado, reposición, pérdida, renovación total y responsable.
-7. PurchaseRequirement reproducible por sede/nave/cama/periodo y basado en volumen real + política + rendimiento.
-8. Mutaciones pasan por command/action boundary con permiso, tenant, idempotencia y eventos canónicos.
-9. Passport/Graph pueden explicar qué medio/lote/fórmula/ciclo recibió una planta o Position.
-10. Pruebas adversariales cross-tenant, lote agotado, fórmula inválida, retry, sobreasignación y ciclo excedido.
-11. Quality completo verde.
-12. Reauditoría independiente sin P0/P1 abiertos.
+`Plant/Position → GrowingMediumAssignment → Batch → Product/Formula → ReusePolicy → ReuseCycle`
 
-## Conteo inicial
+incluyendo volumen, lote proveedor, enlace de inventario, costo y ciclo de reutilización. Las relaciones usan nomenclatura canónica `growing.medium.*` y no proyectan nodos cross-tenant.
 
-- Open: **9**
-- P0: **4**
-- P1: **5**
-- Closed: **0**
+## Evidencia Quality
+
+- #1766 — modelo de dominio: verde.
+- #1776 — command boundary/eventos: verde.
+- #1780 — sync inicial: verde.
+- #1784 — asignación física atómica: verde.
+- #1790 — pantalla/flujo operativo: verde.
+- #1802 — eliminación de strings como autoridad en infraestructura: verde.
+- #1812 — versionado y snapshots de costo/procedencia: verde.
+- #1824 — rojo detectó una sustitución accidental incompleta de `syncEngine.js`; se corrigió restaurando el motor canónico y agregando únicamente PurchaseRequirement.
+- #1826 — PurchaseRequirement + sync restaurado: verde.
+- #1830 — rojo detectó nomenclatura inválida de `targetType` (`growing_medium.*`) en Passport; se corrigió al contrato `growing.medium.*`.
+- #1832 — Passport/Graph F009 y todos los gates: verde.
+
+## Diff re-audit contra main
+
+- Estado: ahead, **0 behind**.
+- 36 commits del bloque antes del cierre documental.
+- 20 archivos modificados/agregados.
+- `syncEngine.js`: únicamente una colección adicional frente al motor certificado.
+- No se detectaron cambios fuera del alcance M2.2 que requieran reapertura.
+
+## Resultado
+
+- Hallazgos: **9**
+- Closed/Verified: **9**
+- P0 abiertos: **0**
+- P1 abiertos: **0**
+- Criterios de salida M2.2: **cumplidos**, sujeto al Quality final del commit documental de cierre.
