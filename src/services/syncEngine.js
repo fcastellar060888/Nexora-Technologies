@@ -1,6 +1,7 @@
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings',
  'genetics','incidents','findings','treatments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
+ 'growingMediumProducts','growingMediumFormulas','growingMediumBatches','growingMediumAssignments','growingMediumReusePolicies','growingMediumReuseCycles','growingMediumPurchaseRequirements',
  'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
@@ -10,17 +11,19 @@ const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
+const recordId=record=>text(record?.id)
+const recordKey=record=>JSON.stringify([recordOrganizationId(record),recordId(record)])
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
  const changes=[]
  for(const collection of collections){
-  const before=new Map(list(prev?.[collection]).map(item=>[item.id,item]))
-  const after=new Map(list(next?.[collection]).map(item=>[item.id,item]))
-  for(const [id,item] of after){
-   const old=before.get(id)
-   if(!old||JSON.stringify(old)!==JSON.stringify(item))changes.push({collection,recordId:id,operation:'upsert',payload:item})
+  const before=new Map(list(prev?.[collection]).map(item=>[recordKey(item),item]))
+  const after=new Map(list(next?.[collection]).map(item=>[recordKey(item),item]))
+  for(const [key,item] of after){
+   const old=before.get(key)
+   if(!old||JSON.stringify(old)!==JSON.stringify(item))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'upsert',payload:item})
   }
-  for(const id of before.keys())if(!after.has(id))changes.push({collection,recordId:id,operation:'delete',payload:null})
+  for(const [key,item] of before)if(!after.has(key))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'delete',payload:null})
  }
  return changes
 }
@@ -29,6 +32,8 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  if(!companyId||changes.length===0)return state
  const tenant=text(companyId)
  const queued=changes.map(change=>{
+  const declaredOwner=text(change.organizationId)
+  if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
   let payload=change.payload
   if(change.operation==='upsert'){
    if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
@@ -65,16 +70,20 @@ export function resolveConflict({local,remote,strategy='remote'}){
 }
 
 export function applyRemoteRecords(state,records=[],{companyId=state.currentContext?.companyId||''}={}){
- if(!companyId)throw new Error('Se requiere empresa activa para aplicar registros remotos')
- const foreign=list(records).filter(row=>row.companyId!==companyId)
+ const tenant=text(companyId)
+ if(!tenant)throw new Error('Se requiere empresa activa para aplicar registros remotos')
+ const foreign=list(records).filter(row=>text(row.companyId)!==tenant)
  if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
+ const foreignPayload=list(records).find(row=>{const owner=recordOrganizationId(row.payload);return owner&&owner!==tenant})
+ if(foreignPayload)throw new Error('No se puede hidratar un payload perteneciente a otra empresa')
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
-  const items=list(next[row.collection])
-  if(row.deletedAt){next[row.collection]=items.filter(item=>item.id!==row.recordId);continue}
-  const record={...(row.payload||{}),id:row.recordId,_organizationId:companyId,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
-  const index=items.findIndex(item=>item.id===row.recordId)
+  const items=list(next[row.collection]),remoteId=text(row.recordId)
+  const isTenantRecord=item=>recordId(item)===remoteId&&(!recordOrganizationId(item)||recordOrganizationId(item)===tenant)
+  if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
+  const record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  const index=items.findIndex(isTenantRecord)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
  }
  return next

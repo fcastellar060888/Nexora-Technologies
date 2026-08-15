@@ -49,6 +49,7 @@ import CurrenciesPage from './pages/CurrenciesPage'
 import InfrastructurePage from './pages/InfrastructurePage'
 import InfrastructureMapPage from './pages/InfrastructureMapPage'
 import InfrastructureOperationsPage from './pages/InfrastructureOperationsPage'
+import GrowingMediumPage from './pages/GrowingMediumPage'
 import SyncCenterPage from './pages/SyncCenterPage'
 import InitialMigrationPage from './pages/InitialMigrationPage'
 
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/sites" element={<Guard permission="manage_settings"><SitesPage /></Guard>} />
         <Route path="/houses" element={<Guard permission="manage_settings"><HousesPage /></Guard>} />
         <Route path="/infrastructure" element={<Guard permission="manage_settings"><InfrastructurePage /></Guard>} />
+        <Route path="/growing-medium" element={<Guard permission="manage_cultivation"><GrowingMediumPage /></Guard>} />
         <Route path="/propagation/grandmothers" element={<GrandmotherPlantsPage />} />
         <Route path="/propagation/mothers" element={<MotherPlantsPage />} />
         <Route path="/lots" element={<Navigate to="/propagation/batches" replace />} />
