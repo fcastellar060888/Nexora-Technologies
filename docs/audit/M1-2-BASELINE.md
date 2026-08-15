@@ -1,89 +1,96 @@
 # Nexora One — Auditoría Forense v3 · M1.2 Core Shared Services & Governance
 
-Estado: **BASELINE — auditoría abierta**
+Estado: **CLOSED — reauditoría completa**
 Base certificada: M1.1 Core Operations, head `9b3964313fb2f2b24bc0b4489b6e1e16342986cb`, Quality #1592 verde.
+Head M1.2 reauditorado: `2e4b890dbd65e4c5fa839bc776b04022fe5f510e`.
 Arquitectura: AH-001 — M1 Core Platform Ready exige Tenant, Organization/Sites, IAM, Audit, Workflow, Documents, Units, Time, Rules y Entitlements.
-Método: Audit → Fix → Test → Quality Gate → Re-Audit → Close.
+Método aplicado: Audit → Fix → Test → Quality Gate → Re-Audit → Close.
 
-## Alcance
+## Resultado final
 
-M1.2 audita los servicios transversales que deben gobernar el resto del producto antes de avanzar a M2:
-
-- Identity & Access / memberships / roles / authorization
-- Audit y actor attribution
-- Workflow / shared rules
-- Documents / attachments
-- Units y Time
-- Entitlements
-- fronteras de tenancy, persistence y command/event audit asociadas
-
-## Hallazgos iniciales reproducibles
-
-| ID | Sev. | Estado | Área | Hallazgo |
+| ID | Sev. | Estado | Área | Evidencia de cierre |
 |---|---:|---|---|---|
-| M12-F001 | P0 | Open | IAM / authorization | Existen dos autoridades de permisos. `domain/accessControl.js` resuelve membership por organization/site con overrides/denials, mientras `services/permissions.js` autoriza por rol local global sin company/site. La UI productiva usa esta segunda ruta. |
-| M12-F002 | P0 | Open | Identity / tenancy | `UsersPage` administra perfiles locales como si fueran identidad operativa: selección de `activeSession`, ownership con fallback hasta `local-installation`, mutación directa y eliminación física. Esta autoridad puede divergir de Supabase/memberships empresariales. |
-| M12-F003 | P0 | Open | Documents / tenancy | `AttachmentUploader` persiste attachments sin `organizationId` ni `siteId` y los consulta solo por `(entityType, entityId)`. IDs históricos repetidos entre tenants pueden mezclar documentos. |
-| M12-F004 | P1 | Open | Documents / persistence/security | Archivos se cargan completos como `dataUrl` mediante `FileReader` al Store, sin autoridad de storage, size limit contractual, content validation, checksum, lifecycle documental ni evento de dominio canónico. |
-| M12-F005 | P1 | Open | Time | Utilidades de lifecycle mezclan `Date`, UTC (`toISOString`) y timestamps locales artificiales (`T12:00:00`) sin servicio de timezone de organización/sede. M1 exige Time como shared service. |
-| M12-F006 | P1 | Open | Rules / Workflow | Reglas temporales de negocio (`LOT_PHASES`, `DEFAULT_PHASE_DAYS`) viven hardcodeadas dentro del dominio productivo. No existe aún una autoridad transversal de Rules/Workflow demostrable para el contrato M1. |
-| M12-F007 | P1 | Open | Entitlements / authorization | El baseline M1 exige Entitlements, pero la autorización observable está basada en permissions/roles y no demuestra entitlement/capability de producto separado de IAM. Debe verificarse si existe autoridad equivalente antes de implementar nada nuevo. |
+| M12-F001 | P0 | **Closed** | IAM / authorization | `services/permissions.js` delega a la autoridad scoped de `domain/accessControl.js`; remote user sin membership, tenant ajeno y sede ajena quedan deny. Quality #1605 verde. |
+| M12-F002 | P0 | **Closed** | Identity / tenancy | En enterprise la identidad autenticada es única; `UsersPage` no puede seleccionar/borrar físicamente identidades locales. Standalone queda limitado a instalación y mutaciones auditadas. Quality #1611 verde. |
+| M12-F003 | P0 | **Closed** | Documents / tenancy | Documents tiene ownership por organización/sede, filtro defensivo y RLS; se corrigió además un bypass real donde una sede extranjera podía desplazar el tenant activo. Quality #1639 verde. |
+| M12-F004 | P1 | **Closed** | Documents / persistence/security | Bytes fuera del Store, Storage privado, SHA-256, MIME/tamaño, lifecycle `pending → active → archived`, eventos canónicos y cuarentena de DataURL históricos sin reinyectarlos al sync. Quality #1639 verde. |
+| M12-F005 | P1 | **Closed** | Time | `timeAuthority.js` separa fecha civil de timestamp y resuelve business date por timezone de sede/empresa; lifecycle dejó de usar `T12:00:00`. Quality #1645 verde. |
+| M12-F006 | P1 | **Closed** | Rules / Workflow | `ruleEngine.js` provee autoridad transversal determinista y explicable; lifecycle resuelve override de lote → genética → general → default mediante RuleSet, no `find()` ad hoc. Quality #1651 verde. |
+| M12-F007 | P1 | **Closed** | Entitlements / authorization | Entitlements de producto están separados de IAM: capability por organización, RLS, carga con identidad remota, enforcement en `ProtectedRoute` y misma autoridad para navegación. Contrato explícito falla cerrado; organizaciones legacy sin contrato quedan grandfathered hasta provisioning. Quality #1667 verde. |
 
-## Evidencia inicial
+## Reauditoría por frontera
 
-### M12-F001
+### IAM e identidad
 
-`src/domain/accessControl.js`:
-- membership con `companyId`, `siteIds`, roleId, overrides, denied permissions;
-- `hasPermission({state,userId,companyId,siteId,permission})` valida tenant y sede.
+- Una sola semántica productiva de autorización: usuario autenticado + membership activa + organization/site + role permissions + overrides/denials.
+- Un rol local no concede permisos a una identidad remota sin membership.
+- Una membership de otra organización o restringida a otra sede no autoriza el contexto activo.
+- `activeSession` local dejó de ser autoridad empresarial.
+- El modo `local-installation` existe únicamente cuando no hay identidad/memberships/organizaciones empresariales configuradas.
 
-`src/services/permissions.js`:
-- `ROLE_PERMISSIONS` por etiqueta de rol local;
-- `activeUser()` se basa en `state.users[].activeSession`;
-- `hasPermission(state, permission)` no recibe organization/site ni membership.
+### Documents
 
-### M12-F002
+- Metadata canónica separada de bytes.
+- Bucket privado `documents` y tabla `public.documents` con RLS por organización.
+- Storage path tenant-prefixed y checksum SHA-256.
+- Validación de imagen/video/PDF, archivo no vacío y límite contractual de 25 MB.
+- Lifecycle no destructivo; no existe policy DELETE normal para cliente autenticado.
+- Adjuntos inline históricos quedan preservados en recovery quarantine y salen del Store/sync operativo.
+- `attachments` dejó de formar parte del sync genérico.
 
-`src/pages/UsersPage.jsx`:
-- crea perfiles locales en `state.users`;
-- el primer perfil recibe `activeSession:true`;
-- `session(id)` cambia manualmente la sesión local;
-- `organizationForSite()` cae hasta `local-installation`;
-- `remove(id)` elimina físicamente el usuario del array;
-- mutaciones ocurren antes de la publicación de eventos.
+### Time
 
-### M12-F003 / F004
+- Aritmética por fecha civil, no por milisegundos de días artificiales.
+- Business date derivada de timezone de sede/empresa.
+- Pruebas cubren medianoche UTC/Bogotá, DST, años bisiestos y fechas inválidas.
 
-`src/components/AttachmentUploader.jsx`:
-- usa `FileReader.readAsDataURL()`;
-- guarda `{entityType, entityId, name, type, size, dataUrl}` en `state.attachments`;
-- no guarda tenant/site;
-- consulta por `entityType/entityId` solamente;
-- no existe command boundary ni domain event documental visible en el componente.
+### Rules / Workflow
 
-### M12-F005 / F006
+- `workflowCore.js` conserva la autoridad compartida de state transitions.
+- `ruleEngine.js` añade rule sets con prioridad, especificidad, tie-break estable y explicación de decisión.
+- Lifecycle conserva el contrato de negocio existente pero la regla ganadora queda identificable mediante `ruleId`.
+- Reglas inválidas/inactivas no pueden desplazar una regla válida.
 
-`src/domain/lifecycle.js`:
-- `dateOnly(v=new Date()) => new Date(v).toISOString().slice(0,10)`;
-- cálculos usan `T12:00:00` y una constante fija de 86,400,000 ms;
-- fases y días default están hardcodeados en el módulo.
+### Entitlements
 
-## Reglas de cierre
+- IAM responde **quién puede ejecutar una acción**; Entitlements responde **qué capability de producto tiene habilitada la organización**.
+- `organization_entitlements` tiene RLS de lectura para miembros de la organización.
+- No existen policies INSERT/UPDATE/DELETE para clientes autenticados: un usuario de la app no puede autoaprovisionar capabilities.
+- `ProtectedRoute` aplica entitlement por path antes de entregar el módulo.
+- `AppShell` usa la misma autoridad para navegación y búsqueda, evitando divergencia visual.
+- Entitlements son governance state y no son reemplazados por el bootstrap operacional.
 
-1. Una única autoridad productiva de authorization debe resolver user/membership/organization/site/capability.
-2. Ninguna identidad local puede suplantar o divergir silenciosamente de la identidad empresarial autenticada.
-3. Documents debe ser tenant-owned, auditable, persistible de forma adecuada y no depender de DataURL en el Store como System of Record.
-4. Time debe tener semántica explícita de timezone/business date; sin conversiones implícitas que cambien fecha por UTC.
-5. Rules/Workflow debe tener ownership y contrato compartido o documentarse explícitamente como capability faltante antes de M2.
-6. Entitlements debe verificarse/implementarse como frontera distinta de roles si AH-001 así lo exige.
-7. Pruebas adversariales cross-tenant, permission bypass, document collision, time boundary y retry/idempotency.
-8. Quality completo verde.
-9. Reauditoría independiente sin P0/P1 abiertos.
+## Quality gates certificados
 
-## Conteo inicial
+- #1605 — M12-F001 — verde.
+- #1611 — M12-F002 — verde.
+- #1639 — M12-F003/F004 + migración legacy — verde.
+- #1645 — M12-F005 — verde.
+- #1651 — M12-F006 — verde.
+- #1667 — M12-F007 — verde.
 
-- Open: 7
-- Fixing: 0
-- Fixed: 0
-- Verified: 0
-- Closed: 0
+Todos los runs de cierre completaron: Static Audit, Dependency Audit, Environment Contract Audit, Authentication/Session Audit, Functional Tests, Coverage Gate, Production Build y Production Artifact Audit.
+
+## Reglas de cierre verificadas
+
+1. **Cumplida:** una única autoridad productiva de authorization resuelve user/membership/organization/site/capability IAM.
+2. **Cumplida:** ninguna identidad local puede suplantar silenciosamente la identidad empresarial autenticada.
+3. **Cumplida:** Documents es tenant-owned, auditable y usa storage apropiado; DataURL dejó de ser System of Record.
+4. **Cumplida:** Time tiene semántica explícita de timezone/business date.
+5. **Cumplida:** Rules/Workflow tiene ownership y contrato compartido demostrable.
+6. **Cumplida:** Entitlements existe como frontera distinta de roles/permisos.
+7. **Cumplida:** pruebas adversariales cubren cross-tenant, permission bypass, document collision, time boundary, rules y entitlement separation.
+8. **Cumplida:** Quality completo verde.
+9. **Cumplida:** reauditoría independiente sin P0/P1 abiertos.
+
+## Conteo final
+
+- Open: **0**
+- Fixing: **0**
+- Fixed sin verificar: **0**
+- Verified sin cerrar: **0**
+- Closed: **7**
+
+## Estado de integración
+
+PR #42 permanece **draft**, abierto y no fusionado. M1.2 queda técnicamente cerrado; el siguiente paso de integración debe mantener la política del proyecto: revisar el diff final del PR y solo entonces decidir promoción/merge sobre la base M1.1.
