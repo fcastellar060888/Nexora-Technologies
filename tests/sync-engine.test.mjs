@@ -28,11 +28,12 @@ test('resuelve conflicto por registro más reciente',()=>{
 })
 
 test('aplica registros remotos y borrados lógicos',()=>{
- const state={products:[{id:'a',name:'Viejo'},{id:'b',name:'B'}]}
+ const companyId='company-a'
+ const state={currentContext:{companyId},products:[{id:'a',name:'Viejo'},{id:'b',name:'B'}]}
  const next=applyRemoteRecords(state,[
-  {collection:'products',recordId:'a',payload:{name:'Nuevo'},version:3,updatedAt:'2026-01-01T00:00:00Z'},
-  {collection:'products',recordId:'b',deletedAt:'2026-01-01T00:00:00Z'}
- ])
+  {companyId,collection:'products',recordId:'a',payload:{name:'Nuevo'},version:3,updatedAt:'2026-01-01T00:00:00Z'},
+  {companyId,collection:'products',recordId:'b',deletedAt:'2026-01-01T00:00:00Z'}
+ ],{companyId})
  assert.equal(next.products.length,1)
  assert.equal(next.products[0].name,'Nuevo')
  assert.equal(next.products[0]._syncVersion,3)

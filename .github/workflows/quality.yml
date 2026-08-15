@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - foundation/event-bus-core
       - audit/**
   pull_request:
 
@@ -17,20 +18,59 @@ concurrency:
 
 jobs:
   check:
+    # Keep each gate observable so failures identify the exact contract.
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20.19.0
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies from lockfile
+        run: npm ci --no-fund
 
-      - name: Static audit, tests and build
-        run: npm run check
+      - name: Static audit
+        run: npm run audit:static
+
+      - name: Dependency audit
+        run: npm run audit:deps
+
+      - name: Environment contract audit
+        run: npm run audit:env
+
+      - name: Authentication and session audit
+        run: npm run audit:auth
+
+      - name: Functional tests
+        shell: bash
+        run: |
+          set +e
+          npm test > functional-tests.tap 2>&1
+          status=$?
+          cat functional-tests.tap
+          exit $status
+
+      - name: Upload functional test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional-test-evidence
+          path: functional-tests.tap
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Coverage gate
+        run: npm run test:coverage
+
+      - name: Production build
+        run: npm run build:production
+
+      - name: Production artifact audit
+        run: npm run audit:build

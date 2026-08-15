@@ -24,6 +24,7 @@ import CostsPage from './pages/CostsPage'
 import UsersPage from './pages/UsersPage'
 import LoginPage from './pages/LoginPage'
 import PlantProfilePage from './pages/PlantProfilePage'
+import MaterialPlantProfilePage from './pages/MaterialPlantProfilePage'
 import InventoryMovementsPage from './pages/InventoryMovementsPage'
 import IrrigationWorkflowPage from './pages/IrrigationWorkflowPage'
 import AuditLogPage from './pages/AuditLogPage'
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/site-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/house-map" element={<Navigate to="/cultivation-map" replace />} />
         <Route path="/plant/:plantId" element={<PlantProfilePage />} />
+        <Route path="/material-plant/:plantId" element={<MaterialPlantProfilePage />} />
         <Route path="/companies" element={<Guard permission="manage_settings"><CompaniesPage /></Guard>} />
         <Route path="/sites" element={<Guard permission="manage_settings"><SitesPage /></Guard>} />
         <Route path="/houses" element={<Guard permission="manage_settings"><HousesPage /></Guard>} />
@@ -82,7 +84,7 @@ export default function App() {
         <Route path="/propagation/batches" element={<PropagationPage />} />
         <Route path="/propagation/transitions" element={<PhaseTransitionsPage />} />
         <Route path="/propagation/lineage" element={<LineagePage />} />
-        <Route path="/genetics" element={<GeneticsPage />} />
+        <Route path="/genetics" element={<Guard permission="manage_cultivation"><GeneticsPage /></Guard>} />
         <Route path="/mirfe/dashboard" element={<Guard permission="view_dashboards"><MirfeDashboardPage /></Guard>} />
         <Route path="/mirfe/monitoring" element={<Guard permission="manage_mirfe"><MirfeMonitoringPage /></Guard>} />
         <Route path="/mirfe/programs" element={<Guard permission="manage_mirfe"><MirfeProgramsPage /></Guard>} />

@@ -1,0 +1,29 @@
+import Card from'./Card'
+
+const openFinding=f=>!['Resuelto','Falso positivo'].includes(f?.status)
+const severeFinding=f=>openFinding(f)&&Number(f?.severity||0)>=3
+
+export default function SiteOverviewMap({state,siteId,layer='Estado'}){
+ const site=state.sites.find(s=>s.id===siteId)
+ const areas=(state.facilityAreas||[]).filter(a=>a.siteId===siteId&&a.active!==false)
+ const houses=state.houses.filter(h=>h.siteId===siteId&&h.active!==false)
+ const banks=(state.propagationBanks||[]).filter(b=>b.siteId===siteId&&b.active!==false)
+ const areaGroups=[...areas.map(area=>({area,houses:houses.filter(h=>h.areaId===area.id),banks:banks.filter(b=>b.areaId===area.id)})),{area:{id:'unassigned',name:'Sin área física asignada',type:'Pendiente de ubicar',capabilities:[]},houses:houses.filter(h=>!h.areaId),banks:banks.filter(b=>!b.areaId)}].filter(g=>g.houses.length||g.banks.length||g.area.id!=='unassigned')
+ const findingCountForHouse=house=>{const bedIds=new Set(state.beds.filter(b=>b.houseId===house.id&&b.active!==false).map(b=>b.id)),plantIds=new Set(state.plantPositions.filter(p=>bedIds.has(p.bedId)).map(p=>p.id));return state.findings.filter(f=>plantIds.has(f.plantPositionId)&&openFinding(f))}
+ const findingCountForBank=bank=>{const unitIds=new Set((state.propagationUnits||[]).filter(u=>u.bankId===bank.id||u.propagationBankId===bank.id).map(u=>u.id));return state.findings.filter(f=>unitIds.has(f.propagationUnitId)&&openFinding(f))}
+ const totalFindings=state.findings.filter(openFinding).filter(f=>{const plant=state.plantPositions.find(p=>p.id===f.plantPositionId);if(plant){const bed=state.beds.find(b=>b.id===plant.bedId),house=bed&&state.houses.find(h=>h.id===bed.houseId);return house?.siteId===siteId}const unit=(state.propagationUnits||[]).find(u=>u.id===f.propagationUnitId);if(unit){const bank=banks.find(b=>b.id===(unit.bankId||unit.propagationBankId));return Boolean(bank)}return false})
+ return <Card title={`Plano maestro de la sede · ${site?.name||'Sede'}`} subtitle="Vista superior de la finca completa. Cada bloque representa un área física y muestra su infraestructura activa y riesgo operativo.">
+  <div className="management-summary"><div><span>Áreas</span><strong>{areas.length}</strong></div><div><span>Naves</span><strong>{houses.length}</strong></div><div><span>Bancos</span><strong>{banks.length}</strong></div><div><span>Hallazgos abiertos</span><strong className={totalFindings.length?'text-danger':''}>{totalFindings.length}</strong></div></div>
+  <div style={{background:'linear-gradient(145deg,#e8f3e5,#d9ead4)',border:'1px solid var(--border-color,#d4ded1)',borderRadius:18,padding:18,minHeight:420,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16,alignItems:'stretch'}}>
+   {areaGroups.map(group=>{const findings=[...group.houses.flatMap(findingCountForHouse),...group.banks.flatMap(findingCountForBank)],severe=findings.some(severeFinding);return <section key={group.area.id} style={{background:'rgba(255,255,255,.88)',border:`2px solid ${layer==='MIPE'&&severe?'#d64545':findings.length?'#d99a31':'#9bbd96'}`,borderRadius:16,padding:14,boxShadow:'0 8px 24px rgba(35,70,38,.08)'}}>
+    <header style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}><div><small style={{display:'block',opacity:.7}}>{group.area.type||'Área física'}</small><strong style={{fontSize:'1.05rem'}}>{group.area.name}</strong>{group.area.capabilities?.length?<small style={{display:'block',marginTop:4}}>{group.area.capabilities.join(' · ')}</small>:null}</div>{findings.length?<span className="tag danger-tag">{findings.length} hallazgo{findings.length===1?'':'s'}</span>:<span className="tag success">Sin alertas</span>}</header>
+    <div style={{display:'grid',gap:10}}>
+     {group.houses.map(h=>{const hf=findingCountForHouse(h),beds=state.beds.filter(b=>b.houseId===h.id&&b.active!==false),plants=state.plantPositions.filter(p=>beds.some(b=>b.id===p.bedId)&&p.active!==false),severeHouse=hf.some(severeFinding);return <article key={h.id} style={{background:layer==='MIPE'&&severeHouse?'#fff1f1':'#f7fbf6',border:`1px solid ${hf.length?'#e2a1a1':'#c8dac5'}`,borderRadius:12,padding:10}}><div style={{display:'flex',justifyContent:'space-between',gap:8}}><div><strong>{h.name}</strong><small style={{display:'block'}}>{beds.length} camas · {plants.length} plantas</small></div>{hf.length?<span className="tag danger-tag">{hf.length}</span>:null}</div><div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:8}}>{beds.map(b=>{const ids=new Set(state.plantPositions.filter(p=>p.bedId===b.id).map(p=>p.id)),bf=state.findings.filter(f=>ids.has(f.plantPositionId)&&openFinding(f));return <span key={b.id} className={`tag ${bf.length?'danger-tag':'success'}`}>{b.name}{bf.length?` · ${bf.length}`:''}</span>})}</div></article>})}
+     {group.banks.map(b=>{const bf=findingCountForBank(b);return <article key={b.id} style={{background:'#f4f7ff',border:`1px solid ${bf.length?'#e2a1a1':'#cbd5ec'}`,borderRadius:12,padding:10,display:'flex',justifyContent:'space-between',gap:8}}><div><strong>{b.name}</strong><small style={{display:'block'}}>{(b.trays||[]).reduce((sum,t)=>sum+Number(t.quantity||0),0)} bandejas</small></div>{bf.length?<span className="tag danger-tag">{bf.length}</span>:<span className="tag success">OK</span>}</article>})}
+     {!group.houses.length&&!group.banks.length?<div className="inline-empty">Área sin infraestructura activa</div>:null}
+    </div>
+   </section>})}
+  </div>
+  <small className="muted">En capa MIPE, los bloques con hallazgos severos se resaltan en rojo. La estructura se configura en Infraestructura; este plano es de consulta y perspectiva general.</small>
+ </Card>
+}

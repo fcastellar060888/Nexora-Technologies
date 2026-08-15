@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Card from '../components/Card'
 import Field from '../components/Field'
 import PageHeader from '../components/PageHeader'
+import StateMessage from '../components/StateMessage'
 import {FormActions,ValidationMessage} from '../components/forms/FormKit.jsx'
 import { mirfeCategories } from '../domain/mirfe'
 import { useStore } from '../services/store'
@@ -31,6 +32,6 @@ export default function MirfeProgramsPage(){
    <section className="form-section"><h4>3. Objetivo agronómico</h4><div className="form-grid one"><Field label="Objetivo y criterio de éxito"><textarea value={form.objective} onChange={e=>setForm({...form,objective:e.target.value})}/></Field></div></section>
    <FormActions><button className="button primary">Guardar programa</button></FormActions>
   </form></Card>
-  <Card title="Programas activos"><div className="table-scroll"><table><thead><tr><th>Programa</th><th>Categoría</th><th>Genética</th><th>Etapa</th><th>Disparador</th><th>Meta</th><th>Revisión</th></tr></thead><tbody>{state.mirfePrograms.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.category}</td><td>{x.geneticId==='Todos'?'Todas':state.genetics.find(g=>g.id===x.geneticId)?.name}</td><td>{x.stage}</td><td>{x.triggerVariable} {x.triggerOperator} {x.triggerValue}</td><td>{x.targetValue}</td><td>{x.reviewHours} h</td></tr>)}</tbody></table></div></Card>
+  <Card title="Programas activos">{!state.mirfePrograms.length?<StateMessage title="No hay programas MIRFE configurados" message="Crea el primer programa para definir reglas de activación, metas agronómicas y tiempos de verificación por etapa o genética."/>:<div className="table-scroll"><table><thead><tr><th>Programa</th><th>Categoría</th><th>Genética</th><th>Etapa</th><th>Disparador</th><th>Meta</th><th>Revisión</th></tr></thead><tbody>{state.mirfePrograms.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.category}</td><td>{x.geneticId==='Todos'?'Todas':state.genetics.find(g=>g.id===x.geneticId)?.name}</td><td>{x.stage}</td><td>{x.triggerVariable} {x.triggerOperator} {x.triggerValue}</td><td>{x.targetValue}</td><td>{x.reviewHours} h</td></tr>)}</tbody></table></div>}</Card>
  </>
 }

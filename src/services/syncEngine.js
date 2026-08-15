@@ -1,6 +1,6 @@
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentalReadings',
- 'genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
+ 'genetics','incidents','findings','treatments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
  'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
@@ -8,6 +8,8 @@ export const SYNCABLE_COLLECTIONS=[
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
+const text=value=>String(value??'').trim()
+const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
  const changes=[]
@@ -25,11 +27,21 @@ export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
 
 export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  if(!companyId||changes.length===0)return state
- const queued=changes.map(change=>({
-  id:uid(),companyId,userId:userId||'',deviceId:deviceId||'',
-  collection:change.collection,recordId:change.recordId,operation:change.operation,payload:change.payload,
-  baseVersion:Number(change.payload?._syncVersion||0),status:'pending',attempts:0,createdAt:now(),updatedAt:now(),error:''
- }))
+ const tenant=text(companyId)
+ const queued=changes.map(change=>{
+  let payload=change.payload
+  if(change.operation==='upsert'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
+   const owner=recordOrganizationId(payload)
+   if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
+   payload={...payload,_organizationId:tenant}
+  }
+  return{
+   id:uid(),companyId:tenant,userId:userId||'',deviceId:deviceId||'',
+   collection:change.collection,recordId:change.recordId,operation:change.operation,payload,
+   baseVersion:Number(payload?._syncVersion||0),status:'pending',attempts:0,createdAt:now(),updatedAt:now(),error:''
+  }
+ })
  return{...state,syncQueue:[...list(state.syncQueue),...queued]}
 }
 
@@ -52,13 +64,16 @@ export function resolveConflict({local,remote,strategy='remote'}){
  return{winner:'remote',record:remote}
 }
 
-export function applyRemoteRecords(state,records=[]){
+export function applyRemoteRecords(state,records=[],{companyId=state.currentContext?.companyId||''}={}){
+ if(!companyId)throw new Error('Se requiere empresa activa para aplicar registros remotos')
+ const foreign=list(records).filter(row=>row.companyId!==companyId)
+ if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
   const items=list(next[row.collection])
   if(row.deletedAt){next[row.collection]=items.filter(item=>item.id!==row.recordId);continue}
-  const record={...(row.payload||{}),id:row.recordId,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  const record={...(row.payload||{}),id:row.recordId,_organizationId:companyId,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
   const index=items.findIndex(item=>item.id===row.recordId)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
  }

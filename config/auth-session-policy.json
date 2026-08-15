@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "storage": "sessionStorage",
+  "memoryFallback": true,
+  "localStorageAuthTokensAllowed": false,
+  "legacyLocalStorageKeys": [
+    "canapa_supabase_session",
+    "cannapa_supabase_session"
+  ],
+  "crossTabLogout": "BroadcastChannel",
+  "refreshSingleFlight": true,
+  "expiryMarginSeconds": 60,
+  "notes": [
+    "VITE_SUPABASE_ANON_KEY is a browser-public Supabase anon key, not a server secret.",
+    "Access and refresh tokens must never be written to localStorage.",
+    "A future BFF/HttpOnly-cookie architecture may supersede this browser-session policy for higher-assurance deployments."
+  ]
+}

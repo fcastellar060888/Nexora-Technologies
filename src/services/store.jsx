@@ -2,6 +2,7 @@ import {createContext,useCallback,useContext,useEffect,useMemo,useReducer,useRef
 import{loadState,saveState}from'./safeStorage'
 import{collectionChanges,enqueueChanges}from'./syncEngine'
 import{runIncrementalSync}from'./syncTransport.js'
+import{commitIncrementalSyncResult}from'./syncCommit.js'
 import{AUTO_SYNC_INTERVAL_MS,runtimeState,shouldAutoSync}from'./autoSyncRuntime.js'
 import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
 import{appendHealthEvent}from'./syncHealth.js'
@@ -93,7 +94,8 @@ export function StoreProvider({children}){
   bootstrapLockRef.current=true
   setDataRuntime(value=>({...value,status:'loading',companyId,lastError:''}))
   try{
-   const result=await bootstrapOrganization(stateRef.current,companyId)
+   const initialState=stateRef.current
+   const result=await bootstrapOrganization(initialState,companyId,{getCurrentState:()=>stateRef.current})
    if(result.skipped){
     setDataRuntime(value=>({...value,status:'cache',source:'local-cache',companyId}))
     return result
@@ -139,24 +141,38 @@ export function StoreProvider({children}){
   const companyId=current.currentContext?.companyId||''
   const currentDeviceId=deviceId()
   setRuntime(value=>({...value,online:true,running:true,status:'syncing',reason,lastAttemptAt:attemptedAt,lastError:''}))
-  coordinatorRef.current?.broadcast('sync-started',{reason})
+  coordinatorRef.current?.broadcast('sync-started',{companyId,reason})
   try{
    const result=await runIncrementalSync(current)
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{...result,state:stateRef.current,skipped:true,reason:'stale-company-context'}
+   }
    const completedAt=new Date().toISOString()
    let next=result.state
    if(!result.skipped){
+    next=commitIncrementalSyncResult(current,stateRef.current,next)
     const healthPayload={companyId,deviceId:currentDeviceId,status:'success',reason,durationMs:Date.now()-started,pushed:result.pushed||0,pulled:result.pulled||0}
     next=appendHealthEvent(next,healthPayload)
     try{
      await reportDeviceHealth(healthPayload)
      next={...next,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
     }catch{/* La sincronización operativa no falla por telemetría. */}
-    update(next,{sync:false,audit:false})
+    if(stateRef.current.currentContext?.companyId!==companyId){
+     setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+     return{...result,state:stateRef.current,skipped:true,reason:'stale-company-context'}
+    }
+    const committed=next
+    update(prev=>commitIncrementalSyncResult(current,prev,committed),{sync:false,audit:false})
    }
    setRuntime(value=>({...value,running:false,status:result.skipped?'idle':'success',lastSuccessAt:result.skipped?value.lastSuccessAt:completedAt,lastError:''}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
+   coordinatorRef.current?.broadcast('sync-result',{companyId,completedAt,shared:{syncQueue:next.syncQueue,syncConflicts:next.syncConflicts,syncMeta:next.syncMeta,syncHealthEvents:next.syncHealthEvents,syncDeviceHealth:next.syncDeviceHealth}})
    return{...result,state:next}
   }catch(error){
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{skipped:true,reason:'stale-company-context',error}
+   }
    const message=error instanceof Error?error.message:'Error de sincronización'
    const healthPayload={companyId,deviceId:currentDeviceId,status:'error',reason,durationMs:Date.now()-started,error:message}
    let failed=appendHealthEvent(stateRef.current,healthPayload)
@@ -164,9 +180,13 @@ export function StoreProvider({children}){
     await reportDeviceHealth(healthPayload)
     failed={...failed,syncDeviceHealth:normalizeRemoteDeviceHealth(await loadOrganizationDeviceHealth(companyId))}
    }catch{/* Conserva el error operativo original. */}
+   if(stateRef.current.currentContext?.companyId!==companyId){
+    setRuntime(value=>({...value,running:false,status:'idle',reason:'stale-company-context',lastError:''}))
+    return{skipped:true,reason:'stale-company-context',error}
+   }
    update(failed,{sync:false,audit:false})
    setRuntime(value=>({...value,running:false,status:'error',lastError:message}))
-   coordinatorRef.current?.broadcast('sync-result',{completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents,syncDeviceHealth:failed.syncDeviceHealth}})
+   coordinatorRef.current?.broadcast('sync-result',{companyId,completedAt:new Date().toISOString(),error:message,shared:{syncHealthEvents:failed.syncHealthEvents,syncDeviceHealth:failed.syncDeviceHealth}})
    return{skipped:false,error}
   }finally{
    lockRef.current=false

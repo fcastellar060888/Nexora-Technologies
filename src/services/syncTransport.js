@@ -1,7 +1,10 @@
 import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{applyRemoteRecords,compactQueue}from'./syncEngine.js'
+import{synchronizeOperationalLedger}from'./operationalLedgerSync.js'
 
 const MAX_ATTEMPTS=6
+const PULL_PAGE_SIZE=1000
+const EPOCH='1970-01-01T00:00:00.000Z'
 const now=()=>new Date().toISOString()
 const list=value=>Array.isArray(value)?value:[]
 
@@ -9,8 +12,9 @@ export function retryDelay(attempts){
  return Math.min(60000,1000*Math.pow(2,Math.max(0,Number(attempts)||0)))
 }
 
-export function eligibleQueue(queue=[],at=Date.now()){
+export function eligibleQueue(queue=[],at=Date.now(),companyId=''){
  return compactQueue(queue).filter(item=>{
+  if(companyId&&item.companyId!==companyId)return false
   if(item.status==='completed'||item.status==='conflict')return false
   if(Number(item.attempts||0)>=MAX_ATTEMPTS)return false
   if(!item.nextAttemptAt)return true
@@ -30,6 +34,32 @@ function mapRemote(row){
  }
 }
 
+export function normalizePullCursor(value){
+ if(typeof value==='string')return{updatedAt:value||EPOCH,recordId:''}
+ return{updatedAt:String(value?.updatedAt||EPOCH),recordId:String(value?.recordId||'')}
+}
+
+function quotedFilterValue(value){return`"${String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`}
+
+export function buildPullPath(companyId,cursorValue,{limit=PULL_PAGE_SIZE}={}){
+ const cursor=normalizePullCursor(cursorValue)
+ const boundary=`(updated_at.gt.${quotedFilterValue(cursor.updatedAt)},and(updated_at.eq.${quotedFilterValue(cursor.updatedAt)},record_id.gt.${quotedFilterValue(cursor.recordId)}))`
+ const params=new URLSearchParams()
+ params.set('organization_id',`eq.${companyId}`)
+ params.set('or',boundary)
+ params.set('select','organization_id,collection,record_id,payload,version,updated_at,deleted_at')
+ params.set('order','updated_at.asc,record_id.asc')
+ params.set('limit',String(limit))
+ return`/rest/v1/erp_records?${params.toString()}`
+}
+
+export function advancePullCursor(cursorValue,records=[]){
+ const cursor=normalizePullCursor(cursorValue)
+ if(!records.length)return cursor
+ const last=records.at(-1)
+ return{updatedAt:String(last.updatedAt||cursor.updatedAt),recordId:String(last.recordId||cursor.recordId)}
+}
+
 async function pushOne(entry){
  return authenticatedRequest('/rest/v1/rpc/apply_sync_mutation',{
   method:'POST',
@@ -46,11 +76,12 @@ async function pushOne(entry){
  })
 }
 
-export async function pushPending(state){
+export async function pushPending(state,companyId=state.currentContext?.companyId){
+ if(!companyId)throw new Error('Selecciona una empresa antes de enviar mutaciones')
  let queue=list(state.syncQueue)
  const conflicts=[...list(state.syncConflicts)]
  let pushed=0
- for(const entry of eligibleQueue(queue)){
+ for(const entry of eligibleQueue(queue,Date.now(),companyId)){
   try{
    const result=await pushOne(entry)
    const row=Array.isArray(result)?result[0]:result
@@ -78,24 +109,33 @@ export async function pushPending(state){
 }
 
 export async function pullRemote(state,companyId){
- const cursor=state.syncMeta?.cursorByCompany?.[companyId]||'1970-01-01T00:00:00.000Z'
- const path=`/rest/v1/erp_records?organization_id=eq.${encodeURIComponent(companyId)}&updated_at=gt.${encodeURIComponent(cursor)}&select=organization_id,collection,record_id,payload,version,updated_at,deleted_at&order=updated_at.asc&limit=1000`
- const rows=await authenticatedRequest(path)
- const records=list(rows).map(mapRemote)
- const next=applyRemoteRecords(state,records)
- const latest=records.reduce((value,row)=>row.updatedAt>value?row.updatedAt:value,cursor)
+ let cursor=normalizePullCursor(state.syncMeta?.cursorByCompany?.[companyId])
+ let next=state
+ let pulled=0
+ while(true){
+  const rows=await authenticatedRequest(buildPullPath(companyId,cursor))
+  const records=list(rows).map(mapRemote)
+  const foreign=records.filter(record=>record.companyId!==companyId)
+  if(foreign.length)throw new Error('La respuesta remota contiene registros de otra empresa')
+  next=applyRemoteRecords(next,records,{companyId})
+  pulled+=records.length
+  cursor=advancePullCursor(cursor,records)
+  if(records.length<PULL_PAGE_SIZE)break
+ }
  return{
-  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:latest}}},
-  pulled:records.length
+  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
+  pulled
  }
 }
 
 export async function runIncrementalSync(state,{companyId=state.currentContext?.companyId}={}){
- if(!supabaseEnabled)return{state,skipped:true,pushed:0,pulled:0}
+ if(!supabaseEnabled)return{state,skipped:true,pushed:0,pulled:0,ledgerPushed:0,ledgerPulled:0}
  if(!companyId)throw new Error('Selecciona una empresa antes de sincronizar')
- const pushed=await pushPending(state)
+ if(state.currentContext?.companyId&&state.currentContext.companyId!==companyId)throw new Error('La empresa solicitada no coincide con el contexto activo')
+ const ledger=await synchronizeOperationalLedger(state,{companyId})
+ const pushed=await pushPending(ledger.state,companyId)
  const pulled=await pullRemote(pushed.state,companyId)
- return{state:purgeCompleted(pulled.state),pushed:pushed.pushed,pulled:pulled.pulled,skipped:false}
+ return{state:purgeCompleted(pulled.state),pushed:pushed.pushed,pulled:pulled.pulled,ledgerPushed:ledger.pushed,ledgerPulled:ledger.pulled,skipped:false}
 }
 
 export function purgeCompleted(state,keep=100){

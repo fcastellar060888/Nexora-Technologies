@@ -1,9 +1,10 @@
 import{NavLink,Outlet,useNavigate}from'react-router-dom'
 import{Activity,AlertTriangle,BarChart3,Boxes,Building2,Bug,ClipboardList,Dna,Factory,Gauge,History,Map,Menu,Droplets,FlaskConical,Leaf,ClipboardCheck,Layers3,CircleDollarSign,Users,LogIn,Route,ScanSearch,BookOpenCheck,ShieldCheck,GitBranch,Sprout,Settings,Target,TestTubes,X,ChevronDown,Search,ShoppingCart,PackageCheck,Coins,Wrench,RefreshCw,CloudOff,DatabaseBackup,Database,Radio,PenLine}from'lucide-react'
-import{useMemo,useState}from'react'
+import{useEffect,useMemo,useState}from'react'
 import{useStore}from'../services/store'
 import{useRealtime}from'../services/realtimeContext.jsx'
 import{statusLabel}from'../services/autoSyncRuntime.js'
+import{capabilityForPath,hasEntitlement}from'../domain/entitlements.js'
 
 const groups=[
  {label:'Operación',links:[['/dashboard','Centro de operaciones',BarChart3],['/operations','Agenda operativa',ClipboardCheck],['/cultivation-map','Mapa del cultivo',Map],['/infrastructure-map','Mapa de áreas',Layers3],['/infrastructure/operations','Activos y ambiente',Wrench]]},
@@ -20,15 +21,24 @@ export default function AppShell(){
  const{state,synchronize,syncRuntime,dataRuntime,hydrateFromPostgres}=useStore()
  const{runtime:realtimeRuntime,onlineUsers,currentEditors}=useRealtime()
  const navigate=useNavigate()
- const matches=useMemo(()=>query.trim()?groups.flatMap(g=>g.links).filter(x=>x[1].toLowerCase().includes(query.toLowerCase())).slice(0,8):[],[query])
+ const visibleGroups=useMemo(()=>groups.map(group=>({...group,links:group.links.filter(([path])=>hasEntitlement(state,capabilityForPath(path)))})).filter(group=>group.links.length>0),[state])
+ const matches=useMemo(()=>query.trim()?visibleGroups.flatMap(g=>g.links).filter(x=>x[1].toLowerCase().includes(query.toLowerCase())).slice(0,8):[],[query,visibleGroups])
  const SyncIcon=syncRuntime.online===false?CloudOff:RefreshCw
  const syncLabel=statusLabel(syncRuntime,state)
  const dataLabel=dataRuntime.status==='loading'?'Cargando PostgreSQL':dataRuntime.source==='postgres'?'PostgreSQL':'Caché local'
  const realtimeLabel=realtimeRuntime.status==='connected'?`${onlineUsers} en línea`:realtimeRuntime.status==='reconnecting'?'Reconectando':realtimeRuntime.status==='connecting'?'Conectando':'Tiempo real desactivado'
  const editorLabel=currentEditors.length===1?`${currentEditors[0].actorName} está editando`:currentEditors.length>1?`${currentEditors.length} personas editando`:''
+ useEffect(()=>{
+  if(!open)return undefined
+  const previousOverflow=document.body.style.overflow
+  const closeOnEscape=event=>{if(event.key==='Escape')setOpen(false)}
+  document.body.style.overflow='hidden'
+  window.addEventListener('keydown',closeOnEscape)
+  return()=>{document.body.style.overflow=previousOverflow;window.removeEventListener('keydown',closeOnEscape)}
+ },[open])
  return <div className="app-shell">
   <header className="topbar">
-   <button className="icon-button mobile-only" onClick={()=>setOpen(true)} aria-label="Abrir menú principal" aria-expanded={open}><Menu size={22}/></button>
+   <button className="icon-button mobile-only" onClick={()=>setOpen(true)} aria-label="Abrir menú principal" aria-expanded={open} aria-controls="navegacion-principal"><Menu size={22}/></button>
    <div className="topbar-brand"><h1>Nexora One</h1><p>Inteligencia operativa para agricultura de alto valor</p></div>
    <div className="global-search" role="search">
     <Search size={17} aria-hidden="true"/>
@@ -42,9 +52,9 @@ export default function AppShell(){
    <span className="version-badge">v7.0</span>
   </header>
   {open&&<button className="scrim mobile-only" onClick={()=>setOpen(false)} aria-label="Cerrar menú principal"/>}
-  <aside className={`sidebar ${open?'open':''}`} aria-label="Navegación principal">
+  <aside id="navegacion-principal" className={`sidebar ${open?'open':''}`} aria-label="Navegación principal" aria-hidden={!open&&undefined}>
    <div className="sidebar-head mobile-only"><strong>Menú</strong><button className="icon-button" onClick={()=>setOpen(false)} aria-label="Cerrar menú"><X size={20}/></button></div>
-   <nav>{groups.map(group=><section className="nav-group" key={group.label}>
+   <nav>{visibleGroups.map(group=><section className="nav-group" key={group.label}>
     <button className="nav-group-toggle" onClick={()=>setCollapsed(current=>({...current,[group.label]:!current[group.label]}))} aria-expanded={!collapsed[group.label]}><span className="nav-group-label">{group.label}</span><ChevronDown size={15} className={collapsed[group.label]?'rotated':''}/></button>
     {!collapsed[group.label]&&<div className="nav-group-links">{group.links.map(([path,label,Icon])=><NavLink key={path} to={path} onClick={()=>setOpen(false)} className={({isActive})=>`nav-link ${isActive?'active':''}`}><Icon size={18}/><span>{label}</span></NavLink>)}</div>}
    </section>)}</nav>

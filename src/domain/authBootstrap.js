@@ -1,3 +1,5 @@
+import{mapRemoteEntitlement}from'./entitlements.js'
+
 const unique=items=>[...new Set((items||[]).filter(Boolean))]
 
 export function mapRemoteMembership(row={}){
@@ -27,7 +29,7 @@ export function chooseInitialContext({memberships=[],companies=[],sites=[],prefe
  return{companyId,siteId}
 }
 
-export function mergeRemoteIdentity(state,{user,profile,memberships}){
+export function mergeRemoteIdentity(state,{user,profile,memberships,entitlements=[]}){
  const email=String(user?.email||profile?.email||'').trim().toLowerCase()
  const current=(state.users||[]).find(item=>item.id===user?.id||String(item.email||'').trim().toLowerCase()===email)
  const remoteUser={
@@ -40,5 +42,5 @@ export function mergeRemoteIdentity(state,{user,profile,memberships}){
   remote:true
  }
  const users=[...(state.users||[]).filter(item=>item.id!==remoteUser.id&&String(item.email||'').trim().toLowerCase()!==email).map(item=>({...item,activeSession:false})),remoteUser]
- return{...state,users,memberships:memberships.map(mapRemoteMembership)}
+ return{...state,users,memberships:memberships.map(mapRemoteMembership),entitlements:entitlements.map(mapRemoteEntitlement)}
 }
