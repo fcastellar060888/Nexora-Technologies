@@ -24,7 +24,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 
 | ID | Sev. | Estado | Área | Hallazgo |
 |---|---:|---|---|---|
-| M31-F001 | P0 | Open | Domain authority | No existe autoridad canónica para Emitter/Assignment/Sector/Pulse/Measurement/Drainage ni para las entidades MIRFE normativas. `irrigation.js` es un calculador de 12 líneas y `mirfe.js` contiene solo VPD, delta EC y dosis. |
+| M31-F001 | P0 | **Verified** | Domain authority | `src/domain/irrigationMirfe.js` establece entidades inmutables y tenant-owned para Emitter/Sector/Assignment/Pulse/Measurement/Drainage y Product/Formula/Preparation/Application MIRFE. Quality #1847. |
 | M31-F002 | P0 | Open | Tenancy | Planes, fórmulas, preparaciones, aplicaciones, análisis, objetivos y productos carecen de `organizationId`; dominio y UI buscan/mutan por `id` o `siteId` simple. IDs repetidos entre empresas pueden cruzar lecturas y mutaciones. |
 | M31-F003 | P0 | Open | Command/events | Las pantallas Irrigation/MIRFE llaman `update()` directamente. No existe command/action boundary tenant-aware e idempotente ni publicación efectiva de intención/evento canónico para crear, aprobar, preparar o aplicar. |
 | M31-F004 | P0 | Open | Irrigation topology | `hydraulics()` asume `plantas × drippers × caudal`; no representa anillo, gotero con varias estacas, gotero compartido, múltiples emisores, sectores, asignación por Position ni control manual/automático. |
@@ -36,6 +36,38 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
 | M31-F011 | P1 | Open | Persistence/sync | Las colecciones participan del sync genérico, pero los registros nuevos nacen sin ownership explícito y las pantallas no filtran por tenant. La infraestructura de sync no sustituye la validación de dominio ausente. |
 | M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. MIRFE/formulation carecen de pruebas de dominio; las pruebas de ejecución no cubren tenant, retry, carreras, eventos o proyección. |
+
+## M31-F001 — cierre verificado
+
+### Solución
+
+- `IrrigationEmitter` modela RING, STAKE, SHARED, MULTI y MANUAL con caudal, salidas, estacas y plantas servidas configurables.
+- `IrrigationSector` y `IrrigationAssignment` separan sector, emisor y destino físico POSITION/BED/TRAY.
+- `IrrigationPulse`, `IrrigationMeasurement` y `DrainageMeasurement` conservan volumen, tiempo, fuente canónica y evidencia numérica; drenaje deriva porcentaje sin aceptar volumen imposible.
+- `FertigationProduct`, `FertigationFormula`, `FertigationPreparation` y `FertigationApplication` tienen identidad estable, ownership, snapshots y referencias explícitas.
+- `nextFertigationFormulaVersion()` crea lineage inmutable sin reescribir la versión anterior.
+- La composición entre entidades falla cerrado si organización o sede no coinciden; IDs repetidos entre tenants permanecen identidades distintas.
+
+### Pruebas adversariales
+
+`tests/m3-1-irrigation-mirfe-domain.test.mjs` cubre:
+
+- IDs repetidos entre organizaciones;
+- referencia Emitter/Sector cross-tenant;
+- emisor compartido inválido y catálogos desconocidos;
+- target y ventanas temporales inválidos;
+- fuente de medición, valores no finitos y pulso completado sin volumen real;
+- drenaje mayor que volumen aplicado;
+- producto/composición inválidos y duplicados de fórmula;
+- versionado, snapshot de preparación, sobreaplicación y preparación no lista.
+
+### Quality y reauditoría
+
+- Commit: `3c5cc8f8e413154ca05e61294575863eeb2725a1`.
+- Quality #1847: **verde**, 843/843 pruebas.
+- Cobertura de `irrigationMirfe.js`: líneas 100%, branches 69.72%, funciones 100%.
+- Cobertura global: líneas 92.53%, branches 74.67%, funciones 90.39%.
+- Reauditoría: las entidades son profundamente inmutables; referencias compuestas heredan tenant/sede de la autoridad y rechazan cruces. UI, commands, sync y proyecciones no se declaran cerrados aquí y permanecen en F002–F012.
 
 ## Evidencia de baseline
 
@@ -83,3 +115,10 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 - P0: **6**
 - P1: **6**
 - Closed: **0**
+
+## Estado actual
+
+- Verified: **1**
+- Open: **11**
+- P0 abiertos: **5**
+- P1 abiertos: **6**
