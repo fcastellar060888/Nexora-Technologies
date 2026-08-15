@@ -28,25 +28,65 @@ export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
 
 export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  if(!companyId||changes.length===0)return state
- const queue=[...(state.syncQueue||[])],timestamp=now()
- for(const change of changes){
-  const payloadOrganizationId=change.operation==='delete'?'':recordOrganizationId(change.payload)
-  if(change.operation!=='delete'&&payloadOrganizationId&&payloadOrganizationId!==companyId)throw new Error(`La mutación ${change.collection}/${change.recordId} pertenece a otra organización.`)
-  const payload=change.operation==='delete'?null:{...change.payload,_organizationId:companyId}
-  queue.push({id:uid(),companyId,userId:userId||'',deviceId:deviceId||'',collection:change.collection,recordId:change.recordId,operation:change.operation,payload,baseVersion:0,createdAt:timestamp,attempts:0,status:'pending',error:''})
+ const tenant=text(companyId)
+ const queued=changes.map(change=>{
+  let payload=change.payload
+  if(change.operation==='upsert'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
+   const owner=recordOrganizationId(payload)
+   if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
+   payload={...payload,_organizationId:tenant}
+  }
+  return{
+   id:uid(),companyId:tenant,userId:userId||'',deviceId:deviceId||'',
+   collection:change.collection,recordId:change.recordId,operation:change.operation,payload,
+   baseVersion:Number(payload?._syncVersion||0),status:'pending',attempts:0,createdAt:now(),updatedAt:now(),error:''
+  }
+ })
+ return{...state,syncQueue:[...list(state.syncQueue),...queued]}
+}
+
+export function compactQueue(queue=[]){
+ const map=new Map()
+ for(const entry of list(queue)){
+  if(entry.status==='completed')continue
+  map.set(`${entry.companyId}|${entry.collection}|${entry.recordId}`,entry)
  }
- return{...state,syncQueue:queue}
+ return[...map.values()]
 }
 
-export function pendingForCompany(state,companyId){return list(state.syncQueue).filter(item=>item.companyId===companyId&&item.status==='pending')}
-
-export function markSyncAttempt(state,ids,error=''){
- const target=new Set(ids),timestamp=now()
- return{...state,syncQueue:list(state.syncQueue).map(item=>target.has(item.id)?{...item,attempts:Number(item.attempts||0)+1,lastAttemptAt:timestamp,error}:item)}
+export function resolveConflict({local,remote,strategy='remote'}){
+ if(strategy==='local')return{winner:'local',record:local}
+ if(strategy==='newest'){
+  const localAt=Date.parse(local?.updatedAt||local?._updatedAt||0)||0
+  const remoteAt=Date.parse(remote?.updatedAt||remote?._updatedAt||0)||0
+  return remoteAt>=localAt?{winner:'remote',record:remote}:{winner:'local',record:local}
+ }
+ return{winner:'remote',record:remote}
 }
 
-export function markSyncCompleted(state,ids){const done=new Set(ids);return{...state,syncQueue:list(state.syncQueue).filter(item=>!done.has(item.id)),syncMeta:{...(state.syncMeta||{}),lastSyncedAt:now()}}}
+export function applyRemoteRecords(state,records=[],{companyId=state.currentContext?.companyId||''}={}){
+ if(!companyId)throw new Error('Se requiere empresa activa para aplicar registros remotos')
+ const foreign=list(records).filter(row=>row.companyId!==companyId)
+ if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
+ const next={...state}
+ for(const row of records){
+  if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
+  const items=list(next[row.collection])
+  if(row.deletedAt){next[row.collection]=items.filter(item=>item.id!==row.recordId);continue}
+  const record={...(row.payload||{}),id:row.recordId,_organizationId:companyId,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  const index=items.findIndex(item=>item.id===row.recordId)
+  next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
+ }
+ return next
+}
 
-export function registerSyncConflict(state,conflict){return{...state,syncConflicts:[...list(state.syncConflicts),{id:uid(),createdAt:now(),status:'open',...conflict}]}}
-
-export function resolveSyncConflict(state,conflictId,resolution){return{...state,syncConflicts:list(state.syncConflicts).map(item=>item.id===conflictId?{...item,status:'resolved',resolution,resolvedAt:now()}:item)}}
+export function syncStatus(state){
+ const queue=list(state.syncQueue)
+ return{
+  pending:queue.filter(x=>x.status==='pending').length,
+  failed:queue.filter(x=>x.status==='failed').length,
+  conflicts:list(state.syncConflicts).filter(x=>x.status!=='resolved').length,
+  lastSyncedAt:state.syncMeta?.lastSyncedAt||''
+ }
+}
