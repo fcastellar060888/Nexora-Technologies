@@ -1,6 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{GROWING_MEDIUM_KINDS,REUSE_ACTIONS,createGrowingMediumProduct,createGrowingMediumFormula,createGrowingMediumBatch,createReusePolicy,createGrowingMediumAssignment,planReuseCycle,calculatePurchaseRequirement}from'../src/domain/growingMedium.js'
+import{GROWING_MEDIUM_KINDS,REUSE_ACTIONS,createGrowingMediumProduct,createGrowingMediumFormula,nextGrowingMediumFormulaVersion,createGrowingMediumBatch,createReusePolicy,createGrowingMediumAssignment,assignmentFromBatch,planReuseCycle,calculatePurchaseRequirement}from'../src/domain/growingMedium.js'
 
 const org='org-a',site='site-a'
 
@@ -20,6 +20,18 @@ test('M22-F001: product/formula/batch/assignment preserve tenant ownership and s
 test('M22-F004: formulas are deterministic and reject invalid composition',()=>{
  assert.throws(()=>createGrowingMediumFormula({id:'f1',organizationId:org,name:'Bad',components:[{productId:'a',percentage:80},{productId:'b',percentage:10}]}),/sumar 100/)
  assert.throws(()=>createGrowingMediumFormula({id:'f1',organizationId:org,name:'Bad',components:[{productId:'a',percentage:50},{productId:'a',percentage:50}]}),/repetir/)
+})
+
+test('M22-F004: creating a formula version preserves the previous formula byte-for-byte',()=>{
+ const previous=createGrowingMediumFormula({id:'formula-v1',organizationId:org,formulaKey:'coco-peat',name:'Coco/Turba',version:1,components:[{productId:'coco',percentage:70},{productId:'peat',percentage:30}],createdAt:'2026-08-01T00:00:00.000Z'})
+ const before=JSON.stringify(previous)
+ const next=nextGrowingMediumFormulaVersion(previous,{id:'formula-v2',components:[{productId:'coco',percentage:60},{productId:'peat',percentage:40}],createdAt:'2026-08-15T00:00:00.000Z'})
+ assert.equal(JSON.stringify(previous),before)
+ assert.notEqual(next.id,previous.id)
+ assert.equal(next.formulaKey,previous.formulaKey)
+ assert.equal(next.version,2)
+ assert.equal(next.supersedesFormulaId,previous.id)
+ assert.deepEqual(next.components,[{productId:'coco',percentage:60},{productId:'peat',percentage:40}])
 })
 
 test('M22-F005: configurable 30/70 reuse replenishes until max uses then requires total replacement',()=>{
@@ -49,4 +61,17 @@ test('M22-F006: purchase requirement is reproducible from fresh-volume plans plu
 test('M22-F007: batch rejects impossible stock and ambiguous product/formula authority',()=>{
  assert.throws(()=>createGrowingMediumBatch({id:'b1',organizationId:org,productId:'p1',formulaId:'f1',supplierLot:'L1',receivedVolumeLiters:100}),/exactamente un producto o una fórmula/)
  assert.throws(()=>createGrowingMediumBatch({id:'b1',organizationId:org,productId:'p1',supplierLot:'L1',receivedVolumeLiters:100,availableVolumeLiters:101}),/no puede superar/)
+})
+
+test('M22-F007: assignment freezes supplier lot, inventory lot and cost from the batch at assignment time',()=>{
+ const batch=createGrowingMediumBatch({id:'batch-cost',organizationId:org,productId:'p1',supplierId:'supplier-a',supplierLot:'LOT-A',inventoryLotId:'inv-a',receivedVolumeLiters:100,unitCostPerLiter:850,currency:'COP'})
+ const assignment=assignmentFromBatch({id:'assignment-cost',organizationId:org,siteId:site,targetType:'BED',targetId:'bed-1',batchId:batch.id,volumeLiters:40},batch)
+ const editedBatch={...batch,supplierId:'supplier-b',supplierLot:'LOT-B',inventoryLotId:'inv-b',unitCostPerLiter:1200,currency:'USD'}
+ assert.equal(editedBatch.unitCostPerLiter,1200)
+ assert.equal(assignment.supplierId,'supplier-a')
+ assert.equal(assignment.supplierLot,'LOT-A')
+ assert.equal(assignment.inventoryLotId,'inv-a')
+ assert.equal(assignment.unitCostPerLiter,850)
+ assert.equal(assignment.currency,'COP')
+ assert.equal(assignment.totalCost,34000)
 })
