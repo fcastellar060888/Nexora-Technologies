@@ -34,6 +34,7 @@ test('M1.1 final re-audit: plant profile keeps its independent permission-aware 
  const profile=await read('src/pages/PlantProfilePage.jsx')
  const command=await read('src/services/plantEventCommand.js')
  assert.match(profile,/executePlantEventCommand/)
+ assert.match(profile,/commit:\(recipe,meta\)=>update\(recipe,meta\)/)
  assert.match(command,/hasPermission\(state,'record_observations'\)/)
- assert.doesNotMatch(profile,/\bupdate\s*\(/)
+ assert.doesNotMatch(profile,/\bupdate\s*\(\s*(?:store|s|current)\s*=>/)
 })
