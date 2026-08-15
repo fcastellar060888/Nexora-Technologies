@@ -81,6 +81,17 @@ export async function listDocuments({state,entityType,entityId,organizationId=''
  return(rows||[]).map(mapRemoteDocument).filter(item=>item.organizationId===scope.organizationId&&item.entityType===text(entityType)&&item.entityId===text(entityId))
 }
 
+export async function archiveDocument({state,document,organizationId='',siteId=''},{jsonRequest=authenticatedRequest,enabled=supabaseEnabled}={}){
+ if(!document?.id)throw new Error('El documento necesita identidad estable.')
+ const scope=resolveDocumentScope(state,{organizationId:organizationId||document.organizationId,siteId:siteId||document.siteId})
+ if(text(document.organizationId)&&text(document.organizationId)!==scope.organizationId)throw new Error('El documento pertenece a otra organización.')
+ const archivedAt=new Date().toISOString()
+ if(!enabled)return Object.freeze({...document,status:DOCUMENT_STATUS.ARCHIVED,archivedAt})
+ const rows=await jsonRequest(`/rest/v1/documents?id=eq.${encodeURIComponent(document.id)}&organization_id=eq.${encodeURIComponent(scope.organizationId)}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:{status:DOCUMENT_STATUS.ARCHIVED,archived_at:archivedAt}})
+ if(!rows?.[0])throw new Error('No se encontró un documento archivable en la organización activa.')
+ return mapRemoteDocument(rows[0])
+}
+
 export async function documentDownloadUrl(document,{binaryRequest=authenticatedBinaryRequest}={}){
  if(document?.storageMode==='memory')return document.objectUrl||''
  const objectPath=text(document?.storagePath).split('/').map(encodeURIComponent).join('/')
