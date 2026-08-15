@@ -31,6 +31,7 @@ export const DomainEvents=Object.freeze({
  GROWING_MEDIUM_BATCH_REGISTERED:'growing_medium.batch.registered',
  GROWING_MEDIUM_ASSIGNMENT_CREATED:'growing_medium.assignment.created',
  GROWING_MEDIUM_ASSIGNMENT_ARCHIVED:'growing_medium.assignment.archived',
+ GROWING_MEDIUM_REUSE_POLICY_CREATED:'growing_medium.reuse_policy.created',
  GROWING_MEDIUM_REUSE_RECORDED:'growing_medium.reuse.recorded',
  USER_CREATED:'identity.user.created',
  USER_ACTIVATED:'identity.user.activated',
