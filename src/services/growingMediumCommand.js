@@ -39,7 +39,7 @@ export async function executeGrowingMediumCommand(state,{operation,input={},enti
   eventName=DomainEvents.GROWING_MEDIUM_BATCH_REGISTERED;payload={batchId:batch.id,supplierLot:batch.supplierLot,receivedVolumeLiters:batch.receivedVolumeLiters};apply=current=>({...current,growingMediumBatches:upsert(list(current,'growingMediumBatches'),batch)})
  }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_REUSE_POLICY){
   const policy=createReusePolicy({...input,id:aggregateId,organizationId})
-  eventName=DomainEvents.GROWING_MEDIUM_FORMULA_UPDATED;payload={reusePolicyId:policy.id,replacementPercent:policy.replacementPercent,maxUses:policy.maxUses};apply=current=>({...current,growingMediumReusePolicies:upsert(list(current,'growingMediumReusePolicies'),policy)})
+  eventName=DomainEvents.GROWING_MEDIUM_REUSE_POLICY_CREATED;payload={reusePolicyId:policy.id,replacementPercent:policy.replacementPercent,maxUses:policy.maxUses};apply=current=>({...current,growingMediumReusePolicies:upsert(list(current,'growingMediumReusePolicies'),policy)})
  }else if(operation===GROWING_MEDIUM_OPERATIONS.CREATE_ASSIGNMENT){
   const assignment=createGrowingMediumAssignment({...input,id:aggregateId,organizationId}),batch=tenantItem(list(state,'growingMediumBatches'),assignment.batchId,organizationId,'El batch')
   if(Number(batch.availableVolumeLiters)<assignment.volumeLiters)throw new Error('El batch no tiene volumen suficiente para la asignación.')
@@ -61,6 +61,6 @@ export async function executeGrowingMediumCommand(state,{operation,input={},enti
   eventName=DomainEvents.GROWING_MEDIUM_REUSE_RECORDED;payload={reuseCycleId:cycle.id,assignmentId:assignment.id,action:cycle.action,freshVolumeLiters:cycle.freshVolumeLiters,reusedVolumeLiters:cycle.reusedVolumeLiters};apply=current=>list(current,'growingMediumReuseCycles').some(item=>item.id===cycle.id&&item.organizationId===organizationId)?current:{...current,growingMediumReuseCycles:[...list(current,'growingMediumReuseCycles'),cycle],growingMediumAssignments:upsert(list(current,'growingMediumAssignments'),{...assignment,currentUse:plan.nextUse,updatedAt:occurredAt})}
  }else throw new Error('Operación de medio de cultivo no soportada.')
 
- await executeCoreOperationCommand({commandId,organizationId,siteId:text(input.siteId)||null,aggregateType:'growing-medium',aggregateId,eventName,completedEventName:eventName,occurredAt,payload,metadata:{module:'growing-medium'},apply},{publishEvent,commit})
+ await executeCoreOperationCommand({commandId,organizationId,siteId:text(input.siteId)||null,aggregateType:'growing-medium',aggregateId,completedEventName:eventName,occurredAt,payload,metadata:{module:'growing-medium'},apply},{publishEvent,commit})
  return Object.freeze({ok:true,commandId,aggregateId,eventName})
 }
