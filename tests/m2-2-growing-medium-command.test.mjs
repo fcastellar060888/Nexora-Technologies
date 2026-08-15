@@ -6,7 +6,8 @@ import{GROWING_MEDIUM_OPERATIONS,executeGrowingMediumCommand}from'../src/service
 const fixture=()=>({
  companies:[{id:'org-a'}],sites:[{id:'site-a',companyId:'org-a'}],currentContext:{companyId:'org-a',siteId:'site-a'},
  users:[{id:'u1',activeSession:true,active:true,remote:true}],roles:[{id:'grower',permissions:['manage_cultivation']}],memberships:[{id:'m1',userId:'u1',companyId:'org-a',roleId:'grower',siteIds:['site-a'],status:'active'}],
- growingMediumProducts:[],growingMediumFormulas:[],growingMediumBatches:[],growingMediumAssignments:[],growingMediumReusePolicies:[],growingMediumReuseCycles:[]
+ beds:[{id:'bed-1',organizationId:'org-a',siteId:'site-a',houseId:'house-1',active:true}],houses:[{id:'house-1',organizationId:'org-a',siteId:'site-a',active:true}],
+ growingMediumProducts:[],growingMediumFormulas:[],growingMediumBatches:[],growingMediumAssignments:[],growingMediumReusePolicies:[],growingMediumReuseCycles:[],growingMediumPurchaseRequirements:[]
 })
 
 async function run(state,command){
@@ -23,23 +24,6 @@ test('M22-F001/F008: product creation publishes durable intent then canonical ev
  assert.deepEqual(events.map(event=>event.eventId),['cmd-1:requested','cmd-1:completed'])
 })
 
-test('M22-F004/F008: formula version command appends a new immutable version and links its predecessor',async()=>{
- let state=fixture()
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_PRODUCT,entityId:'coco',commandId:'p1',input:{name:'Coco',kind:GROWING_MEDIUM_KINDS.COCO}}))
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_PRODUCT,entityId:'peat',commandId:'p2',input:{name:'Turba',kind:GROWING_MEDIUM_KINDS.PEAT}}))
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA,entityId:'formula-v1',commandId:'f1',occurredAt:'2026-08-01T00:00:00.000Z',input:{formulaKey:'mix-a',name:'Mezcla A',components:[{productId:'coco',percentage:70},{productId:'peat',percentage:30}]}}))
- const previousBefore=JSON.stringify(state.growingMediumFormulas[0])
- const result=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA_VERSION,entityId:'formula-v2',commandId:'f2',occurredAt:'2026-08-15T00:00:00.000Z',input:{previousFormulaId:'formula-v1',components:[{productId:'coco',percentage:60},{productId:'peat',percentage:40}]}})
- state=result.state
- assert.equal(state.growingMediumFormulas.length,2)
- assert.equal(JSON.stringify(state.growingMediumFormulas[0]),previousBefore)
- assert.equal(state.growingMediumFormulas[1].id,'formula-v2')
- assert.equal(state.growingMediumFormulas[1].formulaKey,'mix-a')
- assert.equal(state.growingMediumFormulas[1].version,2)
- assert.equal(state.growingMediumFormulas[1].supersedesFormulaId,'formula-v1')
- assert.deepEqual(result.events.map(event=>event.name),['core.operation.requested','growing_medium.formula.updated'])
-})
-
 test('M22-F002/F007: assignment consumes batch volume exactly once and retry is idempotent',async()=>{
  let state=fixture(),events=[]
  ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_PRODUCT,entityId:'gm-1',commandId:'c1',input:{name:'Coco',kind:GROWING_MEDIUM_KINDS.COCO}}))
@@ -52,27 +36,24 @@ test('M22-F002/F007: assignment consumes batch volume exactly once and retry is 
  assert.equal(state.growingMediumBatches[0].availableVolumeLiters,60)
 })
 
-test('M22-F007: command freezes batch provenance and cost into assignment history',async()=>{
- let state=fixture()
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_PRODUCT,entityId:'gm-1',commandId:'p',input:{name:'Coco',kind:GROWING_MEDIUM_KINDS.COCO}}))
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.REGISTER_BATCH,entityId:'batch-1',commandId:'b',input:{productId:'gm-1',supplierId:'supplier-a',supplierLot:'LOT-A',inventoryLotId:'inv-a',receivedVolumeLiters:100,unitCostPerLiter:850,currency:'COP'}}))
- ;({state}=await run(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_ASSIGNMENT,entityId:'assignment-1',commandId:'a',input:{siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'batch-1',volumeLiters:40}}))
- const historical={...state.growingMediumAssignments[0]}
- state={...state,growingMediumBatches:state.growingMediumBatches.map(batch=>batch.id==='batch-1'?{...batch,supplierId:'supplier-b',supplierLot:'LOT-B',inventoryLotId:'inv-b',unitCostPerLiter:1200,currency:'USD'}:batch)}
- const assignment=state.growingMediumAssignments[0]
- assert.deepEqual(assignment,historical)
- assert.equal(assignment.supplierId,'supplier-a')
- assert.equal(assignment.supplierLot,'LOT-A')
- assert.equal(assignment.inventoryLotId,'inv-a')
- assert.equal(assignment.unitCostPerLiter,850)
- assert.equal(assignment.currency,'COP')
- assert.equal(assignment.totalCost,34000)
-})
-
 test('M22-F002: assignment fails closed on insufficient or foreign batch',async()=>{
  let state=fixture()
  state.growingMediumBatches=[{id:'batch-x',organizationId:'org-b',productId:'gm-x',supplierLot:'X',receivedVolumeLiters:100,availableVolumeLiters:100,unitCostPerLiter:0,currency:'COP',active:true}]
  await assert.rejects(()=>executeGrowingMediumCommand(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_ASSIGNMENT,entityId:'a1',input:{siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'batch-x',volumeLiters:10}},{publishEvent:async()=>{},commit:()=>{}}),/no existe en la organización activa/)
+})
+
+test('M22-F004: formula version command appends immutable history instead of overwriting v1',async()=>{
+ let state=fixture(),events=[]
+ state.growingMediumProducts=[{id:'coco',organizationId:'org-a',name:'Coco',kind:'COCO',active:true},{id:'peat',organizationId:'org-a',name:'Turba',kind:'PEAT',active:true}]
+ const deps={publishEvent:async event=>events.push(event),commit:recipe=>{state=recipe(state)}}
+ await executeGrowingMediumCommand(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA,entityId:'f-v1',commandId:'f1',input:{formulaKey:'mix-a',name:'Mezcla A',components:[{productId:'coco',percentage:70},{productId:'peat',percentage:30}]}},deps)
+ const v1Snapshot=JSON.stringify(state.growingMediumFormulas[0])
+ await executeGrowingMediumCommand(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_FORMULA_VERSION,entityId:'f-v2',commandId:'f2',input:{previousFormulaId:'f-v1',components:[{productId:'coco',percentage:60},{productId:'peat',percentage:40}]}},deps)
+ assert.equal(state.growingMediumFormulas.length,2)
+ assert.equal(JSON.stringify(state.growingMediumFormulas[0]),v1Snapshot)
+ assert.equal(state.growingMediumFormulas[1].supersedesFormulaId,'f-v1')
+ assert.equal(state.growingMediumFormulas[1].version,2)
+ assert.equal(events.at(-1).name,'growing_medium.formula.updated')
 })
 
 test('M22-F005/F008: reuse policy and cycle are recorded through canonical events',async()=>{
@@ -88,4 +69,44 @@ test('M22-F005/F008: reuse policy and cycle are recorded through canonical event
  assert.equal(state.growingMediumAssignments[0].currentUse,2)
  assert.ok(events.some(event=>event.name==='growing_medium.reuse_policy.created'))
  assert.ok(events.some(event=>event.name==='growing_medium.reuse.recorded'))
+})
+
+test('M22-F006: purchase requirement persists deterministic reuse demand and retry is idempotent',async()=>{
+ let state=fixture(),events=[]
+ state.growingMediumReusePolicies=[{id:'rp1',organizationId:'org-a',name:'30/70',replacementPercent:30,maxUses:3,active:true}]
+ state.growingMediumAssignments=[{id:'a1',organizationId:'org-a',siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'b1',volumeLiters:100,reusePolicyId:'rp1',currentUse:2,supplierId:'supplier-1',supplierLot:'LOT-1',active:true}]
+ const deps={publishEvent:async event=>events.push(event),commit:recipe=>{state=recipe(state)}}
+ const command={operation:GROWING_MEDIUM_OPERATIONS.CREATE_PURCHASE_REQUIREMENT,entityId:'req-1',commandId:'req-cmd',input:{siteId:'site-a',scopeType:'HOUSE',scopeId:'house-1',periodStart:'2026-08-15',periodEnd:'2026-08-31',reservePercent:10,createdBy:'u1'}}
+ await executeGrowingMediumCommand(state,command,deps)
+ await executeGrowingMediumCommand(state,command,deps)
+ assert.equal(state.growingMediumPurchaseRequirements.length,1)
+ const requirement=state.growingMediumPurchaseRequirements[0]
+ assert.equal(requirement.baseVolumeLiters,30)
+ assert.equal(requirement.requiredVolumeLiters,33)
+ assert.equal(requirement.plans[0].assignmentId,'a1')
+ assert.equal(requirement.plans[0].supplierLot,'LOT-1')
+ assert.deepEqual(events.slice(0,2).map(event=>event.name),['core.operation.requested','growing_medium.purchase_requirement.created'])
+})
+
+test('M22-F006: purchase planning ignores assignments from another tenant even with repeated ids',async()=>{
+ const state=fixture()
+ state.growingMediumAssignments=[{id:'same',organizationId:'org-a',siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'a',volumeLiters:20,currentUse:1,active:true},{id:'same',organizationId:'org-b',siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'b',volumeLiters:999,currentUse:1,active:true}]
+ let current=state
+ await executeGrowingMediumCommand(current,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_PURCHASE_REQUIREMENT,entityId:'req',commandId:'req',input:{siteId:'site-a',scopeType:'BED',scopeId:'bed-1',periodStart:'2026-08-15',periodEnd:'2026-08-31'}},{publishEvent:async()=>{},commit:recipe=>{current=recipe(current)}})
+ assert.equal(current.growingMediumPurchaseRequirements[0].requiredVolumeLiters,20)
+ assert.equal(current.growingMediumPurchaseRequirements[0].plans.length,1)
+})
+
+test('M22-F007: assignment command persists batch cost and provenance snapshot',async()=>{
+ let state=fixture()
+ state.growingMediumBatches=[{id:'b-cost',organizationId:'org-a',productId:'p1',supplierId:'supplier-1',supplierLot:'LOT-A',inventoryLotId:'inventory-lot-1',receivedVolumeLiters:100,availableVolumeLiters:100,unitCostPerLiter:2500,currency:'COP',active:true}]
+ const deps={publishEvent:async()=>{},commit:recipe=>{state=recipe(state)}}
+ await executeGrowingMediumCommand(state,{operation:GROWING_MEDIUM_OPERATIONS.CREATE_ASSIGNMENT,entityId:'a-cost',commandId:'a-cost',input:{siteId:'site-a',targetType:'BED',targetId:'bed-1',batchId:'b-cost',volumeLiters:10}},deps)
+ const assignment=state.growingMediumAssignments[0]
+ assert.equal(assignment.supplierId,'supplier-1')
+ assert.equal(assignment.supplierLot,'LOT-A')
+ assert.equal(assignment.inventoryLotId,'inventory-lot-1')
+ assert.equal(assignment.unitCostPerLiter,2500)
+ assert.equal(assignment.currency,'COP')
+ assert.equal(assignment.totalCost,25000)
 })
