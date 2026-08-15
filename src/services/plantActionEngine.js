@@ -1,13 +1,10 @@
-import{createActionEngine,defineAction}from'../core/actions/index.js'
+import{createActionEngine,defineAction,PlantActions}from'../core/actions/index.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{executePropagationBatchCommand}from'./propagationBatchCommand.js'
 import{executePropagationPromotionCommand}from'./propagationPromotionCommand.js'
 import{hasPermission}from'./permissions.js'
 
-export const PlantActions=Object.freeze({
- CREATE_PROPAGATION_BATCH:'plant.propagation.cut',
- PROMOTE_PROPAGATION_UNITS:'propagation.batch.promote'
-})
+export{PlantActions}
 
 const permission=state=>hasPermission(state,'manage_cultivation')||'No tienes permiso para administrar propagación.'
 const sameOrganization=(state,target)=>target.organizationId===activeOrganizationId(state)||'El objeto objetivo no pertenece a la organización activa.'
