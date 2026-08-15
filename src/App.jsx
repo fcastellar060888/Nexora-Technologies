@@ -84,7 +84,7 @@ export default function App() {
         <Route path="/propagation/batches" element={<PropagationPage />} />
         <Route path="/propagation/transitions" element={<PhaseTransitionsPage />} />
         <Route path="/propagation/lineage" element={<LineagePage />} />
-        <Route path="/genetics" element={<GeneticsPage />} />
+        <Route path="/genetics" element={<Guard permission="manage_cultivation"><GeneticsPage /></Guard>} />
         <Route path="/mirfe/dashboard" element={<Guard permission="view_dashboards"><MirfeDashboardPage /></Guard>} />
         <Route path="/mirfe/monitoring" element={<Guard permission="manage_mirfe"><MirfeMonitoringPage /></Guard>} />
         <Route path="/mirfe/programs" element={<Guard permission="manage_mirfe"><MirfeProgramsPage /></Guard>} />
