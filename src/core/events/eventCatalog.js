@@ -56,6 +56,10 @@ export const DomainEvents=Object.freeze({
  MIRFE_PREPARATION_CREATED:'mirfe.preparation.created',
  MIRFE_PREPARATION_COMPLETED:'mirfe.preparation.completed',
  MIRFE_APPLICATION_COMPLETED:'mirfe.application.completed',
+ ENVIRONMENT_DEVICE_REGISTERED:'environment.device.registered',
+ ENVIRONMENT_CALIBRATION_RECORDED:'environment.calibration.recorded',
+ ENVIRONMENT_SETPOINT_CREATED:'environment.setpoint.created',
+ ENVIRONMENT_READING_RECORDED:'environment.reading.recorded',
  INVENTORY_MOVEMENT_RECORDED:'inventory.movement.recorded',
  PRODUCTION_STAGE_COMPLETED:'production.stage.completed'
 })
