@@ -33,7 +33,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F007 | P1 | **Verified** | Tank/planning | Capacidad máxima de 1.000 L, frecuencia entera y cargas por aplicación se derivan con identidad estable; el plan las persiste y cada carga crea una preparación ejecutable tenant-aware con concentración conservada. Quality #1875. |
 | M31-F008 | P1 | **Verified** | Water authority | Laboratorio, muestra, método, panel y resultados forman una autoridad tenant-owned e inmutable; admite parciales, versionado append-only, selección vigente determinista y comparación histórica técnicamente compatible. Quality #1879. |
 | M31-F009 | P1 | **Verified** | Environment/measurements | `EnvironmentDevice`, `CalibrationRecord`, setpoints versionados, lecturas con fuente/evidencia y alertas first-class reemplazan targets embebidos; tenancy, commands, migración v12 y sync quedan demostrados. Quality #1885. |
-| M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
+| M31-F010 | P1 | **Verified** | Workflow/history | `mirfe-reinforcement-v1` impone transiciones canónicas, historial append-only y correcciones solo tras `Sin respuesta`; cinco commands tenant-aware publican eventos demostrados en Operational Ledger/Timeline. Quality #1891. |
 | M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
 | M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos, eventos y carrera multi-dispositivo; falta la proyección end-to-end. |
 
@@ -327,6 +327,37 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: 12/12 blobs coinciden byte a byte con la publicación y 58/58 controles semánticos pasaron para autoridad, fuentes, calibración, setpoints, alerts, migración, tenancy, commands, eventos, UI, persistencia, sync y compatibilidad histórica.
 - F010–F012 permanecen P1 abiertos; el próximo cierre es workflow/history y no se atribuye a F009.
 
+## M31-F010 — cierre verificado
+
+### Solución
+
+- `mirfe-reinforcement-v1` reutiliza `workflowCore` y materializa nueve estados canónicos: Borrador, Pendiente aprobación, Aprobado, Programado, Aplicado, En seguimiento, Efectivo, Sin respuesta y Cancelado.
+- El lifecycle impide saltos y mutaciones terminales. Una verificación exige resultado agronómico; una cancelación exige motivo; solo `Sin respuesta` admite `CORRECT`, que crea una corrección append-only y reabre la aprobación sin reescribir la evidencia anterior.
+- Programa, monitoreo, refuerzo, corrección e historia llevan `organizationId`. El monitoreo recalcula VPD y ΔEC dentro de dominio; el refuerzo conserva snapshots de programa, monitoreo y producto, además de versión e historial verificable.
+- Las cinco colecciones pasan a ser command-owned y sus referencias sede/nave/cama/genética/producto/programa/monitoreo/refuerzo se resuelven por tenant e identidad inequívoca. IDs homónimos entre organizaciones permanecen aislados.
+- El boundary existente incorpora `CREATE_MIRFE_PROGRAM`, `RECORD_MIRFE_MONITORING`, `CREATE_MIRFE_REINFORCEMENT`, `TRANSITION_MIRFE_REINFORCEMENT` y `RECORD_MIRFE_CORRECTION`, todos con `manage_mirfe`, firma/recibo idempotente, causalidad determinista y control optimista de versión al commit.
+- Los eventos `mirfe.program.created`, `mirfe.monitoring.recorded`, `mirfe.reinforcement.created`, `mirfe.reinforcement.transitioned` y `mirfe.correction.recorded` se etiquetan como MIRFE y recorren `core.operation.requested → commit → completion → Operational Ledger → Timeline`.
+- Schema v13 migra estados legacy mediante IDs deterministas. Ownership o estados ambiguos/corruptos quedan en cuarentena fail-closed.
+- Programas, monitoreo, refuerzos, historial y dashboard usan la vista tenant-scoped; las cuatro superficies escritoras ya no importan `useStore` ni llaman `update()`, y la UI solo ofrece transiciones permitidas.
+
+### Pruebas adversariales
+
+- Secuencia completa, saltos inválidos, guards de resultado/motivo, terminales, corrección y detección de identidad/versión/tiempo adulterados.
+- IDs repetidos cross-tenant, referencias extranjeras, permiso ausente, replay idéntico, colisión de `commandId` y carrera de versión entre intent y commit.
+- Recálculo server-side de derivados, snapshots históricos, migración determinista/cuarentena y proyección de un completion real a Ledger/Timeline con organización, agregado, correlación y causalidad.
+- Contratos UI prueban ausencia de mutación directa, eliminación del selector arbitrario de estado y exposición de historia agronómica append-only.
+
+### Quality y reauditoría
+
+- Commit de solución: `b6a9f85f3930f39a887130ffb6aa3abcbd2417bb`; compatibilidad histórica focalizada: `87521f31fc710c094f734e4867aadb3cd2c2ec5c`.
+- Quality #1889 reprodujo un único contrato histórico que aún buscaba `phaseOf` y la mutación directa eliminada; 955/956 pruebas pasaron. El test se alineó con `mirfeWorkflowPhase`, las transiciones canónicas y el command boundary, sin introducir código muerto.
+- Quality #1891: **verde**, 956/956 pruebas.
+- Cobertura global: 93.65% líneas / 75.13% ramas / 91.14% funciones.
+- `mirfeWorkflow.js`: 97.52% líneas / 65.31% ramas / 96.30% funciones; `irrigationMirfeCommand.js`: 93.05% / 78.90% / 86.11%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: 16/16 blobs coinciden byte a byte y 76/76 controles semánticos pasaron para workflow, guards, historial, corrección, migración, tenancy, commands, replay, concurrencia, eventos, Ledger/Timeline, UI y compatibilidad histórica.
+- F011 y F012 permanecen abiertos y separados: este cierre no incorpora aún las entidades F001 a schema/bootstrap/sync ni amplía Passport/Knowledge Graph.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -378,7 +409,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **9**
-- Open: **3**
+- Verified: **10**
+- Open: **2**
 - P0 abiertos: **0**
-- P1 abiertos: **3**
+- P1 abiertos: **2**
