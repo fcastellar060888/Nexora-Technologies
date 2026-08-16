@@ -87,17 +87,22 @@ test('MIRFE reinforcements explain optional origins and block missing prerequisi
  assert.match(source,/const houseId=state\.houses\.find\(x=>x\.siteId===siteId\)\?\.id\|\|''/)
 })
 
-test('MIRFE history distinguishes pending, executed and verified orders',async()=>{
+test('MIRFE history distinguishes workflow phases through the shared authority',async()=>{
  const source=await read('src/pages/MirfeHistoryPage.jsx')
+ const workflow=await read('src/domain/mirfeWorkflow.js')
  assert.match(source,/import StateMessage/)
- assert.match(source,/const phaseOf=/)
- assert.match(source,/return 'Verificada'/)
- assert.match(source,/return 'Ejecutada'/)
- assert.match(source,/return 'Pendiente'/)
+ assert.match(source,/mirfeWorkflowPhase/)
+ assert.match(source,/availableMirfeTransitions/)
+ assert.match(source,/TRANSITION_MIRFE_REINFORCEMENT/)
+ assert.match(source,/RECORD_MIRFE_CORRECTION/)
  assert.match(source,/No hay órdenes MIRFE para seguir/)
  assert.match(source,/Sin coincidencias/)
- assert.match(source,/Actualizar seguimiento/)
- assert.match(source,/action:'Actualizar seguimiento'/)
+ assert.match(source,/Avanzar workflow/)
+ assert.match(source,/Historia agronómica inmutable/)
+ assert.doesNotMatch(source,/\bupdate\s*\(/)
+ assert.match(workflow,/return'Ejecutada'/)
+ assert.match(workflow,/return'Verificada'/)
+ assert.match(workflow,/return'Pendiente'/)
 })
 
 test('feedback styles respect mobile safe areas and reduced motion',async()=>{
