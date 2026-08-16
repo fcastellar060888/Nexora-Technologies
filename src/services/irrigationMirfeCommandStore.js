@@ -4,6 +4,8 @@ import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{scopeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
 import{useStore}from'./store.jsx'
 import{IRRIGATION_MIRFE_OPERATIONS,executeIrrigationMirfeCommand,irrigationMirfeCommandRequestKey}from'./irrigationMirfeCommand.js'
+import{commitMirfeInventoryTransaction}from'./mirfeInventoryTransaction.js'
+import{supabaseEnabled}from'./supabase.js'
 
 export{IRRIGATION_MIRFE_OPERATIONS}
 
@@ -21,7 +23,7 @@ export function useIrrigationMirfeCommandStore(){
   const envelope={...command,commandId:command?.commandId||retry?.commandId||crypto.randomUUID(),occurredAt:command?.occurredAt||retry?.occurredAt||new Date().toISOString()}
   retryRef.current.set(requestKey,{commandId:envelope.commandId,occurredAt:envelope.occurredAt})
   let execution
-  execution=executeIrrigationMirfeCommand(snapshot,envelope,{publishEvent:event=>publishDomainEvent(snapshot,event),commit:update})
+  execution=executeIrrigationMirfeCommand(snapshot,envelope,{publishEvent:event=>publishDomainEvent(snapshot,event),commit:update,...(supabaseEnabled?{commitInventoryTransaction:commitMirfeInventoryTransaction}:{})})
    .then(result=>{
     if(retryRef.current.get(requestKey)?.commandId===envelope.commandId)retryRef.current.delete(requestKey)
     return result

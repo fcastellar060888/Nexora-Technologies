@@ -32,3 +32,25 @@ test('M11-F012: executor rejects unknown completion events before any side effec
  assert.equal(publishes,0)
  assert.equal(commits,0)
 })
+
+test('M31-F006: precondición remota ocurre entre intención y commit y controla la metadata de persistencia',async()=>{
+ const order=[],events=[];let state={value:0},commitMeta
+ await executeCoreOperationCommand({...baseSpec((current,confirmation)=>({...current,value:confirmation.value})),prepareCommit:async()=>{order.push('remote');return{value:7}},commitMeta:{sync:false}},{
+  publishEvent:async event=>{order.push(event.name);events.push(event)},
+  commit:(recipe,meta)=>{order.push('commit');commitMeta=meta;state=recipe(state)}
+ })
+ assert.deepEqual(order,[DomainEvents.CORE_OPERATION_REQUESTED,'remote','commit',DomainEvents.FACILITY_HOUSE_UPDATED])
+ assert.equal(state.value,7)
+ assert.deepEqual(commitMeta,{sync:false,audit:false})
+ assert.equal(events.length,2)
+})
+
+test('M31-F006: fallo de precondición remota no produce commit ni evento final',async()=>{
+ const events=[];let commits=0
+ await assert.rejects(()=>executeCoreOperationCommand({...baseSpec(state=>state),prepareCommit:async()=>{throw new Error('MIRFE_INVENTORY_VERSION_CONFLICT')}},{
+  publishEvent:async event=>events.push(event),
+  commit:()=>{commits+=1}
+ }),/VERSION_CONFLICT/)
+ assert.equal(commits,0)
+ assert.deepEqual(events.map(event=>event.name),[DomainEvents.CORE_OPERATION_REQUESTED])
+})

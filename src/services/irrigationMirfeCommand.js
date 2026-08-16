@@ -7,6 +7,7 @@ import{createTankPreparation,executeTankPreparation,registerIrrigationApplicatio
 import{IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,mutateIrrigationMirfeState,scopeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
 import{activeUser,hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
+import{applyMirfeInventoryConfirmation,buildMirfeInventoryTransaction}from'./mirfeInventoryTransaction.js'
 
 export const IRRIGATION_MIRFE_OPERATIONS=Object.freeze({
  CREATE_IRRIGATION_PLAN:'CREATE_IRRIGATION_PLAN',
@@ -190,7 +191,7 @@ function planPreparation(state,input,aggregateId,organizationId,occurredAt){
 
 function planExecution(state,input,organizationId,occurredAt,commandId){
  const preparationId=required(input.preparationId,'preparationId'),preparation=tenantRecord(state,organizationId,'tankPreparations',preparationId,'La preparación'),siteId=required(preparation.siteId,'siteId de la preparación')
- return{aggregateType:'mirfe.preparation',aggregateId:preparationId,eventName:DomainEvents.MIRFE_PREPARATION_COMPLETED,siteId,eventPayload:{preparationId,formulationId:text(preparation.formulationId),siteId},collection:'tankPreparations',apply:current=>executeTankPreparation(current,{...input,preparationId,executedAt:occurredAt,costEntryId:`${commandId}:cost`,workOrderId:`${commandId}:work-order`})}
+ return{aggregateType:'mirfe.preparation',aggregateId:preparationId,eventName:DomainEvents.MIRFE_PREPARATION_COMPLETED,siteId,eventPayload:{preparationId,formulationId:text(preparation.formulationId),siteId},collection:'tankPreparations',apply:current=>executeTankPreparation(current,{...input,preparationId,executedAt:occurredAt,movementIdPrefix:`${commandId}:movement`,costEntryId:`${commandId}:cost`,workOrderId:`${commandId}:work-order`})}
 }
 
 function planApplication(state,input,aggregateId,organizationId,occurredAt){
@@ -230,7 +231,14 @@ export async function executeIrrigationMirfeCommand(state,{operation,input={},en
  const publishEvent=deps.publishEvent,commit=deps.commit
  if(typeof publishEvent!=='function')throw new TypeError('publishEvent es obligatorio para ejecutar comandos Irrigation/MIRFE.')
  if(typeof commit!=='function')throw new TypeError('commit es obligatorio para ejecutar comandos Irrigation/MIRFE.')
- const apply=current=>applyOnce(current,organizationId,receipt,plan.collection,plan.aggregateId,plan.apply)
- await executeCoreOperationCommand({commandId:normalizedCommandId,organizationId,siteId:plan.siteId,aggregateType:plan.aggregateType,aggregateId:plan.aggregateId,completedEventName:plan.eventName,occurredAt:effectiveOccurredAt,payload:plan.eventPayload,metadata:{module:'irrigation-mirfe',operation:normalizedOperation},apply},{publishEvent,commit})
+ const localApply=current=>applyOnce(current,organizationId,receipt,plan.collection,plan.aggregateId,plan.apply)
+ const remoteInventory=normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION&&!existing&&typeof deps.commitInventoryTransaction==='function'
+ const transaction=remoteInventory?buildMirfeInventoryTransaction(state,localApply(state),{commandId:normalizedCommandId,signature,organizationId,preparationId:plan.aggregateId}):null
+ const prepareCommit=remoteInventory?()=>deps.commitInventoryTransaction(transaction):null
+ const apply=remoteInventory?(current,confirmation)=>{
+  if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIRFE.')
+  return applyMirfeInventoryConfirmation(current,confirmation,organizationId)
+ }:localApply
+ await executeCoreOperationCommand({commandId:normalizedCommandId,organizationId,siteId:plan.siteId,aggregateType:plan.aggregateType,aggregateId:plan.aggregateId,completedEventName:plan.eventName,occurredAt:effectiveOccurredAt,payload:plan.eventPayload,metadata:{module:'irrigation-mirfe',operation:normalizedOperation,remoteInventory},prepareCommit,commitMeta:remoteInventory?{sync:false}:{},apply},{publishEvent,commit})
  return Object.freeze({ok:true,replay:Boolean(existing),commandId:normalizedCommandId,aggregateId:plan.aggregateId,eventName:plan.eventName})
 }

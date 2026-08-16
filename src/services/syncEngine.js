@@ -21,9 +21,9 @@ export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
   const after=new Map(list(next?.[collection]).map(item=>[recordKey(item),item]))
   for(const [key,item] of after){
    const old=before.get(key)
-   if(!old||JSON.stringify(old)!==JSON.stringify(item))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'upsert',payload:item})
+   if(!old||JSON.stringify(old)!==JSON.stringify(item))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'upsert',payload:item,previousPayload:old||null})
   }
-  for(const [key,item] of before)if(!after.has(key))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'delete',payload:null})
+  for(const [key,item] of before)if(!after.has(key))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'delete',payload:null,previousPayload:item})
  }
  return changes
 }

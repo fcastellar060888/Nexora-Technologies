@@ -31,14 +31,14 @@ function executeTankPreparationForTenant(state,input){
  if(!preparation)throw new Error('Selecciona una preparación válida.')
  if(preparation.status!=='Pendiente')throw new Error('Solo se pueden ejecutar preparaciones pendientes.')
  const allocations=input.allocations||{};const executedAt=input.executedAt||new Date().toISOString();let next=state,totalCost=0;const executedItems=[]
- for(const item of preparation.items||[]){
+ for(const[index,item]of(preparation.items||[]).entries()){
   if(!item.inventoryProductId)throw new Error('Todos los productos nutricionales deben estar vinculados con un producto de inventario.')
   const lotId=allocations[item.id]||item.lotId;const lot=(next.inventoryLots||[]).find(x=>x.id===lotId)
   if(!lot||lot.productId!==item.inventoryProductId)throw new Error('Selecciona un lote válido para cada ingrediente.')
   if(lot.siteId!==preparation.siteId)throw new Error('El lote seleccionado debe pertenecer a la sede de la preparación.')
   const inventoryProduct=(next.products||[]).find(x=>x.id===lot.productId);const nutrientProduct=(next.nutrientProducts||[]).find(x=>x.id===item.nutrientProductId)
   const quantity=gramsToInventoryUnit(item.requiredQuantity,inventoryProduct?.unit)
-  next=transactInventory(next,{lotId,type:'Consumo',quantity,date:input.date||executedAt.slice(0,10),createdAt:executedAt,sourceType:'MirfePreparation',sourceId:preparation.id,responsible:input.responsible||preparation.responsible,reference:preparation.id,notes:`Preparación MIRFE · Tanque ${item.tank}`})
+  next=transactInventory(next,{id:input.movementIdPrefix?`${input.movementIdPrefix}:${index}`:undefined,lotId,type:'Consumo',quantity,date:input.date||executedAt.slice(0,10),createdAt:executedAt,sourceType:'MirfePreparation',sourceId:preparation.id,responsible:input.responsible||preparation.responsible,reference:preparation.id,notes:`Preparación MIRFE · Tanque ${item.tank}`})
   const unitCost=Number(inventoryProduct?.cost??nutrientProduct?.cost??0);const cost=quantity*unitCost;totalCost+=cost
   executedItems.push({...item,lotId,consumedQuantity:quantity,consumedUnit:inventoryProduct?.unit||'',cost,executedAt})
  }
