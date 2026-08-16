@@ -31,7 +31,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F005 | P0 | **Verified** | Formula/versioning | Un solver matricial usa composición normalizada y objetivos netos; aprobación recalcula evidencia tenant-aware en el command boundary y solo acepta validación sin advertencias. Cada cambio crea versión inmutable con lineage y snapshots. Quality #1865. |
 | M31-F006 | P0 | **Verified** | Execution/inventory | La ejecución usa un RPC transaccional remoto tenant/site-aware: bloquea y preflighta todas las versiones antes de escribir lote, movimientos, preparación, costo y orden como una unidad idempotente por `commandId`. Quality #1871. |
 | M31-F007 | P1 | **Verified** | Tank/planning | Capacidad máxima de 1.000 L, frecuencia entera y cargas por aplicación se derivan con identidad estable; el plan las persiste y cada carga crea una preparación ejecutable tenant-aware con concentración conservada. Quality #1875. |
-| M31-F008 | P1 | Open | Water authority | Los análisis ya son tenant-owned, pero continúan como registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial ni comparación histórica canónica. |
+| M31-F008 | P1 | **Verified** | Water authority | Laboratorio, muestra, método, panel y resultados forman una autoridad tenant-owned e inmutable; admite parciales, versionado append-only, selección vigente determinista y comparación histórica técnicamente compatible. Quality #1879. |
 | M31-F009 | P1 | Open | Environment/measurements | Targets ambientales se duplican dentro de cada lectura. No existen fuente `SENSOR/CONTROLADOR/MANUAL/MUESTRA/IMPORTADO/CALCULADO`, dispositivos, calibración, setpoints ni alertas canónicas. |
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
 | M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
@@ -261,6 +261,38 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: los 10/10 blobs coinciden con el commit publicado y pasaron 21/21 controles de límites, frecuencia, identidad, conservación, tenancy, compatibilidad, reserva atómica, eventos, UI y evidencia adversarial.
 - F008–F012 permanecen P1 abiertos y no se atribuyen a este cierre.
 
+## M31-F008 — cierre verificado
+
+### Solución
+
+- `waterAnalysis.js` define un panel canónico de 20 analitos con unidad y base, y estados `Pendiente`, `Parcial` y `Vigente`. Cada resultado conserva valor, método, unidad y base en vez de depender de campos numéricos ambiguos.
+- Un análisis exige `laboratoryId`, nombre de laboratorio, `sampleId`, punto/tipo/fecha de muestreo, método, panel esperado y sede/empresa. Fecha civil, orden muestra → informe, pH, finitud, duplicados y catálogos fallan cerrado.
+- Los parciales conservan ausencias explícitas; un registro no puede declararse `Vigente` hasta completar su panel. Los aliases planos se mantienen solo como proyección compatible para formulación y datos históricos.
+- Cada reanálisis crea otro ID con `analysisKey`, versión derivada y `supersedesWaterAnalysisId`. Empresa, sede, laboratorio, muestra y panel del lineage permanecen estables; el registro anterior no cambia de estado ni contenido.
+- `sampleId` no puede referir contradictoriamente otro punto, tipo, instante o sede dentro del tenant; distintos laboratorios sí pueden analizar la misma muestra.
+- La selección vigente filtra por empresa/sede, valida identidades y versiones únicas, exige los analitos requeridos por el consumidor y ordena por tiempo/versión/ID. El estado `Histórico` es una proyección efectiva, nunca una reescritura.
+- `compareWaterAnalyses()` exige igual empresa, sede, punto y tipo de muestra, y solo calcula deltas cuando método, unidad y base coinciden; resultados incompatibles quedan excluidos de forma explícita.
+- Planificación, `waterForSite`, Formulation UI y aprobación server-side consumen el mismo selector. La fórmula solo admite un análisis vigente con N-NO₃, N-NH₄, P, K, Ca, Mg y S presentes.
+- El evento conserva lineage, laboratorio, muestra y completitud. La nueva evidencia sigue dentro de `waterAnalyses`, colección legacy ya persistida/sincronizada con ownership compuesto; F011 no se atribuye a este cierre.
+- Water Analysis UI materializa parciales, nuevas versiones, estado efectivo y comparación histórica sin mutación directa del Store.
+
+### Pruebas adversariales
+
+- `tests/m3-1-water-authority.test.mjs`: 8 casos para catálogo, inmutabilidad, adaptadores legacy, panel parcial/completo, fechas, lineage, payload cliente de versión, tenant, selección determinista, duplicados, comparación compatible/incompatible y estabilidad de muestra.
+- `tests/m3-1-water-authority-command.test.mjs`: 6 casos para IDs repetidos entre empresas, append-only, parcial → versión vigente, referencia/sede/identidad inválida antes de eventos, integración con formulación, contrato UI y round-trip por persistencia/sync sin tocar el homónimo extranjero.
+- Los contratos históricos F003 y F005 se ajustaron únicamente donde fijaban la reescritura de estado o representaban ceros implícitos; ahora demuestran append-only y analitos explícitos.
+- Pruebas locales disponibles: 92/92, incluidas regresiones F001–F007, inventario y sync.
+
+### Quality y reauditoría
+
+- Commit de solución: `e04eaef867896609d9941beb29b32fd38722a753`.
+- Quality #1879: **verde**, 925/925 pruebas.
+- Cobertura global: 93.20% líneas / 75.41% ramas / 91.03% funciones.
+- `waterAnalysis.js`: 100% líneas / 80.32% ramas / 100% funciones; `irrigation.js`: 100% / 44.44% / 75%; `irrigationMirfeCommand.js`: 90.44% / 84.21% / 84.34%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: los 9/9 blobs coinciden con el commit publicado y pasaron 28/28 controles de catálogo, identidad, parcial, versión, tenancy, compatibilidad, command boundary, evento, UI, formulación, persistencia y sync.
+- F009–F012 permanecen P1 abiertos y no se atribuyen a este cierre.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -312,7 +344,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **7**
-- Open: **5**
+- Verified: **8**
+- Open: **4**
 - P0 abiertos: **0**
-- P1 abiertos: **5**
+- P1 abiertos: **4**
