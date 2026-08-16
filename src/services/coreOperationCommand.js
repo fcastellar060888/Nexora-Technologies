@@ -35,8 +35,10 @@ export async function executeCoreOperationCommand(input,{publishEvent,commit}={}
  if(typeof commit!=='function')throw new TypeError('commit es obligatorio.')
  const spec=normalizeSpec(input)
  await publishEvent(eventSpec(spec,'requested'))
- const confirmation=spec.prepareCommit?await spec.prepareCommit():null
- commit(current=>spec.apply(current,confirmation),{...spec.commitMeta,audit:false})
+ if(spec.prepareCommit){
+  const confirmation=await spec.prepareCommit()
+  commit(current=>spec.apply(current,confirmation),{...spec.commitMeta,audit:false})
+ }else commit(current=>spec.apply(current),{audit:false})
  await publishEvent(eventSpec(spec,'completed'))
  return Object.freeze({ok:true,commandId:spec.commandId,aggregateId:spec.aggregateId})
 }
