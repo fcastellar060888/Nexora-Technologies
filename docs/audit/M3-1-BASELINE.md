@@ -25,17 +25,17 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | ID | Sev. | Estado | Área | Hallazgo |
 |---|---:|---|---|---|
 | M31-F001 | P0 | **Verified** | Domain authority | `src/domain/irrigationMirfe.js` establece entidades inmutables y tenant-owned para Emitter/Sector/Assignment/Pulse/Measurement/Drainage y Product/Formula/Preparation/Application MIRFE. Quality #1847. |
-| M31-F002 | P0 | Open | Tenancy | Planes, fórmulas, preparaciones, aplicaciones, análisis, objetivos y productos carecen de `organizationId`; dominio y UI buscan/mutan por `id` o `siteId` simple. IDs repetidos entre empresas pueden cruzar lecturas y mutaciones. |
+| M31-F002 | P0 | **Verified** | Tenancy | Planes, fórmulas, preparaciones, aplicaciones, análisis, objetivos y productos usan ownership explícito, vista/merge tenant-aware y resolución fail-closed. IDs repetidos entre empresas se preservan aislados. Quality #1853. |
 | M31-F003 | P0 | Open | Command/events | Las pantallas Irrigation/MIRFE llaman `update()` directamente. No existe command/action boundary tenant-aware e idempotente ni publicación efectiva de intención/evento canónico para crear, aprobar, preparar o aplicar. |
 | M31-F004 | P0 | Open | Irrigation topology | `hydraulics()` asume `plantas × drippers × caudal`; no representa anillo, gotero con varias estacas, gotero compartido, múltiples emisores, sectores, asignación por Position ni control manual/automático. |
 | M31-F005 | P0 | Open | Formula/versioning | `calculateSimpleFormula()` reparte el objetivo mediante una heurística de suma global, no resuelve nutrientes por composición; una fórmula puede aprobarse aun con advertencias. No hay versión inmutable ni lineage de fórmula. |
-| M31-F006 | P0 | Open | Execution/inventory | Preparación y aplicación resuelven formulación, producto, lote y preparación por ID simple; retry no es idempotente y una carrera puede descontar inventario dos veces. No existe durable intent ni evento causal de ejecución. |
+| M31-F006 | P0 | Open | Execution/inventory | La ejecución ya aísla formulación, producto, lote y preparación por tenant, pero retry no es idempotente y una carrera puede descontar inventario dos veces. No existe durable intent ni evento causal de ejecución. |
 | M31-F007 | P1 | Open | Tank/planning | La UI anuncia cargas máximas de 1.000 L pero acepta cualquier capacidad/volumen. El cálculo informa cargas, pero no persiste frecuencia de preparación ni divide un plan diario en preparaciones ejecutables. |
-| M31-F008 | P1 | Open | Water authority | Los análisis de agua son registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial, comparación histórica canónica ni ownership organizacional. |
+| M31-F008 | P1 | Open | Water authority | Los análisis ya son tenant-owned, pero continúan como registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial ni comparación histórica canónica. |
 | M31-F009 | P1 | Open | Environment/measurements | Targets ambientales se duplican dentro de cada lectura. No existen fuente `SENSOR/CONTROLADOR/MANUAL/MUESTRA/IMPORTADO/CALCULADO`, dispositivos, calibración, setpoints ni alertas canónicas. |
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
-| M31-F011 | P1 | Open | Persistence/sync | Las colecciones participan del sync genérico, pero los registros nuevos nacen sin ownership explícito y las pantallas no filtran por tenant. La infraestructura de sync no sustituye la validación de dominio ausente. |
-| M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. MIRFE/formulation carecen de pruebas de dominio; las pruebas de ejecución no cubren tenant, retry, carreras, eventos o proyección. |
+| M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
+| M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. Ya existe cobertura adversarial de dominio/tenant, pero faltan retry, carreras, eventos y proyección. |
 
 ## M31-F001 — cierre verificado
 
@@ -69,7 +69,42 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 - Cobertura global: líneas 92.53%, branches 74.67%, funciones 90.39%.
 - Reauditoría: las entidades son profundamente inmutables; referencias compuestas heredan tenant/sede de la autoridad y rechazan cruces. UI, commands, sync y proyecciones no se declaran cerrados aquí y permanecen en F002–F012.
 
+## M31-F002 — cierre verificado
+
+### Solución
+
+- `src/domain/irrigationMirfeTenancy.js` resuelve identidad por organización y referencia causal, nunca por `id` global.
+- `scopeIrrigationMirfeState()` construye una vista exclusiva de la empresa activa; `mergeIrrigationMirfeState()` reincorpora cambios sin borrar, sobrescribir ni reordenar semánticamente homónimos extranjeros.
+- `useIrrigationMirfeStore()` aplica esa frontera a Irrigation Plan, Formulation, Preparations, Irrigation Workflow, Water Analysis, Nutrient Objectives y Nutrient Products.
+- `createTankPreparation()`, `executeTankPreparation()` y `registerIrrigationApplication()` ejecutan dentro de la misma frontera incluso cuando se invocan fuera de React.
+- Los registros nuevos y derivados —movimiento de inventario, costo y orden— reciben `organizationId` explícito antes del commit al Store/sync.
+- `stateMigration.js` eleva el esquema a v11 y solo backfillea ownership histórico cuando sede o referencia permiten una atribución inequívoca. Un registro ambiguo queda sin asignar y no es visible ni mutable en modo multiempresa.
+- La decisión transversal está registrada en `docs/audit/ADR-M3-1-001-IRRIGATION-MIRFE-TENANCY.md`.
+
+### Pruebas adversariales
+
+- IDs idénticos de análisis, fórmulas, preparaciones, productos, lotes y órdenes en `org-a`/`org-b`;
+- lectura y búsqueda restringidas al tenant activo;
+- preservación del homónimo extranjero durante update, consumo y aplicación;
+- rechazo de payload y referencias disponibles únicamente en otra empresa;
+- migración causal segura y conservación fail-closed de registros históricos ambiguos;
+- descuento exclusivo del lote activo y etiquetado de Movement/Cost/WorkOrder;
+- compatibilidad histórica para instalaciones locales sin catálogo multiempresa;
+- contrato estático que impide volver a conectar las siete superficies al Store global.
+
+### Quality y reauditoría
+
+- Commit de solución: `f441909aa8de8d10ae7656aeca45b2137853ddc1`.
+- Quality #1851: rojo útil; las 10 pruebas M31-F002 pasaron y detectó dos aserciones históricas que fijaban schema 10.
+- Commit de corrección de contrato de prueba: `cf6f77bed89c94b85a0783ef3282da21c97cc34a`.
+- Quality #1853: **verde**, 854/854 pruebas; cobertura global 92.68% líneas, 75.01% ramas y 90.57% funciones.
+- Cobertura: `irrigationMirfeTenancy.js` 98.77% líneas / 82.22% ramas / 100% funciones; `irrigationExecution.js` 100% líneas.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD: las siete superficies consumen exclusivamente el hook tenant-aware; dominio, migración y merge fallan cerrado ante ambigüedad; F003 commands/events, F006 retry/race y F011 persistencia de entidades canónicas permanecen abiertos y no se declararon resueltos.
+
 ## Evidencia de baseline
+
+Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
 
 ### Dominio actual
 
@@ -118,7 +153,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 
 ## Estado actual
 
-- Verified: **1**
-- Open: **11**
-- P0 abiertos: **5**
+- Verified: **2**
+- Open: **10**
+- P0 abiertos: **4**
 - P1 abiertos: **6**
