@@ -28,7 +28,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F002 | P0 | **Verified** | Tenancy | Planes, fórmulas, preparaciones, aplicaciones, análisis, objetivos y productos usan ownership explícito, vista/merge tenant-aware y resolución fail-closed. IDs repetidos entre empresas se preservan aislados. Quality #1853. |
 | M31-F003 | P0 | **Verified** | Command/events | Nueve operaciones legacy pasan por un command boundary tenant-aware, permission-aware e idempotente; las siete páginas ya no mutan el Store. Intención y evento final usan IDs/causalidad deterministas. Quality #1857. |
 | M31-F004 | P0 | **Verified** | Irrigation topology | El plan consume Emitter → Sector → Assignment → POSITION/BED/TRAY con ownership, vigencia y filtros operativos; calcula por emisor físico, evita doble conteo y conserva fallback legacy explícito solo cuando la sede no tiene topología canónica. Quality #1861. |
-| M31-F005 | P0 | Open | Formula/versioning | `calculateSimpleFormula()` reparte el objetivo mediante una heurística de suma global, no resuelve nutrientes por composición; una fórmula puede aprobarse aun con advertencias. No hay versión inmutable ni lineage de fórmula. |
+| M31-F005 | P0 | **Verified** | Formula/versioning | Un solver matricial usa composición normalizada y objetivos netos; aprobación recalcula evidencia tenant-aware en el command boundary y solo acepta validación sin advertencias. Cada cambio crea versión inmutable con lineage y snapshots. Quality #1865. |
 | M31-F006 | P0 | Open | Execution/inventory | El replay con el mismo `commandId` ya es idempotente y publica intención/evento causal, pero falta transacción o precondición remota para dos comandos distintos concurrentes o ejecución multi-dispositivo; esa carrera todavía puede producir doble consumo o conflicto de stock. |
 | M31-F007 | P1 | Open | Tank/planning | La UI anuncia cargas máximas de 1.000 L pero acepta cualquier capacidad/volumen. El cálculo informa cargas, pero no persiste frecuencia de preparación ni divide un plan diario en preparaciones ejecutables. |
 | M31-F008 | P1 | Open | Water authority | Los análisis ya son tenant-owned, pero continúan como registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial ni comparación histórica canónica. |
@@ -168,6 +168,38 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: el command usa `irrigationHydraulicsForPlan()`, persiste el snapshot y publica modo/conteos; la página no reintroduce `update()`; las referencias y el cálculo fallan cerrado por tenant.
 - F005 autoridad matemática/versionado, F006 carrera transaccional multi-dispositivo y F011 persistencia/sync canónicos continúan abiertos y no se atribuyen a F004.
 
+## M31-F005 — cierre verificado
+
+### Solución
+
+- `solveFertigationFormula()` reemplaza el reparto por suma global con mínimos cuadrados no negativos sobre la matriz producto–nutriente; usa gramos, litros y ppm de forma explícita.
+- La composición acepta fichas legacy y `FertigationProduct.analysis`, convierte P₂O₅/K₂O/CaO/MgO/SO₃ a elemento, aplica pureza y descuenta del objetivo N-NO₃, N-NH₄ y demás aportes del agua.
+- El solver respeta el límite de solubilidad y penaliza nutrientes sin objetivo para preferir alternativas limpias. `validateFormula()` rechaza desviación, aporte no solicitado, referencia ausente/ambigua, cantidad inválida, duplicado, tanque incoherente y calcio junto con fosfato/sulfato.
+- El command boundary ignora la `validation` declarada por el cliente: resuelve objetivo, agua y productos dentro del tenant activo, recalcula evidencia y falla antes de publicar si una aprobación conserva advertencias.
+- Borradores advertidos siguen permitidos y quedan explícitamente no aprobables; `createFertigationFormula()` también impide construir directamente un estado aprobado sin validación canónica válida.
+- Fórmulas nuevas se agregan sin mutar las anteriores: `formulaKey`, `version` y `supersedesFormulaId` forman el lineage. Se fijan snapshots de objetivo, agua, productos y composición.
+- Preparación y aplicación conservan `formulaKey`/`formulaVersion`; el adaptador legacy mantiene `volumeL` mientras la autoridad canónica usa `volumeLiters`.
+- No se añadió schema/bootstrap/sync para nuevas colecciones: M31-F011 permanece abierto; la carrera de inventario multi-dispositivo sigue aislada en M31-F006.
+
+### Pruebas adversariales
+
+- `tests/m3-1-formulation-authority.test.mjs`: ocho casos para nitrógeno del agua, óxidos/pureza, producto canónico, solver por composición, aporte sin objetivo, solubilidad, compatibilidad, referencias/duplicados/cantidades y guard de aprobación.
+- `tests/m3-1-formulation-command.test.mjs`: seis casos para validación server-side, payload cliente falsificado, IDs repetidos cross-tenant, historial inmutable, siguiente versión, snapshot de preparación, referencia extranjera, borrador advertido y contrato de UI.
+- `tests/m3-1-irrigation-mirfe-command.test.mjs` se ajustó únicamente para suministrar la evidencia ahora obligatoria a la prueba histórica de aprobación.
+- Pruebas dirigidas locales: 38/38, incluidas regresiones F001/F003 e inventario.
+
+### Quality y reauditoría
+
+- Commit de solución: `32fc999dfc5edc3e767db9e9b3f3609b27b791f8`.
+- Quality #1865: **verde**, 893/893 pruebas.
+- Cobertura global: 92.89% líneas / 75.14% ramas / 90.66% funciones.
+- `formulation.js`: 100% líneas / 79.28% ramas / 100% funciones.
+- `irrigationMirfe.js`: 100% líneas / 74.58% ramas / 100% funciones.
+- `irrigationMirfeCommand.js`: 90.25% líneas / 82.42% ramas / 84.29% funciones.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: 17/17 controles estáticos de autoridad, eliminación de la heurística, server revalidation, tenancy, lineage, snapshots, UI y evidencia adversarial pasaron.
+- M31-F006 continúa abierto como único P0: dos command IDs concurrentes todavía requieren precondición remota/transacción de inventario.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -219,7 +251,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **4**
-- Open: **8**
-- P0 abiertos: **2**
+- Verified: **5**
+- Open: **7**
+- P0 abiertos: **1**
 - P1 abiertos: **6**
