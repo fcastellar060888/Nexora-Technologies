@@ -2,11 +2,11 @@ import{useState}from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
-import{useStore}from'../services/store'
+import{useIrrigationMirfeStore}from'../services/irrigationMirfeTenantStore'
 import{createTankPreparation,executeTankPreparation}from'../domain/irrigationExecution'
 
 export default function PreparationsPage(){
- const{state,update}=useStore();const[allocations,setAllocations]=useState({});const[responsible,setResponsible]=useState('')
+ const{state,update}=useIrrigationMirfeStore();const[allocations,setAllocations]=useState({});const[responsible,setResponsible]=useState('')
  function create(formulation){try{update(s=>createTankPreparation(s,{formulationId:formulation.id,responsible}),{module:'Fertirriego',action:'Preparación creada',detail:formulation.id})}catch(error){alert(error.message)}}
  function execute(preparation){try{update(s=>executeTankPreparation(s,{preparationId:preparation.id,allocations,responsible}),{module:'Fertirriego',action:'Preparación ejecutada',detail:preparation.id})}catch(error){alert(error.message)}}
  const available=state.formulations.filter(f=>f.status==='Aprobada'&&!state.tankPreparations.some(p=>p.formulationId===f.id&&!['Cancelada','Aplicada'].includes(p.status)))

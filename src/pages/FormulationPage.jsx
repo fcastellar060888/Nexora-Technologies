@@ -3,12 +3,12 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import PermissionButton from'../components/PermissionButton'
-import{useStore}from'../services/store'
+import{useIrrigationMirfeStore}from'../services/irrigationMirfeTenantStore'
 import{netTargets,calculateSimpleFormula,validateFormula}from'../domain/formulation'
 import{activeUser,hasPermission}from'../services/permissions'
 
 export default function FormulationPage(){
- const{state,update}=useStore();const c=state.currentContext
+ const{state,update}=useIrrigationMirfeStore();const c=state.currentContext
  const[form,setForm]=useState({siteId:c.siteId||state.sites[0]?.id||'',geneticId:c.geneticId||state.genetics[0]?.id||'',stage:c.stage||'Vegetativo fuerte',volumeL:1000})
  const[result,setResult]=useState([]);const[validation,setValidation]=useState(null)
  function calculate(){

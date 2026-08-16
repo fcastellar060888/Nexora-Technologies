@@ -60,3 +60,23 @@ test('normaliza activos, mantenimientos y lecturas ambientales',()=>{
  assert.equal(state.environmentalReadings[0].humidity,58)
  assert.equal(state.environmentalReadings[0].co2,700)
 })
+
+
+test('migra ownership MIRFE solo cuando la identidad histórica es inequívoca',()=>{
+ const state=migrateState({
+  companies:[{id:'org-a'},{id:'org-b'}],currentContext:{companyId:'org-a'},
+  sites:[{id:'site-a',organizationId:'org-a'},{id:'shared',organizationId:'org-a'},{id:'shared',organizationId:'org-b'}],
+  genetics:[{id:'g-a',organizationId:'org-a'}],products:[{id:'p-a',organizationId:'org-a'}],
+  waterAnalyses:[{id:'w-a',siteId:'site-a'},{id:'w-ambiguous',siteId:'shared'}],
+  nutrientProducts:[{id:'n-a',inventoryProductId:'p-a'}],
+  nutrientObjectives:[{id:'o-a',geneticId:'g-a'}],
+  irrigationPlans:[{id:'plan-a',siteId:'site-a'}],
+  formulations:[{id:'f-a',siteId:'site-a',items:[]}],
+  tankPreparations:[{id:'prep-a',formulationId:'f-a',siteId:'site-a',items:[]}],
+  irrigationApplications:[{id:'app-a',preparationId:'prep-a',formulationId:'f-a',siteId:'site-a'}]
+ })
+ assert.equal(state.schemaVersion,11)
+ assert.equal(state.waterAnalyses.find(item=>item.id==='w-a').organizationId,'org-a')
+ assert.equal(state.waterAnalyses.find(item=>item.id==='w-ambiguous').organizationId,undefined)
+ for(const collection of['nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','irrigationApplications'])assert.equal(state[collection][0].organizationId,'org-a',collection)
+})
