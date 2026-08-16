@@ -88,7 +88,12 @@ export function createFertigationFormula(input={}){
  const keys=items.map(item=>`${item.productId}:${item.tank}`)
  if(new Set(keys).size!==keys.length)throw new Error('La fórmula no puede repetir el mismo producto dentro del mismo tanque.')
  const id=required(input.id,'id'),formulaKey=text(input.formulaKey)||id,version=positiveInteger(input.version??1,'version')
- return deepFreeze({id,organizationId:required(input.organizationId,'organizationId'),siteId:required(input.siteId,'siteId'),formulaKey,version,supersedesFormulaId:text(input.supersedesFormulaId),name:required(input.name,'name'),stage:required(input.stage,'stage'),geneticId:text(input.geneticId),volumeLiters:positive(input.volumeLiters,'volumeLiters'),items,validation:plainObject(input.validation)?{...input.validation}:{},status:text(input.status)||'DRAFT',createdAt:iso(input.createdAt||new Date().toISOString(),'createdAt')})
+ const validation=plainObject(input.validation)?{...input.validation}:{},status=text(input.status)||'DRAFT',approved=status==='Aprobada'||status==='APPROVED'
+ if(approved&&(validation.valid!==true||(Array.isArray(validation.warnings)&&validation.warnings.length)))throw new Error('Una fórmula solo puede aprobarse con validación canónica válida y sin advertencias.')
+ const createdAt=iso(input.createdAt||new Date().toISOString(),'createdAt'),approvedAt=input.approvedAt?iso(input.approvedAt,'approvedAt'):(approved?createdAt:'')
+ const targetSnapshot=plainObject(input.targetSnapshot)?numericRecord(input.targetSnapshot,'targetSnapshot'):{}
+ const productSnapshots=Array.isArray(input.productSnapshots)?input.productSnapshots.filter(plainObject).map(snapshot=>({...snapshot})):[]
+ return deepFreeze({id,organizationId:required(input.organizationId,'organizationId'),siteId:required(input.siteId,'siteId'),formulaKey,version,supersedesFormulaId:text(input.supersedesFormulaId),name:required(input.name,'name'),stage:required(input.stage,'stage'),geneticId:text(input.geneticId),volumeLiters:positive(input.volumeLiters,'volumeLiters'),items,nutrientObjectiveId:text(input.nutrientObjectiveId),waterAnalysisId:text(input.waterAnalysisId),targetSnapshot,productSnapshots,validation,status,createdAt,approvedBy:text(input.approvedBy),approvedAt})
 }
 
 export function nextFertigationFormulaVersion(previous,input={}){

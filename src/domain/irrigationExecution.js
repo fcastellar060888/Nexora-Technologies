@@ -18,7 +18,7 @@ function createTankPreparationForTenant(state,input){
  const items=(formulation.items||[]).map((item,index)=>({id:item.id||`${formulation.id}-${index}`,nutrientProductId:item.productId,tank:item.tank||'A',requiredQuantity:positive(item.grams,'La cantidad formulada'),requiredUnit:'g',inventoryProductId:(state.nutrientProducts||[]).find(x=>x.id===item.productId)?.inventoryProductId||'',lotId:'',consumedQuantity:0,consumedUnit:'',cost:0}))
  if(!items.length)throw new Error('La formulación no contiene productos.')
  const createdAt=input.createdAt||new Date().toISOString()
- const preparation={id:input.id||crypto.randomUUID(),formulationId:formulation.id,siteId:formulation.siteId,volumeL:Number(formulation.volumeL||0),stage:formulation.stage||'',date:input.date||createdAt.slice(0,10),status:'Pendiente',items,createdAt,responsible:input.responsible||'',notes:input.notes||'',totalCost:0}
+ const preparation={id:input.id||crypto.randomUUID(),formulationId:formulation.id,formulaKey:formulation.formulaKey||formulation.id,formulaVersion:Number(formulation.version||1),siteId:formulation.siteId,volumeL:Number(formulation.volumeLiters??formulation.volumeL??0),stage:formulation.stage||'',date:input.date||createdAt.slice(0,10),status:'Pendiente',items,createdAt,responsible:input.responsible||'',notes:input.notes||'',totalCost:0}
  return{...state,tankPreparations:[...(state.tankPreparations||[]),preparation]}
 }
 
@@ -59,7 +59,7 @@ function registerIrrigationApplicationForTenant(state,input){
  const volumeL=positive(input.volumeL||preparation.volumeL,'El volumen aplicado')
  if(volumeL>Number(preparation.volumeL||0))throw new Error('El volumen aplicado no puede superar el volumen preparado.')
  const createdAt=input.createdAt||new Date().toISOString()
- const application={id:input.id||crypto.randomUUID(),preparationId:preparation.id,formulationId:preparation.formulationId,siteId:preparation.siteId,houseId:input.houseId||'',date:input.date||createdAt.slice(0,10),volumeL,ec:Number(input.ec||0),ph:Number(input.ph||0),responsible:input.responsible||'',notes:input.notes||'',status:'Aplicada',createdAt}
+ const application={id:input.id||crypto.randomUUID(),preparationId:preparation.id,formulationId:preparation.formulationId,formulaKey:preparation.formulaKey||'',formulaVersion:Number(preparation.formulaVersion||1),siteId:preparation.siteId,houseId:input.houseId||'',date:input.date||createdAt.slice(0,10),volumeL,ec:Number(input.ec||0),ph:Number(input.ph||0),responsible:input.responsible||'',notes:input.notes||'',status:'Aplicada',createdAt}
  return{...state,irrigationApplications:[...(state.irrigationApplications||[]),application],tankPreparations:(state.tankPreparations||[]).map(x=>x.id===preparation.id?{...x,status:'Aplicada',appliedAt:createdAt,applicationId:application.id}:x),workOrders:(state.workOrders||[]).map(x=>x.preparationId===preparation.id&&x.status!=='Completada'?{...x,status:'Completada',completedAt:createdAt}:x)}
 }
 

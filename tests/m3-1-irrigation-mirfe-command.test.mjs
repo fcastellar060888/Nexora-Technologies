@@ -74,7 +74,7 @@ test('M31-F003: replay no duplica producto y colisión de commandId falla cerrad
 
 test('M31-F003: aprobación exige capability y emite evento distinto del borrador',async()=>{
  const input={siteId:'site-1',geneticId:'g-1',stage:'Vegetativo',volumeL:1000,items:[{productId:'nutrient-1',grams:100,tank:'A'}],validation:{warnings:[]}}
- let state={...fixture(),nutrientProducts:[{id:'nutrient-1',organizationId:'org-a',inventoryProductId:'inventory-1'}]},events=[]
+ let state={...fixture(),nutrientProducts:[{id:'nutrient-1',organizationId:'org-a',inventoryProductId:'inventory-1',nNo3:10,tank:'A'}],nutrientObjectives:[{id:'objective-1',organizationId:'org-a',geneticId:'g-1',stage:'Vegetativo',status:'Aprobada',n:10,p:0,k:0,ca:0,mg:0,s:0}],waterAnalyses:[{id:'water-1',organizationId:'org-a',siteId:'site-1',status:'Vigente',nNo3:0}]},events=[]
  const deps={publishEvent:async event=>events.push(event),commit:recipe=>{state=recipe(state)}}
  await executeIrrigationMirfeCommand(state,{operation:IRRIGATION_MIRFE_OPERATIONS.APPROVE_FORMULATION,entityId:'formula-1',commandId:'approve-1',occurredAt:'2026-08-16T10:15:00.000Z',input},deps)
  assert.equal(state.formulations[0].status,'Aprobada')

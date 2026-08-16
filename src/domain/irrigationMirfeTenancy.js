@@ -31,7 +31,7 @@ const REFERENCES=Object.freeze({
  nutrientProducts:[['products','inventoryProductId','producto de inventario']],
  nutrientObjectives:[['genetics','geneticId','genética']],
  irrigationPlans:[['sites','siteId','sede'],['houses','houseId','nave'],['genetics','geneticId','genética']],
- formulations:[['sites','siteId','sede'],['genetics','geneticId','genética']],
+ formulations:[['sites','siteId','sede'],['genetics','geneticId','genética'],['formulations','supersedesFormulaId','fórmula anterior']],
  tankPreparations:[['formulations','formulationId','formulación'],['sites','siteId','sede']],
  workOrders:[['tankPreparations','preparationId','preparación'],['sites','siteId','sede']],
  irrigationApplications:[['tankPreparations','preparationId','preparación'],['formulations','formulationId','formulación'],['sites','siteId','sede'],['houses','houseId','nave']],
