@@ -21,8 +21,8 @@ const fixture=()=>({
   {id:'objective-shared',organizationId:'org-a',geneticId:'g-1',stage:'Vegetativo',status:'Aprobada',n:100,p:0,k:0,ca:0,mg:0,s:0}
  ],
  waterAnalyses:[
-  {id:'water-shared',organizationId:'org-b',siteId:'site-1',status:'Vigente',nNo3:90},
-  {id:'water-shared',organizationId:'org-a',siteId:'site-1',status:'Vigente',nNo3:0}
+  {id:'water-shared',organizationId:'org-b',siteId:'site-1',status:'Vigente',nNo3:90,nNh4:0,p:0,k:0,ca:0,mg:0,s:0},
+  {id:'water-shared',organizationId:'org-a',siteId:'site-1',status:'Vigente',nNo3:0,nNh4:0,p:0,k:0,ca:0,mg:0,s:0}
  ],
  houses:[],beds:[],plantPositions:[],propagationBanks:[],propagationUnits:[],inventoryLots:[],inventoryMovements:[],
  irrigationEmitters:[],irrigationSectors:[],irrigationAssignments:[],irrigationPulses:[],irrigationMeasurements:[],drainageMeasurements:[],
@@ -108,4 +108,3 @@ test('M31-F005: UI usa solver canónico y deshabilita aprobación advertida',asy
  assert.match(source,/formulaKey/)
  assert.match(source,/version/)
 })
-

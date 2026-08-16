@@ -1,4 +1,6 @@
 import{MAX_IRRIGATION_TANK_CAPACITY_LITERS,planIrrigationTankLoads}from'./irrigationTankPlanning.js'
+import{activeOrganizationId}from'./organizationOwnership.js'
+import{currentWaterAnalysisForSite}from'./waterAnalysis.js'
 
 export const stages=['Clones/enraizamiento','Vegetativo temprano','Vegetativo fuerte','Madres','Floración inicial','Floración media','Floración final'];
 export function hydraulics(rows,apps,minutes,tank=MAX_IRRIGATION_TANK_CAPACITY_LITERS,{planId=''}={}){
@@ -8,4 +10,4 @@ export function hydraulics(rows,apps,minutes,tank=MAX_IRRIGATION_TANK_CAPACITY_L
  const tankPlan=planIrrigationTankLoads({planId,pulseVolumeLiters:pulse,applicationsPerDay:apps,tankCapacityLiters:tank});
  return{plants,flow,pulse,daily:tankPlan.dailyVolumeLiters,loads:tankPlan.preparationCount,last:tankPlan.lastLoadVolumeLiters,...tankPlan};
 }
-export function waterForSite(state,siteId){return [...state.waterAnalyses].reverse().find(x=>x.siteId===siteId&&x.status==='Vigente')}
+export function waterForSite(state,siteId,organizationId=activeOrganizationId(state)){return currentWaterAnalysisForSite(state.waterAnalyses,{organizationId,siteId})}

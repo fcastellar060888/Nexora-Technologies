@@ -5,13 +5,15 @@ import PageHeader from'../components/PageHeader'
 import PermissionButton from'../components/PermissionButton'
 import{IRRIGATION_MIRFE_OPERATIONS,useIrrigationMirfeCommandStore}from'../services/irrigationMirfeCommandStore'
 import{netTargets,solveFertigationFormula,validateFormula}from'../domain/formulation'
+import{activeOrganizationId}from'../domain/organizationOwnership'
+import{currentWaterAnalysisForSite,WATER_FORMULATION_ANALYTES}from'../domain/waterAnalysis'
 
 export default function FormulationPage(){
  const{state,execute}=useIrrigationMirfeCommandStore();const c=state.currentContext
  const[form,setForm]=useState({siteId:c.siteId||state.sites[0]?.id||'',geneticId:c.geneticId||state.genetics[0]?.id||'',stage:c.stage||'Vegetativo fuerte',volumeL:1000})
  const[result,setResult]=useState([]);const[validation,setValidation]=useState(null)
  function calculate(){
-  const water=[...state.waterAnalyses].reverse().find(x=>x.siteId===form.siteId&&x.status==='Vigente')
+  const water=currentWaterAnalysisForSite(state.waterAnalyses,{organizationId:activeOrganizationId(state),siteId:form.siteId,requiredAnalytes:WATER_FORMULATION_ANALYTES})
   const objective=state.nutrientObjectives.find(x=>x.geneticId===form.geneticId&&x.stage===form.stage&&x.status==='Aprobada')
   if(!objective)return alert('Falta objetivo nutricional aprobado para esta genética y etapa.')
   if(!water)return alert('Falta análisis de agua vigente para esta sede.')

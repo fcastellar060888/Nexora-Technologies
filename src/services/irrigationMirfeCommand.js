@@ -5,6 +5,7 @@ import{irrigationHydraulicsForPlan}from'../domain/irrigationTopology.js'
 import{activeOrganizationId,explicitOrganizationId}from'../domain/organizationOwnership.js'
 import{createTankPreparation,executeTankPreparation,registerIrrigationApplication}from'../domain/irrigationExecution.js'
 import{IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,mutateIrrigationMirfeState,scopeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
+import{assertWaterSampleIdentity,createWaterAnalysisVersion,currentWaterAnalysisForSite,WATER_FORMULATION_ANALYTES}from'../domain/waterAnalysis.js'
 import{activeUser,hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
 import{applyMirfeInventoryConfirmation,buildMirfeInventoryTransaction}from'./mirfeInventoryTransaction.js'
@@ -102,19 +103,36 @@ function planIrrigation(state,input,aggregateId,organizationId,occurredAt){
  const rows=list(tenant.beds).filter(bed=>!houseId||bed.houseId===houseId).filter(bed=>!geneticId||bed.geneticId===geneticId).map(bed=>({...bed,drippers:bed.drippers||1,flow:bed.flow||2}))
  const apps=finite(input.apps,'apps',{positive:true}),minutes=finite(input.minutes,'minutes',{positive:true}),tank=finite(input.tank,'tank',{positive:true})
  const result=irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId,sectorId,geneticId,at:occurredAt,apps,minutes,tank,planId:aggregateId,legacyRows:rows})
- const water=[...list(tenant.waterAnalyses)].reverse().find(item=>item.siteId===siteId&&item.status==='Vigente')
+ const water=currentWaterAnalysisForSite(tenant.waterAnalyses,{organizationId,siteId})
  const stage=text(input.stage),date=text(input.date)||occurredAt.slice(0,10),loadSchedule=result.loadSchedule.map(load=>({...load,organizationId,irrigationPlanId:aggregateId,siteId,houseId,sectorId,geneticId,stage,date,status:'PLANNED'}))
  const record={id:aggregateId,organizationId,date,siteId,houseId,sectorId,geneticId,stage,apps:result.applicationCount,minutes,tank:result.tankCapacityLiters,...result,loadSchedule,waterStatus:water?'Vigente':'Pendiente'}
  return{aggregateType:'mirfe.irrigation-plan',aggregateId,eventName:DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED,siteId,eventPayload:{planId:aggregateId,siteId,houseId,sectorId,geneticId,plants:result.plants,dailyLiters:result.daily,tankCapacityLiters:result.tankCapacityLiters,preparationsPerApplication:result.preparationsPerApplication,preparationCount:result.preparationCount,loads:result.loads,calculationMode:result.calculationMode,assignmentCount:result.assignmentCount,sectorCount:result.sectorCount,emitterCount:result.emitterCount},collection:'irrigationPlans',apply:current=>appendRecord(current,'irrigationPlans',record)}
 }
 
-function planWaterAnalysis(input,aggregateId,organizationId,occurredAt){
- const siteId=required(input.siteId,'siteId'),status=text(input.status)||'Pendiente',record={id:aggregateId,...input,organizationId,siteId,date:text(input.date)||occurredAt.slice(0,10),status}
- return{aggregateType:'mirfe.water-analysis',aggregateId,eventName:DomainEvents.MIRFE_WATER_ANALYSIS_RECORDED,siteId,eventPayload:{waterAnalysisId:aggregateId,siteId,status,laboratory:text(input.laboratory)},collection:'waterAnalyses',apply:current=>mutateIrrigationMirfeState(current,tenant=>{
-  const items=status==='Vigente'?list(tenant.waterAnalyses).map(item=>item.siteId===siteId&&item.status==='Vigente'?{...item,status:'Histórico'}:item):list(tenant.waterAnalyses)
-  if(items.some(item=>item.id===aggregateId))throw new Error('waterAnalyses ya contiene ese id en la empresa activa.')
-  return{...tenant,waterAnalyses:[...items,record]}
- })}
+function latestWaterAnalysisVersion(tenant,input){
+ const previousId=text(input.supersedesWaterAnalysisId)
+ if(previousId){
+  const matches=list(tenant.waterAnalyses).filter(item=>item.id===previousId)
+  if(matches.length!==1)throw new Error('El análisis de agua anterior no existe de forma inequívoca en la empresa activa.')
+  return matches[0]
+ }
+ const analysisKey=text(input.analysisKey)
+ if(!analysisKey)return null
+ const candidates=list(tenant.waterAnalyses).filter(item=>text(item.analysisKey||item.id)===analysisKey)
+ if(!candidates.length)return null
+ const versions=candidates.map(item=>Number(item.version||1))
+ if(new Set(versions).size!==versions.length)throw new Error('El lineage del análisis de agua contiene una versión duplicada.')
+ return candidates.sort((left,right)=>Number(right.version||1)-Number(left.version||1)||Date.parse(right.reportedAt||right.date||0)-Date.parse(left.reportedAt||left.date||0))[0]
+}
+
+function planWaterAnalysis(state,input,aggregateId,organizationId,occurredAt){
+ const tenant=activeTenantState(state,organizationId),siteId=required(input.siteId,'siteId'),previous=latestWaterAnalysisVersion(tenant,input)
+ const siteMatches=list(tenant.sites).filter(item=>item.id===siteId)
+ if(siteMatches.length!==1)throw new Error(siteMatches.length?'La sede del análisis de agua tiene identidad duplicada.':'La sede del análisis de agua no existe en la empresa activa.')
+ if(list(tenant.waterAnalyses).some(item=>item.id===aggregateId))throw new Error('waterAnalyses ya contiene ese id en la empresa activa.')
+ const record=createWaterAnalysisVersion({...input,id:aggregateId,organizationId,siteId,reportedAt:occurredAt},previous)
+ assertWaterSampleIdentity(tenant.waterAnalyses,record)
+ return{aggregateType:'mirfe.water-analysis',aggregateId,eventName:DomainEvents.MIRFE_WATER_ANALYSIS_RECORDED,siteId,eventPayload:{waterAnalysisId:aggregateId,analysisKey:record.analysisKey,version:record.version,supersedesWaterAnalysisId:record.supersedesWaterAnalysisId,siteId,status:record.status,laboratoryId:record.laboratoryId,laboratory:record.laboratoryName,sampleId:record.sampleId,resultCount:record.completeness.resultCount,complete:record.completeness.complete,partial:!record.completeness.complete},collection:'waterAnalyses',apply:current=>appendRecord(current,'waterAnalyses',record)}
 }
 
 function planNutrientProduct(input,aggregateId,organizationId){
@@ -143,10 +161,9 @@ function latestFormulaVersion(tenant,input,{siteId,geneticId,stage}){
  return candidates.sort((left,right)=>(Number(right.version||1)-Number(left.version||1))||(Date.parse(right.createdAt||right.date||0)-Date.parse(left.createdAt||left.date||0)))[0]||null
 }
 
-function formulationEvidence(tenant,{siteId,geneticId,stage,items,volumeLiters},approved){
+function formulationEvidence(tenant,{organizationId,siteId,geneticId,stage,items,volumeLiters},approved){
  const objectives=list(tenant.nutrientObjectives).filter(item=>item.geneticId===geneticId&&item.stage===stage&&item.status==='Aprobada')
- const waters=list(tenant.waterAnalyses).filter(item=>item.siteId===siteId&&item.status==='Vigente')
- const objective=objectives.at(-1),water=waters.at(-1)
+ const objective=objectives.at(-1),water=currentWaterAnalysisForSite(tenant.waterAnalyses,{organizationId,siteId,requiredAnalytes:WATER_FORMULATION_ANALYTES})
  if(approved&&!objective)throw new Error('No se puede aprobar sin un objetivo nutricional aprobado para genética y etapa.')
  if(approved&&!water)throw new Error('No se puede aprobar sin un análisis de agua vigente para la sede.')
  const productIds=[...new Set(items.map(item=>text(item?.productId)).filter(Boolean))],products=[]
@@ -172,7 +189,7 @@ function planFormulation(state,input,aggregateId,organizationId,occurredAt,appro
  if(!items.length)throw new Error('La formulación requiere al menos un producto calculado.')
  const previous=latestFormulaVersion(tenant,input,{siteId,geneticId,stage})
  if(previous&&(previous.siteId!==siteId||text(previous.geneticId)!==geneticId||previous.stage!==stage))throw new Error('La nueva versión debe conservar sede, genética y etapa de su lineage.')
- const evidence=formulationEvidence(tenant,{siteId,geneticId,stage,items,volumeLiters},approved),user=activeUser(state),status=approved?'Aprobada':'Borrador'
+ const evidence=formulationEvidence(tenant,{organizationId,siteId,geneticId,stage,items,volumeLiters},approved),user=activeUser(state),status=approved?'Aprobada':'Borrador'
  const canonicalInput={id:aggregateId,organizationId,siteId,formulaKey:previous?.formulaKey||text(input.formulaKey)||aggregateId,name:text(input.name)||`${stage} · ${geneticId}`,stage,geneticId,volumeLiters,items,nutrientObjectiveId:text(evidence.objective?.id),waterAnalysisId:text(evidence.water?.id),targetSnapshot:evidence.targetSnapshot,productSnapshots:evidence.productSnapshots,validation:{...evidence.validation,waterSnapshot:evidence.waterSnapshot},status,createdAt:occurredAt,approvedBy:approved?(user?.name||'Usuario local'):'',approvedAt:approved?occurredAt:''}
  const formula=previous?nextFertigationFormulaVersion(previous,canonicalInput):createFertigationFormula(canonicalInput)
  const record={...formula,date:occurredAt,volumeL:formula.volumeLiters}
@@ -232,7 +249,7 @@ function planApplication(state,input,aggregateId,organizationId,occurredAt){
 
 function buildPlan(state,operation,input,aggregateId,organizationId,occurredAt,commandId){
  if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_IRRIGATION_PLAN)return planIrrigation(state,input,aggregateId,organizationId,occurredAt)
- if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_WATER_ANALYSIS)return planWaterAnalysis(input,aggregateId,organizationId,occurredAt)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_WATER_ANALYSIS)return planWaterAnalysis(state,input,aggregateId,organizationId,occurredAt)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_NUTRIENT_PRODUCT)return planNutrientProduct(input,aggregateId,organizationId)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_NUTRIENT_OBJECTIVE)return planNutrientObjective(input,aggregateId,organizationId,occurredAt)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_FORMULATION)return planFormulation(state,input,aggregateId,organizationId,occurredAt,false)

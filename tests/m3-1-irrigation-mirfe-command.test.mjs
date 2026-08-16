@@ -40,15 +40,15 @@ test('M31-F003: el catálogo MIRFE cumple el contrato dominio.entidad.acción re
  for(const[name,value]of Object.entries(DomainEvents).filter(([name])=>name.startsWith('MIRFE_')))assert.match(value,EVENT_NAME_PATTERN,name)
 })
 
-test('M31-F003: análisis vigente solo historiza registros del tenant activo',async()=>{
+test('M31-F003/F008: análisis vigente se agrega sin mutar registros de ningún tenant',async()=>{
  const state={...fixture(),waterAnalyses:[
   {id:'old',organizationId:'org-b',siteId:'site-1',status:'Vigente'},
   {id:'old',organizationId:'org-a',siteId:'site-1',status:'Vigente'}
  ]}
- const command={operation:IRRIGATION_MIRFE_OPERATIONS.RECORD_WATER_ANALYSIS,entityId:'water-1',commandId:'cmd-water',occurredAt:'2026-08-16T10:05:00.000Z',input:{siteId:'site-1',date:'2026-08-16',laboratory:'Lab A',status:'Vigente',ec:0.4,ph:7}}
+ const command={operation:IRRIGATION_MIRFE_OPERATIONS.RECORD_WATER_ANALYSIS,entityId:'water-1',commandId:'cmd-water',occurredAt:'2026-08-16T10:05:00.000Z',input:{siteId:'site-1',date:'2026-08-16',laboratoryId:'lab-a',laboratoryName:'Lab A',sampleId:'sample-1',samplePoint:'well-1',sampledAt:'2026-08-16T08:00:00.000Z',analyticalMethodId:'method-1',expectedAnalytes:['ec','ph'],results:[{analyte:'ec',value:0.4,methodId:'method-1'},{analyte:'ph',value:7,methodId:'method-1'}],status:'Vigente'}}
  const next=(await run(state,command)).state
  assert.equal(next.waterAnalyses.find(item=>item.organizationId==='org-b').status,'Vigente')
- assert.equal(next.waterAnalyses.find(item=>item.id==='old'&&item.organizationId==='org-a').status,'Histórico')
+ assert.equal(next.waterAnalyses.find(item=>item.id==='old'&&item.organizationId==='org-a').status,'Vigente')
  assert.equal(next.waterAnalyses.find(item=>item.id==='water-1').organizationId,'org-a')
 })
 
@@ -74,7 +74,7 @@ test('M31-F003: replay no duplica producto y colisión de commandId falla cerrad
 
 test('M31-F003: aprobación exige capability y emite evento distinto del borrador',async()=>{
  const input={siteId:'site-1',geneticId:'g-1',stage:'Vegetativo',volumeL:1000,items:[{productId:'nutrient-1',grams:100,tank:'A'}],validation:{warnings:[]}}
- let state={...fixture(),nutrientProducts:[{id:'nutrient-1',organizationId:'org-a',inventoryProductId:'inventory-1',nNo3:10,tank:'A'}],nutrientObjectives:[{id:'objective-1',organizationId:'org-a',geneticId:'g-1',stage:'Vegetativo',status:'Aprobada',n:10,p:0,k:0,ca:0,mg:0,s:0}],waterAnalyses:[{id:'water-1',organizationId:'org-a',siteId:'site-1',status:'Vigente',nNo3:0}]},events=[]
+ let state={...fixture(),nutrientProducts:[{id:'nutrient-1',organizationId:'org-a',inventoryProductId:'inventory-1',nNo3:10,tank:'A'}],nutrientObjectives:[{id:'objective-1',organizationId:'org-a',geneticId:'g-1',stage:'Vegetativo',status:'Aprobada',n:10,p:0,k:0,ca:0,mg:0,s:0}],waterAnalyses:[{id:'water-1',organizationId:'org-a',siteId:'site-1',status:'Vigente',nNo3:0,nNh4:0,p:0,k:0,ca:0,mg:0,s:0}]},events=[]
  const deps={publishEvent:async event=>events.push(event),commit:recipe=>{state=recipe(state)}}
  await executeIrrigationMirfeCommand(state,{operation:IRRIGATION_MIRFE_OPERATIONS.APPROVE_FORMULATION,entityId:'formula-1',commandId:'approve-1',occurredAt:'2026-08-16T10:15:00.000Z',input},deps)
  assert.equal(state.formulations[0].status,'Aprobada')
