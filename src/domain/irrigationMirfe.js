@@ -1,3 +1,5 @@
+import{irrigationTankCapacityLiters,scaleFertigationQuantity}from'./irrigationTankPlanning.js'
+
 const text=value=>String(value??'').trim()
 const required=(value,label)=>{const normalized=text(value);if(!normalized)throw new Error(`${label} es obligatorio.`);return normalized}
 const positive=(value,label)=>{const number=Number(value);if(!Number.isFinite(number)||number<=0)throw new Error(`${label} debe ser mayor que cero.`);return number}
@@ -103,8 +105,10 @@ export function nextFertigationFormulaVersion(previous,input={}){
 
 export function createFertigationPreparation(input={},formula){
  if(!formula?.id)throw new Error('La fórmula es obligatoria.')
- const status=enumValue(input.status||FERTIGATION_STATUSES.PENDING,FERTIGATION_STATUSES,'status')
- return deepFreeze({id:required(input.id,'id'),organizationId:formula.organizationId,siteId:formula.siteId,formulaId:formula.id,formulaKey:formula.formulaKey,formulaVersion:formula.version,volumeLiters:positive(input.volumeLiters??formula.volumeLiters,'volumeLiters'),status,items:formula.items.map(item=>({productId:item.productId,tank:item.tank,requiredGrams:item.grams,inventoryLotId:'',consumedQuantity:null,consumedUnit:'',unitCost:null,totalCost:null})),createdAt:iso(input.createdAt||new Date().toISOString(),'createdAt'),responsibleId:text(input.responsibleId)})
+ const status=enumValue(input.status||FERTIGATION_STATUSES.PENDING,FERTIGATION_STATUSES,'status'),volumeLiters=irrigationTankCapacityLiters(input.volumeLiters??formula.volumeLiters),irrigationPlanId=text(input.irrigationPlanId),loadId=text(input.loadId),scheduled=Boolean(irrigationPlanId||loadId)
+ if(scheduled&&(!irrigationPlanId||!loadId))throw new Error('Una preparación planificada requiere irrigationPlanId y loadId.')
+ const items=formula.items.map(item=>({productId:item.productId,tank:item.tank,requiredGrams:scaleFertigationQuantity(item.grams,{formulaVolumeLiters:formula.volumeLiters,preparationVolumeLiters:volumeLiters}),inventoryLotId:'',consumedQuantity:null,consumedUnit:'',unitCost:null,totalCost:null}))
+ return deepFreeze({id:required(input.id,'id'),organizationId:formula.organizationId,siteId:formula.siteId,formulaId:formula.id,formulaKey:formula.formulaKey,formulaVersion:formula.version,volumeLiters,status,items,createdAt:iso(input.createdAt||new Date().toISOString(),'createdAt'),responsibleId:text(input.responsibleId),...(scheduled?{irrigationPlanId,loadId,applicationSequence:positiveInteger(input.applicationSequence,'applicationSequence'),loadSequence:positiveInteger(input.loadSequence,'loadSequence')}:{})})
 }
 
 export function createFertigationApplication(input={},preparation){

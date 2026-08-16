@@ -1,6 +1,7 @@
 import{hydraulics}from'./irrigation.js'
 import{IRRIGATION_EMITTER_KINDS,IRRIGATION_TARGET_TYPES}from'./irrigationMirfe.js'
 import{irrigationMirfeRecordsForOrganization}from'./irrigationMirfeTenancy.js'
+import{irrigationApplicationCount,irrigationTankCapacityLiters,planIrrigationTankLoads}from'./irrigationTankPlanning.js'
 import{explicitOrganizationId}from'./organizationOwnership.js'
 
 export const IRRIGATION_CALCULATION_MODES=Object.freeze({CANONICAL_TOPOLOGY:'CANONICAL_TOPOLOGY',LEGACY_BEDS:'LEGACY_BEDS'})
@@ -82,16 +83,16 @@ function sectorBreakdown(rows,sectors){
  return[...bySector.values()].map(({controlModes,...item})=>({...item,controlMode:controlModes.size===1?[...controlModes][0]:'MIXED'}))
 }
 
-function legacyResult(rows,apps,minutes,tank){
- const result=hydraulics(rows,apps,minutes,tank)
+function legacyResult(rows,apps,minutes,tank,planId){
+ const result=hydraulics(rows,apps,minutes,tank,{planId})
  return{...result,calculationMode:IRRIGATION_CALCULATION_MODES.LEGACY_BEDS,assignmentCount:0,sectorCount:0,emitterCount:0,perPlantFlowLitersPerHour:result.plants?result.flow/result.plants:0,topologySnapshot:null}
 }
 
-export function irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId='',sectorId='',geneticId='',at=new Date().toISOString(),apps,minutes,tank,legacyRows=[]}={}){
+export function irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId='',sectorId='',geneticId='',at=new Date().toISOString(),apps,minutes,tank,planId='',legacyRows=[]}={}){
  const tenant= text(organizationId),site=text(siteId),selectedHouse=text(houseId),selectedSector=text(sectorId),selectedGenetic=text(geneticId)
  if(!tenant)throw new Error('organizationId es obligatorio.')
  if(!site)throw new Error('siteId es obligatorio.')
- const applicationCount=positive(apps,'apps'),pulseMinutes=positive(minutes,'minutes'),tankLiters=positive(tank,'tank')
+ const applicationCount=irrigationApplicationCount(apps),pulseMinutes=positive(minutes,'minutes'),tankLiters=irrigationTankCapacityLiters(tank)
  const instant=Date.parse(at)
  if(Number.isNaN(instant))throw new Error('at debe ser una fecha válida.')
  const sites=irrigationMirfeRecordsForOrganization(state,'sites',tenant)
@@ -101,7 +102,7 @@ export function irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId
  const genetics=irrigationMirfeRecordsForOrganization(state,'genetics',tenant)
  if(selectedGenetic&&Array.isArray(state?.genetics))unique(genetics,selectedGenetic,'La genética')
  const siteAssignments=canonicalRecords(state,'irrigationAssignments',tenant).filter(assignment=>assignment.active!==false&&text(assignment.siteId)===site)
- if(!siteAssignments.length)return legacyResult(legacyRows,applicationCount,pulseMinutes,tankLiters)
+ if(!siteAssignments.length)return legacyResult(legacyRows,applicationCount,pulseMinutes,tankLiters,planId)
  const assignments=siteAssignments.filter(assignment=>effectiveAt(assignment,instant))
  if(!assignments.length)throw new Error('La topología canónica existe, pero no tiene Assignments vigentes para la fecha del plan.')
  const emitters=canonicalRecords(state,'irrigationEmitters',tenant),sectors=canonicalRecords(state,'irrigationSectors',tenant)
@@ -134,7 +135,6 @@ export function irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId
   if(row.targetType===IRRIGATION_TARGET_TYPES.POSITION)positionBeds.add(row.bedId)
  }
  for(const bedId of bedTargets)if(positionBeds.has(bedId))throw new Error(`La topología mezcla Assignment de cama y Position en ${bedId}.`)
- const plants=rows.reduce((sum,row)=>sum+row.plants,0),flow=rows.reduce((sum,row)=>sum+row.flowLitersPerHour,0),pulse=flow*pulseMinutes/60,daily=pulse*applicationCount
- const loads=daily?Math.ceil(daily/tankLiters):0,last=daily?(daily%tankLiters||tankLiters):0,breakdown=sectorBreakdown(rows,sectors)
- return{plants,flow,pulse,daily,loads,last,calculationMode:IRRIGATION_CALCULATION_MODES.CANONICAL_TOPOLOGY,assignmentCount:rows.length,sectorCount:breakdown.length,emitterCount:rows.reduce((sum,row)=>sum+row.emitterCount,0),perPlantFlowLitersPerHour:plants?flow/plants:0,topologySnapshot:{at:new Date(instant).toISOString(),assignmentIds:rows.map(row=>row.assignmentId),sectorIds:breakdown.map(item=>item.sectorId),emitterIds:[...new Set(rows.map(row=>row.emitterId))],rows,sectorBreakdown:breakdown}}
+ const plants=rows.reduce((sum,row)=>sum+row.plants,0),flow=rows.reduce((sum,row)=>sum+row.flowLitersPerHour,0),pulse=flow*pulseMinutes/60,tankPlan=planIrrigationTankLoads({planId,pulseVolumeLiters:pulse,applicationsPerDay:applicationCount,tankCapacityLiters:tankLiters}),breakdown=sectorBreakdown(rows,sectors)
+ return{plants,flow,pulse,daily:tankPlan.dailyVolumeLiters,loads:tankPlan.preparationCount,last:tankPlan.lastLoadVolumeLiters,...tankPlan,calculationMode:IRRIGATION_CALCULATION_MODES.CANONICAL_TOPOLOGY,assignmentCount:rows.length,sectorCount:breakdown.length,emitterCount:rows.reduce((sum,row)=>sum+row.emitterCount,0),perPlantFlowLitersPerHour:plants?flow/plants:0,topologySnapshot:{at:new Date(instant).toISOString(),assignmentIds:rows.map(row=>row.assignmentId),sectorIds:breakdown.map(item=>item.sectorId),emitterIds:[...new Set(rows.map(row=>row.emitterId))],rows,sectorBreakdown:breakdown}}
 }

@@ -1,7 +1,9 @@
 import{transactInventory}from'./inventory.js'
 import{mutateIrrigationMirfeState}from'./irrigationMirfeTenancy.js'
+import{irrigationTankCapacityLiters,scaleFertigationQuantity}from'./irrigationTankPlanning.js'
 
 const positive=(value,label)=>{const number=Number(value);if(!Number.isFinite(number)||number<=0)throw new Error(`${label} debe ser mayor que cero.`);return number}
+const positiveInteger=(value,label)=>{const number=positive(value,label);if(!Number.isInteger(number))throw new Error(`${label} debe ser un entero positivo.`);return number}
 
 export function gramsToInventoryUnit(grams,unit){
  const value=positive(grams,'La cantidad formulada')
@@ -14,11 +16,15 @@ function createTankPreparationForTenant(state,input){
  const formulation=(state.formulations||[]).find(x=>x.id===input.formulationId)
  if(!formulation)throw new Error('Selecciona una formulación válida.')
  if(formulation.status!=='Aprobada')throw new Error('Solo se pueden preparar fórmulas aprobadas.')
- if((state.tankPreparations||[]).some(x=>x.formulationId===formulation.id&&!['Cancelada','Aplicada'].includes(x.status)))throw new Error('Ya existe una preparación activa para esta formulación.')
- const items=(formulation.items||[]).map((item,index)=>({id:item.id||`${formulation.id}-${index}`,nutrientProductId:item.productId,tank:item.tank||'A',requiredQuantity:positive(item.grams,'La cantidad formulada'),requiredUnit:'g',inventoryProductId:(state.nutrientProducts||[]).find(x=>x.id===item.productId)?.inventoryProductId||'',lotId:'',consumedQuantity:0,consumedUnit:'',cost:0}))
+ const irrigationPlanId=String(input.irrigationPlanId||'').trim(),loadId=String(input.loadId||'').trim(),scheduled=Boolean(irrigationPlanId||loadId)
+ if(scheduled&&(!irrigationPlanId||!loadId))throw new Error('Una preparación planificada requiere irrigationPlanId y loadId.')
+ const active=(state.tankPreparations||[]).filter(x=>!['Cancelada','Aplicada'].includes(x.status))
+ if(scheduled?active.some(x=>x.irrigationPlanId===irrigationPlanId&&x.loadId===loadId):active.some(x=>x.formulationId===formulation.id))throw new Error(scheduled?'La carga planificada ya tiene una preparación activa.':'Ya existe una preparación activa para esta formulación.')
+ const id=input.id||crypto.randomUUID(),volumeL=irrigationTankCapacityLiters(input.volumeL??formulation.volumeLiters??formulation.volumeL),formulaVolumeLiters=positive(formulation.volumeLiters??formulation.volumeL,'El volumen de la fórmula')
+ const items=(formulation.items||[]).map((item,index)=>{const sourceId=item.id||`${formulation.id}-${index}`;return{id:scheduled?`${id}:${sourceId}`:sourceId,nutrientProductId:item.productId,tank:item.tank||'A',requiredQuantity:scaleFertigationQuantity(item.grams,{formulaVolumeLiters,preparationVolumeLiters:volumeL}),requiredUnit:'g',inventoryProductId:(state.nutrientProducts||[]).find(x=>x.id===item.productId)?.inventoryProductId||'',lotId:'',consumedQuantity:0,consumedUnit:'',cost:0}})
  if(!items.length)throw new Error('La formulación no contiene productos.')
  const createdAt=input.createdAt||new Date().toISOString()
- const preparation={id:input.id||crypto.randomUUID(),formulationId:formulation.id,formulaKey:formulation.formulaKey||formulation.id,formulaVersion:Number(formulation.version||1),siteId:formulation.siteId,volumeL:Number(formulation.volumeLiters??formulation.volumeL??0),stage:formulation.stage||'',date:input.date||createdAt.slice(0,10),status:'Pendiente',items,createdAt,responsible:input.responsible||'',notes:input.notes||'',totalCost:0}
+ const preparation={id,formulationId:formulation.id,formulaKey:formulation.formulaKey||formulation.id,formulaVersion:Number(formulation.version||1),siteId:formulation.siteId,volumeL,stage:formulation.stage||'',date:input.date||createdAt.slice(0,10),status:'Pendiente',items,createdAt,responsible:input.responsible||'',notes:input.notes||'',totalCost:0,...(scheduled?{irrigationPlanId,loadId,applicationSequence:positiveInteger(input.applicationSequence,'applicationSequence'),loadSequence:positiveInteger(input.loadSequence,'loadSequence')}:{})}
  return{...state,tankPreparations:[...(state.tankPreparations||[]),preparation]}
 }
 

@@ -101,10 +101,11 @@ function planIrrigation(state,input,aggregateId,organizationId,occurredAt){
  const tenant=activeTenantState(state,organizationId),siteId=required(input.siteId,'siteId'),houseId=text(input.houseId),sectorId=text(input.sectorId),geneticId=text(input.geneticId)
  const rows=list(tenant.beds).filter(bed=>!houseId||bed.houseId===houseId).filter(bed=>!geneticId||bed.geneticId===geneticId).map(bed=>({...bed,drippers:bed.drippers||1,flow:bed.flow||2}))
  const apps=finite(input.apps,'apps',{positive:true}),minutes=finite(input.minutes,'minutes',{positive:true}),tank=finite(input.tank,'tank',{positive:true})
- const result=irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId,sectorId,geneticId,at:occurredAt,apps,minutes,tank,legacyRows:rows})
+ const result=irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId,sectorId,geneticId,at:occurredAt,apps,minutes,tank,planId:aggregateId,legacyRows:rows})
  const water=[...list(tenant.waterAnalyses)].reverse().find(item=>item.siteId===siteId&&item.status==='Vigente')
- const record={id:aggregateId,organizationId,date:text(input.date)||occurredAt.slice(0,10),siteId,houseId,sectorId,geneticId,stage:text(input.stage),apps,minutes,tank,...result,waterStatus:water?'Vigente':'Pendiente'}
- return{aggregateType:'mirfe.irrigation-plan',aggregateId,eventName:DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED,siteId,eventPayload:{planId:aggregateId,siteId,houseId,sectorId,geneticId,plants:result.plants,dailyLiters:result.daily,loads:result.loads,calculationMode:result.calculationMode,assignmentCount:result.assignmentCount,sectorCount:result.sectorCount,emitterCount:result.emitterCount},collection:'irrigationPlans',apply:current=>appendRecord(current,'irrigationPlans',record)}
+ const stage=text(input.stage),date=text(input.date)||occurredAt.slice(0,10),loadSchedule=result.loadSchedule.map(load=>({...load,organizationId,irrigationPlanId:aggregateId,siteId,houseId,sectorId,geneticId,stage,date,status:'PLANNED'}))
+ const record={id:aggregateId,organizationId,date,siteId,houseId,sectorId,geneticId,stage,apps:result.applicationCount,minutes,tank:result.tankCapacityLiters,...result,loadSchedule,waterStatus:water?'Vigente':'Pendiente'}
+ return{aggregateType:'mirfe.irrigation-plan',aggregateId,eventName:DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED,siteId,eventPayload:{planId:aggregateId,siteId,houseId,sectorId,geneticId,plants:result.plants,dailyLiters:result.daily,tankCapacityLiters:result.tankCapacityLiters,preparationsPerApplication:result.preparationsPerApplication,preparationCount:result.preparationCount,loads:result.loads,calculationMode:result.calculationMode,assignmentCount:result.assignmentCount,sectorCount:result.sectorCount,emitterCount:result.emitterCount},collection:'irrigationPlans',apply:current=>appendRecord(current,'irrigationPlans',record)}
 }
 
 function planWaterAnalysis(input,aggregateId,organizationId,occurredAt){
@@ -184,9 +185,39 @@ function tenantRecord(state,organizationId,collection,id,label){
  return record
 }
 
+function irrigationPlanLoad(state,organizationId,planId,loadId){
+ const plan=tenantRecord(state,organizationId,'irrigationPlans',planId,'El plan de riego'),matches=list(plan.loadSchedule).filter(item=>text(item.id)===loadId)
+ if(matches.length!==1)throw new Error(matches.length?'La carga planificada tiene identidad duplicada.':'La carga no existe en el plan de riego activo.')
+ return{plan,load:matches[0]}
+}
+
+function reserveIrrigationPlanLoad(state,organizationId,planId,loadId,preparationId,reservedAt){
+ return mutateIrrigationMirfeState(state,tenant=>{
+  const plans=list(tenant.irrigationPlans),matches=plans.filter(item=>item.id===planId)
+  if(matches.length!==1)throw new Error('El plan de riego cambió antes de reservar la carga.')
+  const plan=matches[0],loads=list(plan.loadSchedule),loadMatches=loads.filter(item=>item.id===loadId)
+  if(loadMatches.length!==1||loadMatches[0].status!=='PLANNED'||text(loadMatches[0].preparationId))throw new Error('La carga planificada ya no está disponible.')
+  const updated={...plan,loadSchedule:loads.map(item=>item.id===loadId?{...item,status:'PREPARATION_CREATED',preparationId,reservedAt}:item)}
+  return{...tenant,irrigationPlans:plans.map(item=>item.id===planId?updated:item)}
+ })
+}
+
 function planPreparation(state,input,aggregateId,organizationId,occurredAt){
- const formulationId=required(input.formulationId,'formulationId'),formula=tenantRecord(state,organizationId,'formulations',formulationId,'La formulación'),siteId=required(formula.siteId,'siteId de la formulación')
- return{aggregateType:'mirfe.preparation',aggregateId,eventName:DomainEvents.MIRFE_PREPARATION_CREATED,siteId,eventPayload:{preparationId:aggregateId,formulationId,formulaKey:text(formula.formulaKey||formula.id),formulaVersion:Number(formula.version||1),siteId,volumeLiters:Number(formula.volumeLiters??formula.volumeL??0)},collection:'tankPreparations',apply:current=>createTankPreparation(current,{...input,id:aggregateId,formulationId,createdAt:occurredAt})}
+ const formulationId=required(input.formulationId,'formulationId'),formula=tenantRecord(state,organizationId,'formulations',formulationId,'La formulación'),siteId=required(formula.siteId,'siteId de la formulación'),irrigationPlanId=text(input.irrigationPlanId),loadId=text(input.loadId),scheduled=Boolean(irrigationPlanId||loadId)
+ if(scheduled&&(!irrigationPlanId||!loadId))throw new Error('Una preparación planificada requiere irrigationPlanId y loadId.')
+ const scheduledRecord=scheduled?irrigationPlanLoad(state,organizationId,irrigationPlanId,loadId):null,plan=scheduledRecord?.plan,load=scheduledRecord?.load
+ if(scheduled){
+  if(load.status!=='PLANNED'||text(load.preparationId))throw new Error('La carga planificada ya tiene una preparación.')
+  if(plan.siteId!==siteId)throw new Error('La fórmula y el plan de riego pertenecen a sedes diferentes.')
+  if(text(plan.stage)&&text(formula.stage)!==text(plan.stage))throw new Error('La fórmula no corresponde a la etapa del plan de riego.')
+  if(text(plan.geneticId)&&text(formula.geneticId)!==text(plan.geneticId))throw new Error('La fórmula no corresponde a la genética del plan de riego.')
+ }
+ const volumeLiters=scheduled?Number(load.volumeLiters):Number(formula.volumeLiters??formula.volumeL??0)
+ const apply=current=>{
+  const created=createTankPreparation(current,{...input,id:aggregateId,formulationId,volumeL:volumeLiters,createdAt:occurredAt,...(scheduled?{irrigationPlanId,loadId,applicationSequence:load.applicationSequence,loadSequence:load.loadSequence,date:load.date||plan.date}:{})})
+  return scheduled?reserveIrrigationPlanLoad(created,organizationId,irrigationPlanId,loadId,aggregateId,occurredAt):created
+ }
+ return{aggregateType:'mirfe.preparation',aggregateId,eventName:DomainEvents.MIRFE_PREPARATION_CREATED,siteId,eventPayload:{preparationId:aggregateId,formulationId,formulaKey:text(formula.formulaKey||formula.id),formulaVersion:Number(formula.version||1),siteId,volumeLiters,irrigationPlanId,loadId,applicationSequence:Number(load?.applicationSequence||0),loadSequence:Number(load?.loadSequence||0)},collection:'tankPreparations',apply}
 }
 
 function planExecution(state,input,organizationId,occurredAt,commandId){
@@ -218,7 +249,8 @@ export async function executeIrrigationMirfeCommand(state,{operation,input={},en
  if(!plainObject(input))throw new Error('input debe ser un objeto.')
  const organizationId=activeOrganizationId(state),declaredOwner=explicitOrganizationId(input)
  if(declaredOwner&&declaredOwner!==organizationId)throw new Error('La operación MIRFE declara otra empresa.')
- const provisionalAggregateId=text(entityId||input.id||(normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION?input.preparationId:normalizedCommandId))
+ const scheduledPreparationId=normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.CREATE_PREPARATION&&text(input.loadId)?`${text(input.loadId)}:preparation`:''
+ const provisionalAggregateId=text(scheduledPreparationId||entityId||input.id||(normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION?input.preparationId:normalizedCommandId))
  const signature=irrigationMirfeCommandSignature({operation:normalizedOperation,aggregateId:provisionalAggregateId,input}),existing=findReceipt(state,organizationId,normalizedCommandId)
  assertReceipt(existing?.receipt,signature)
  const initialSiteId=text(existing?.receipt?.siteId||input.siteId||state.currentContext?.siteId)
