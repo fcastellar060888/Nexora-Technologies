@@ -40,13 +40,13 @@ test('M31-F010: catálogo y Timeline reconocen todos los eventos agronómicos',a
  }
 })
 
-test('M31-F010: schema v13 migra el workflow legado sin adjudicarse F011',async()=>{
+test('M31-F010: la migración conserva el workflow legado después del cierre de F011',async()=>{
  const migration=await read('src/services/stateMigration.js'),sync=await read('src/services/syncEngine.js')
- assert.match(migration,/CURRENT_SCHEMA_VERSION=13/)
+ assert.match(migration,/CURRENT_SCHEMA_VERSION=14/)
  assert.match(migration,/migrateLegacyMirfeWorkflowState\(state\)/)
  for(const collection of['mirfePrograms','mirfeMonitoring','mirfeReinforcements','irrigationCorrections','irrigationHistory']){
   assert.match(migration,new RegExp(collection))
   assert.match(sync,new RegExp(collection))
  }
- assert.doesNotMatch(sync,/irrigationEmitters|irrigationSectors|irrigationAssignments|irrigationPulses|irrigationMeasurements|drainageMeasurements/)
+ assert.match(sync,/CANONICAL_IRRIGATION_COLLECTIONS/)
 })

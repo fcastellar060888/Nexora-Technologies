@@ -6,6 +6,7 @@ export const initialState={
  companies:[{id:uid(),name:'Cannapa SAS',taxId:'',baseCurrency:'COP',active:true}],farms:[],sites:[],houses:[],beds:[],plantPositions:[],operationalAreas:[],infrastructureElements:[],infrastructureMovements:[],genetics:defaultGenetics,incidents:defaultIncidents,
  findings:[],treatments:[],attachments:[],plantEvents:[],grandmotherPlants:[],motherPlants:[],propagationBatches:[],propagationUnits:[],phaseTransitions:[],cultivationCycles:[],phaseTargets:[],lotEvents:[],cultivationTasks:[],propagationBanks:[],mapElements:[],
  products:[],inventoryLots:[],inventoryMovements:[],finishedGoods:[],finishedGoodsMovements:[],sales:[],customers:[],currencies:[{code:'COP',name:'Peso colombiano',symbol:'$',rateToBase:1,active:true},{code:'USD',name:'Dólar estadounidense',symbol:'US$',rateToBase:4000,active:true},{code:'EUR',name:'Euro',symbol:'€',rateToBase:4400,active:true}],
+ irrigationEmitters:[],irrigationSectors:[],irrigationAssignments:[],irrigationPulses:[],irrigationMeasurements:[],drainageMeasurements:[],
  mirfePrograms:[],mirfeMonitoring:[],mirfeReinforcements:[],waterAnalyses:[],nutrientProducts:[],nutrientObjectives:[],irrigationPlans:[],formulations:[],tankPreparations:[],workOrders:[],irrigationApplications:[],irrigationCorrections:[],irrigationHistory:[],
  productionBatches:[],dryingBatches:[],trimmingBatches:[],selectionBatches:[],packingBatches:[],productionFlows:[],costEntries:[],users:[],roles:[],auditLog:[],
  currentContext:{companyId:'',siteId:'',houseId:'',bedId:'',plantId:'',geneticId:'',stage:'',week:1,cycleId:''}

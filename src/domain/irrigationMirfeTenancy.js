@@ -3,14 +3,18 @@ import{activeOrganizationId,explicitOrganizationId}from'./organizationOwnership.
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 
+export const CANONICAL_IRRIGATION_COLLECTIONS=Object.freeze([
+ 'irrigationEmitters','irrigationSectors','irrigationAssignments','irrigationPulses','irrigationMeasurements','drainageMeasurements'
+])
+
 export const IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS=Object.freeze([
+ ...CANONICAL_IRRIGATION_COLLECTIONS,
  'waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','irrigationApplications',
  'mirfePrograms','mirfeMonitoring','mirfeReinforcements','irrigationCorrections','irrigationHistory'
 ])
 
 export const IRRIGATION_MIRFE_SCOPED_COLLECTIONS=Object.freeze([
  'sites','houses','beds','plantPositions','propagationBanks','propagationUnits','genetics','products','inventoryLots','inventoryMovements',
- 'irrigationEmitters','irrigationSectors','irrigationAssignments','irrigationPulses','irrigationMeasurements','drainageMeasurements',
  ...IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,'workOrders','costEntries'
 ])
 
