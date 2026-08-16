@@ -34,7 +34,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F008 | P1 | **Verified** | Water authority | Laboratorio, muestra, método, panel y resultados forman una autoridad tenant-owned e inmutable; admite parciales, versionado append-only, selección vigente determinista y comparación histórica técnicamente compatible. Quality #1879. |
 | M31-F009 | P1 | **Verified** | Environment/measurements | `EnvironmentDevice`, `CalibrationRecord`, setpoints versionados, lecturas con fuente/evidencia y alertas first-class reemplazan targets embebidos; tenancy, commands, migración v12 y sync quedan demostrados. Quality #1885. |
 | M31-F010 | P1 | **Verified** | Workflow/history | `mirfe-reinforcement-v1` impone transiciones canónicas, historial append-only y correcciones solo tras `Sin respuesta`; cinco commands tenant-aware publican eventos demostrados en Operational Ledger/Timeline. Quality #1891. |
-| M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
+| M31-F011 | P1 | **Verified** | Persistence/sync | Las seis colecciones canónicas de topología, pulso, medición y drenaje forman parte del schema v14, ownership, caché, bootstrap y sync remoto tenant-aware; IDs repetidos y tombstones quedan aislados. Quality #1895. |
 | M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos, eventos y carrera multi-dispositivo; falta la proyección end-to-end. |
 
 ## M31-F001 — cierre verificado
@@ -358,6 +358,44 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: 16/16 blobs coinciden byte a byte y 76/76 controles semánticos pasaron para workflow, guards, historial, corrección, migración, tenancy, commands, replay, concurrencia, eventos, Ledger/Timeline, UI y compatibilidad histórica.
 - F011 y F012 permanecen abiertos y separados: este cierre no incorpora aún las entidades F001 a schema/bootstrap/sync ni amplía Passport/Knowledge Graph.
 
+## M31-F011 — cierre verificado
+
+### Solución
+
+- `CANONICAL_IRRIGATION_COLLECTIONS` declara una sola vez `irrigationEmitters`, `irrigationSectors`, `irrigationAssignments`, `irrigationPulses`, `irrigationMeasurements` y `drainageMeasurements`; ownership, schema y sync consumen el mismo registro para impedir drift entre capas.
+- Las seis colecciones pasan por `IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS`. El backfill v14 atribuye registros legacy únicamente cuando sede o referencias causales resuelven una sola empresa; una identidad multiempresa ambigua permanece sin atribuir y fuera de las vistas operativas.
+- `initialState` y `migrateState()` inicializan las seis colecciones. `safeStorage` normaliza tanto carga como guardado y la caché segmentada conserva objetos anidados, fuentes, unidades y evidencia dentro de la partición de la empresa activa.
+- `SYNCABLE_COLLECTIONS` incorpora el registro compartido. `collectionChanges()` usa organización + ID, `enqueueChanges()` rechaza ownership extranjero y el pull rechaza tanto filas como payloads de otra empresa antes de hidratar.
+- Upsert y tombstone remotos afectan solo la identidad compuesta del tenant activo; un homónimo extranjero permanece intacto.
+- El bootstrap autoritativo descubre arrays operativos de forma genérica, valida la organización de cada fila, reemplaza solo la partición activa y superpone deltas offline concurrentes por organización + ID.
+- El transporte y PostgreSQL ya eran genéricos y no requirieron lógica duplicada: el pull filtra `organization_id`, `erp_records` usa PK `(organization_id, collection, record_id)` y los RPC de mutación/bootstrap revalidan autenticación y membresía.
+- No se modificaron commands, eventos, UI, workflow ni Passport/Graph. F012 conserva íntegramente el alcance de proyección end-to-end.
+
+### Pruebas adversariales
+
+`tests/m3-1-irrigation-persistence-sync.test.mjs` demuestra:
+
+- creación del schema v14 y presencia en estado inicial, bootstrap y allowlist de sync;
+- backfill causal de las seis colecciones y exclusión fail-closed de ownership ambiguo;
+- round-trip de caché con evidencia anidada e IDs idénticos en `org-a`/`org-b`;
+- cola de seis mutaciones con payload, ownership y versión previa del tenant activo;
+- upsert y borrado remoto sin alterar el homónimo extranjero;
+- rechazo de fila extranjera y de payload extranjero dentro de una fila aparentemente local;
+- hidratación autoritativa de las seis colecciones, conservación de la partición ajena y rechazo de snapshots contaminados;
+- prevalencia de deltas offline concurrentes únicamente sobre la identidad compuesta correspondiente.
+
+La regresión local disponible quedó 152/152. Quality ejecutó la suite completa con 964/964 pruebas.
+
+### Quality y reauditoría
+
+- Commit de solución: `8031026835f8ed8dffea1d8f0f81d175b7b24a15`.
+- Quality #1895: **verde**, 964/964 pruebas.
+- Cobertura global: 93.52% líneas / 75.23% ramas / 90.79% funciones.
+- `irrigationMirfeTenancy.js`: 98.88% líneas / 86.00% ramas / 100% funciones; `stateMigration.js`: 95.65% / 70.73% / 78.26%; `syncEngine.js`: 91.26% / 82.28% / 95.24%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: 14/14 blobs inspeccionados y 50/50 controles semánticos pasaron para registro de colecciones, ownership, schema, caché, bootstrap, overlay concurrente, cola, pull, tombstones, transporte y garantías SQL.
+- F012 queda como único hallazgo abierto de M3.1: Passport/Knowledge Graph end-to-end.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -409,7 +447,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **10**
-- Open: **2**
+- Verified: **11**
+- Open: **1**
 - P0 abiertos: **0**
-- P1 abiertos: **2**
+- P1 abiertos: **1**
