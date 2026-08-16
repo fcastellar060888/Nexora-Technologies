@@ -14,6 +14,11 @@ const LABELS={
  'cultivation.lot.phase_changed':{title:'Cambio de fase',category:'Cultivo',tone:'info'},
  'mipe.finding.recorded':{title:'Hallazgo MIPE registrado',category:'MIPE',tone:'warning'},
  'mirfe.application.completed':{title:'Aplicación MIRFE completada',category:'MIRFE',tone:'success'},
+ 'mirfe.program.created':{title:'Programa MIRFE creado',category:'MIRFE',tone:'success'},
+ 'mirfe.monitoring.recorded':{title:'Monitoreo MIRFE registrado',category:'MIRFE',tone:'info'},
+ 'mirfe.reinforcement.created':{title:'Refuerzo MIRFE creado',category:'MIRFE',tone:'warning'},
+ 'mirfe.reinforcement.transitioned':{title:'Estado MIRFE actualizado',category:'MIRFE',tone:'info'},
+ 'mirfe.correction.recorded':{title:'Corrección MIRFE registrada',category:'MIRFE',tone:'warning'},
  'inventory.movement.recorded':{title:'Movimiento de inventario',category:'Inventario',tone:'info'},
  'production.stage.completed':{title:'Etapa productiva completada',category:'Producción',tone:'success'}
 }
@@ -50,3 +55,4 @@ export function domainEventToTimelineEntry(event,{sequence=null,recordedAt=null,
   metadata:event.metadata
  })
 }
+

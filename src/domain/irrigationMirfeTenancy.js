@@ -4,13 +4,14 @@ const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 
 export const IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS=Object.freeze([
- 'waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','irrigationApplications'
+ 'waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','irrigationApplications',
+ 'mirfePrograms','mirfeMonitoring','mirfeReinforcements','irrigationCorrections','irrigationHistory'
 ])
 
 export const IRRIGATION_MIRFE_SCOPED_COLLECTIONS=Object.freeze([
  'sites','houses','beds','plantPositions','propagationBanks','propagationUnits','genetics','products','inventoryLots','inventoryMovements',
  'irrigationEmitters','irrigationSectors','irrigationAssignments','irrigationPulses','irrigationMeasurements','drainageMeasurements',
- ...IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,'workOrders','costEntries','mirfePrograms','mirfeMonitoring','mirfeReinforcements','irrigationCorrections','irrigationHistory'
+ ...IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,'workOrders','costEntries'
 ])
 
 const REFERENCES=Object.freeze({
@@ -37,9 +38,9 @@ const REFERENCES=Object.freeze({
  irrigationApplications:[['tankPreparations','preparationId','preparación'],['formulations','formulationId','formulación'],['sites','siteId','sede'],['houses','houseId','nave']],
  costEntries:[['sites','siteId','sede']],
  mirfePrograms:[['sites','siteId','sede'],['houses','houseId','nave'],['genetics','geneticId','genética']],
- mirfeMonitoring:[['sites','siteId','sede'],['houses','houseId','nave']],
- mirfeReinforcements:[['sites','siteId','sede'],['houses','houseId','nave']],
- irrigationCorrections:[['sites','siteId','sede'],['houses','houseId','nave']],
+ mirfeMonitoring:[['sites','siteId','sede'],['houses','houseId','nave'],['beds','bedId','cama'],['genetics','geneticId','genética']],
+ mirfeReinforcements:[['sites','siteId','sede'],['houses','houseId','nave'],['beds','bedId','cama'],['genetics','geneticId','genética'],['products','productId','producto'],['mirfePrograms','programId','programa MIRFE'],['mirfeMonitoring','monitoringId','monitoreo MIRFE']],
+ irrigationCorrections:[['sites','siteId','sede'],['houses','houseId','nave'],['mirfeReinforcements','reinforcementId','refuerzo MIRFE'],['mirfePrograms','programId','programa MIRFE'],['mirfeMonitoring','monitoringId','monitoreo MIRFE']],
  irrigationHistory:[['sites','siteId','sede'],['houses','houseId','nave']]
 })
 
@@ -111,6 +112,7 @@ export function ownIrrigationMirfeRecord(state,collection,record,organizationId=
  if(declared&&declared!==owner)throw new Error(`No se puede mutar ${collection} de otra empresa.`)
  for(const[targetCollection,field,label]of REFERENCES[collection]||[]){
   const referenceId=text(record?.[field])
+  if(collection==='mirfePrograms'&&field==='geneticId'&&referenceId==='Todos')continue
   if(referenceId)assertReference(state,targetCollection,referenceId,owner,label)
  }
  assertNestedReferences(state,collection,record,owner)

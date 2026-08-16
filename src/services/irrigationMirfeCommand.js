@@ -2,6 +2,7 @@ import{DomainEvents}from'../core/events/eventCatalog.js'
 import{FORMULATION_NUTRIENTS,netTargets,normalizedComposition,normalizedWaterComposition,validateFormula}from'../domain/formulation.js'
 import{createFertigationFormula,nextFertigationFormulaVersion}from'../domain/irrigationMirfe.js'
 import{irrigationHydraulicsForPlan}from'../domain/irrigationTopology.js'
+import{MIRFE_HISTORY_TYPES,MIRFE_WORKFLOW_TRANSITIONS,createMirfeCorrection,createMirfeHistoryEntry,createMirfeMonitoring,createMirfeProgram,createMirfeReinforcement,transitionMirfeReinforcement}from'../domain/mirfeWorkflow.js'
 import{activeOrganizationId,explicitOrganizationId}from'../domain/organizationOwnership.js'
 import{createTankPreparation,executeTankPreparation,registerIrrigationApplication}from'../domain/irrigationExecution.js'
 import{IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,mutateIrrigationMirfeState,scopeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
@@ -19,7 +20,12 @@ export const IRRIGATION_MIRFE_OPERATIONS=Object.freeze({
  APPROVE_FORMULATION:'APPROVE_FORMULATION',
  CREATE_PREPARATION:'CREATE_PREPARATION',
  EXECUTE_PREPARATION:'EXECUTE_PREPARATION',
- REGISTER_APPLICATION:'REGISTER_APPLICATION'
+ REGISTER_APPLICATION:'REGISTER_APPLICATION',
+ CREATE_MIRFE_PROGRAM:'CREATE_MIRFE_PROGRAM',
+ RECORD_MIRFE_MONITORING:'RECORD_MIRFE_MONITORING',
+ CREATE_MIRFE_REINFORCEMENT:'CREATE_MIRFE_REINFORCEMENT',
+ TRANSITION_MIRFE_REINFORCEMENT:'TRANSITION_MIRFE_REINFORCEMENT',
+ RECORD_MIRFE_CORRECTION:'RECORD_MIRFE_CORRECTION'
 })
 
 const list=value=>Array.isArray(value)?value:[]
@@ -47,6 +53,7 @@ function finite(value,label,{positive=false}={}){const number=Number(value);if(!
 function knownOperation(operation){return Object.values(IRRIGATION_MIRFE_OPERATIONS).includes(operation)}
 
 function permissionFor(operation){
+ if([IRRIGATION_MIRFE_OPERATIONS.CREATE_MIRFE_PROGRAM,IRRIGATION_MIRFE_OPERATIONS.RECORD_MIRFE_MONITORING,IRRIGATION_MIRFE_OPERATIONS.CREATE_MIRFE_REINFORCEMENT,IRRIGATION_MIRFE_OPERATIONS.TRANSITION_MIRFE_REINFORCEMENT,IRRIGATION_MIRFE_OPERATIONS.RECORD_MIRFE_CORRECTION].includes(operation))return'manage_mirfe'
  if(operation===IRRIGATION_MIRFE_OPERATIONS.REGISTER_APPLICATION)return'record_irrigation'
  return'manage_irrigation'
 }
@@ -94,6 +101,20 @@ function appendRecord(current,collection,record){
   if(items.some(item=>item.id===record.id))throw new Error(`${collection} ya contiene ese id en la empresa activa.`)
   return{...tenant,[collection]:[...items,record]}
  })
+}
+
+function appendRecordAndHistory(current,collection,record,history){
+ return mutateIrrigationMirfeState(current,tenant=>{
+  const records=list(tenant?.[collection]),historyItems=list(tenant?.irrigationHistory)
+  if(records.some(item=>item.id===record.id))throw new Error(`${collection} ya contiene ese id en la empresa activa.`)
+  if(historyItems.some(item=>item.id===history.id))throw new Error('irrigationHistory ya contiene ese id en la empresa activa.')
+  return{...tenant,[collection]:[...records,record],irrigationHistory:[...historyItems,history]}
+ })
+}
+
+function commandActor(state){
+ const user=activeUser(state)
+ return{id:text(user?.remoteId||user?.id)||'system',name:text(user?.name)||'Sistema'}
 }
 
 function activeTenantState(state,organizationId){return scopeIrrigationMirfeState(state,organizationId)}
@@ -197,9 +218,9 @@ function planFormulation(state,input,aggregateId,organizationId,occurredAt,appro
 }
 
 function tenantRecord(state,organizationId,collection,id,label){
- const record=list(activeTenantState(state,organizationId)?.[collection]).find(item=>item.id===id)
- if(!record)throw new Error(`${label} no existe en la empresa activa.`)
- return record
+ const matches=list(activeTenantState(state,organizationId)?.[collection]).filter(item=>item.id===id)
+ if(matches.length!==1)throw new Error(matches.length?`${label} tiene identidad duplicada en la empresa activa.`:`${label} no existe en la empresa activa.`)
+ return matches[0]
 }
 
 function irrigationPlanLoad(state,organizationId,planId,loadId){
@@ -247,6 +268,89 @@ function planApplication(state,input,aggregateId,organizationId,occurredAt){
  return{aggregateType:'mirfe.application',aggregateId,eventName:DomainEvents.MIRFE_APPLICATION_COMPLETED,siteId,eventPayload:{applicationId:aggregateId,preparationId,formulationId:text(preparation.formulationId),formulaKey:text(preparation.formulaKey),formulaVersion:Number(preparation.formulaVersion||1),siteId,volumeLiters:Number(input.volumeL||preparation.volumeL||0)},collection:'irrigationApplications',apply:current=>registerIrrigationApplication(current,{...input,id:aggregateId,preparationId,createdAt:occurredAt})}
 }
 
+function mirfeLocation(state,organizationId,input,{bed=false,genetic=false}={}){
+ const siteId=required(input.siteId,'siteId'),site=tenantRecord(state,organizationId,'sites',siteId,'La sede')
+ const houseId=required(input.houseId,'houseId'),house=tenantRecord(state,organizationId,'houses',houseId,'La nave')
+ if(house.siteId!==site.id)throw new Error('La nave no pertenece a la sede seleccionada.')
+ const bedId=text(input.bedId)
+ if(bedId){const record=tenantRecord(state,organizationId,'beds',bedId,'La cama');if(record.houseId!==houseId)throw new Error('La cama no pertenece a la nave seleccionada.')}
+ const geneticId=text(input.geneticId)
+ if(genetic){const record=tenantRecord(state,organizationId,'genetics',required(geneticId,'geneticId'),'La genética');if(record.organizationId&&record.organizationId!==organizationId)throw new Error('La genética pertenece a otra empresa.')}
+ return{siteId,houseId,bedId,geneticId}
+}
+
+function planMirfeProgram(state,input,aggregateId,organizationId,occurredAt,commandId){
+ const actor=commandActor(state),siteId=text(input.siteId),houseId=text(input.houseId),geneticId=text(input.geneticId)||'Todos'
+ if(siteId)tenantRecord(state,organizationId,'sites',siteId,'La sede')
+ if(houseId){const house=tenantRecord(state,organizationId,'houses',houseId,'La nave');if(!siteId||house.siteId!==siteId)throw new Error('La nave del programa no pertenece a la sede seleccionada.')}
+ if(geneticId!=='Todos')tenantRecord(state,organizationId,'genetics',geneticId,'La genética')
+ const record=createMirfeProgram({...input,id:aggregateId,organizationId,siteId,houseId,geneticId,createdAt:occurredAt,createdBy:actor.id})
+ const eventPayload={programId:aggregateId,siteId,name:record.name,category:record.category,geneticId:record.geneticId,stage:record.stage,status:record.status,summary:`${record.name} · ${record.stage}`}
+ const history=createMirfeHistoryEntry({id:`${commandId}:history`,organizationId,siteId,type:MIRFE_HISTORY_TYPES.PROGRAM_CREATED,eventName:DomainEvents.MIRFE_PROGRAM_CREATED,entityType:'mirfe.program',entityId:aggregateId,occurredAt,actorId:actor.id,summary:`Programa ${record.name} creado`,to:record.status,evidence:{category:record.category,geneticId:record.geneticId,stage:record.stage}})
+ return{aggregateType:'mirfe.program',aggregateId,eventName:DomainEvents.MIRFE_PROGRAM_CREATED,siteId,eventPayload,collection:'mirfePrograms',apply:current=>appendRecordAndHistory(current,'mirfePrograms',record,history)}
+}
+
+function planMirfeMonitoring(state,input,aggregateId,organizationId,occurredAt,commandId){
+ const actor=commandActor(state),location=mirfeLocation(state,organizationId,input,{bed:true,genetic:true})
+ const record=createMirfeMonitoring({...input,...location,id:aggregateId,organizationId,recordedAt:occurredAt,recordedBy:actor.id})
+ const eventPayload={monitoringId:aggregateId,siteId:location.siteId,houseId:location.houseId,bedId:location.bedId,geneticId:location.geneticId,stage:record.stage,observedAt:record.observedAt,vpd:record.vpd,deltaEc:record.deltaEc,drainPercent:record.drainPercent,summary:`${record.stage} · ΔEC ${record.deltaEc.toFixed(2)}`}
+ const history=createMirfeHistoryEntry({id:`${commandId}:history`,organizationId,siteId:location.siteId,type:MIRFE_HISTORY_TYPES.MONITORING_RECORDED,eventName:DomainEvents.MIRFE_MONITORING_RECORDED,entityType:'mirfe.monitoring',entityId:aggregateId,occurredAt,actorId:actor.id,summary:`Monitoreo ${record.stage} registrado`,evidence:{houseId:record.houseId,geneticId:record.geneticId,vpd:record.vpd,deltaEc:record.deltaEc,diagnosis:record.diagnosis}})
+ return{aggregateType:'mirfe.monitoring',aggregateId,eventName:DomainEvents.MIRFE_MONITORING_RECORDED,siteId:location.siteId,eventPayload,collection:'mirfeMonitoring',apply:current=>appendRecordAndHistory(current,'mirfeMonitoring',record,history)}
+}
+
+function planMirfeReinforcement(state,input,aggregateId,organizationId,occurredAt,commandId){
+ const actor=commandActor(state),location=mirfeLocation(state,organizationId,input,{bed:true,genetic:true})
+ const programId=text(input.programId),monitoringId=text(input.monitoringId),program=programId?tenantRecord(state,organizationId,'mirfePrograms',programId,'El programa MIRFE'):null,monitoring=monitoringId?tenantRecord(state,organizationId,'mirfeMonitoring',monitoringId,'El monitoreo MIRFE'):null,product=tenantRecord(state,organizationId,'products',required(input.productId,'productId'),'El producto')
+ if(program&&program.status!=='ACTIVE')throw new Error('El programa MIRFE no está activo.')
+ if(program&&program.siteId&&program.siteId!==location.siteId)throw new Error('El programa MIRFE no corresponde a la sede seleccionada.')
+ if(program&&program.houseId&&program.houseId!==location.houseId)throw new Error('El programa MIRFE no corresponde a la nave seleccionada.')
+ if(program&&program.geneticId!=='Todos'&&program.geneticId!==location.geneticId)throw new Error('El programa MIRFE no corresponde a la genética seleccionada.')
+ if(program&&program.stage!==input.stage)throw new Error('El programa MIRFE no corresponde a la etapa seleccionada.')
+ if(monitoring&&[monitoring.siteId!==location.siteId,monitoring.houseId!==location.houseId,monitoring.geneticId!==location.geneticId,monitoring.stage!==input.stage].some(Boolean))throw new Error('El monitoreo MIRFE no corresponde al contexto del refuerzo.')
+ if(!['MIRFE','Fertilizante','Adyuvante','Corrector pH'].includes(product.category))throw new Error('El producto no pertenece al catálogo de insumos admitidos para refuerzos MIRFE.')
+ const record=createMirfeReinforcement({...input,...location,id:aggregateId,organizationId,createdAt:occurredAt,createdBy:actor.id,createdByName:actor.name,workflowEventId:`${commandId}:workflow`},{program,monitoring,product})
+ const eventPayload={reinforcementId:aggregateId,siteId:record.siteId,houseId:record.houseId,geneticId:record.geneticId,programId:record.programId,monitoringId:record.monitoringId,productId:record.productId,status:record.status,workflowVersion:record.workflowVersion,quantityApplied:record.quantityApplied,summary:`${record.category} · ${record.reason}`}
+ const history=createMirfeHistoryEntry({id:`${commandId}:history`,organizationId,siteId:record.siteId,type:MIRFE_HISTORY_TYPES.REINFORCEMENT_CREATED,eventName:DomainEvents.MIRFE_REINFORCEMENT_CREATED,entityType:'mirfe.reinforcement',entityId:aggregateId,reinforcementId:aggregateId,occurredAt,actorId:actor.id,summary:`Refuerzo ${record.reason} creado`,to:record.status,evidence:{programId:record.programId,monitoringId:record.monitoringId,productId:record.productId,quantityApplied:record.quantityApplied}})
+ return{aggregateType:'mirfe.reinforcement',aggregateId,eventName:DomainEvents.MIRFE_REINFORCEMENT_CREATED,siteId:record.siteId,eventPayload,collection:'mirfeReinforcements',apply:current=>appendRecordAndHistory(current,'mirfeReinforcements',record,history)}
+}
+
+function planMirfeTransition(state,input,aggregateId,organizationId,occurredAt,commandId){
+ const actor=commandActor(state),record=tenantRecord(state,organizationId,'mirfeReinforcements',aggregateId,'El refuerzo MIRFE'),transition=required(input.transition,'transition'),expectedVersion=Number(record.workflowVersion||record.workflow?.version||0)
+ if(record.workflowQuarantined)throw new Error('El refuerzo MIRFE está en cuarentena y no puede transicionar.')
+ const transitionInput={...input,organizationId,occurredAt,actorId:actor.id,actorName:actor.name,eventId:`${commandId}:workflow`}
+ const preview=transitionMirfeReinforcement(record,transition,transitionInput),eventPayload={reinforcementId:aggregateId,siteId:record.siteId,transition,from:record.status,to:preview.status,workflowVersion:preview.workflowVersion,result:text(input.result),summary:`${record.status} → ${preview.status}`}
+ const history=createMirfeHistoryEntry({id:`${commandId}:history`,organizationId,siteId:record.siteId,type:MIRFE_HISTORY_TYPES.REINFORCEMENT_TRANSITIONED,eventName:DomainEvents.MIRFE_REINFORCEMENT_TRANSITIONED,entityType:'mirfe.reinforcement',entityId:aggregateId,reinforcementId:aggregateId,occurredAt,actorId:actor.id,summary:`Refuerzo ${record.status} → ${preview.status}`,transition,from:record.status,to:preview.status,evidence:{result:text(input.result),reason:text(input.reason),ecAfter:input.ecAfter??null,phAfter:input.phAfter??null,nextReview:text(input.nextReview)}})
+ const apply=current=>mutateIrrigationMirfeState(current,tenant=>{
+  const records=list(tenant.mirfeReinforcements),matches=records.filter(item=>item.id===aggregateId)
+  if(matches.length!==1)throw new Error('El refuerzo MIRFE cambió antes de confirmar la transición.')
+  const currentRecord=matches[0]
+  if(Number(currentRecord.workflowVersion||currentRecord.workflow?.version||0)!==expectedVersion||currentRecord.status!==record.status)throw new Error('El workflow MIRFE cambió antes de confirmar la transición.')
+  const historyItems=list(tenant.irrigationHistory)
+  if(historyItems.some(item=>item.id===history.id))throw new Error('La transición ya existe en el historial MIRFE.')
+  const updated=transitionMirfeReinforcement(currentRecord,transition,transitionInput)
+  return{...tenant,mirfeReinforcements:records.map(item=>item.id===aggregateId?updated:item),irrigationHistory:[...historyItems,history]}
+ })
+ return{aggregateType:'mirfe.reinforcement',aggregateId,eventName:DomainEvents.MIRFE_REINFORCEMENT_TRANSITIONED,siteId:record.siteId,eventPayload,collection:'mirfeReinforcements',apply}
+}
+
+function planMirfeCorrection(state,input,aggregateId,organizationId,occurredAt,commandId){
+ const actor=commandActor(state),reinforcementId=required(input.reinforcementId,'reinforcementId'),record=tenantRecord(state,organizationId,'mirfeReinforcements',reinforcementId,'El refuerzo MIRFE'),expectedVersion=Number(record.workflowVersion||record.workflow?.version||0)
+ const correctionInput={...input,id:aggregateId,organizationId,occurredAt,actorId:actor.id,actorName:actor.name,workflowEventId:`${commandId}:workflow`},preview=createMirfeCorrection(correctionInput,record)
+ const eventPayload={correctionId:aggregateId,reinforcementId,siteId:record.siteId,from:record.status,to:preview.reinforcement.status,workflowVersion:preview.reinforcement.workflowVersion,action:preview.correction.action,summary:preview.correction.action}
+ const history=createMirfeHistoryEntry({id:`${commandId}:history`,organizationId,siteId:record.siteId,type:MIRFE_HISTORY_TYPES.CORRECTION_RECORDED,eventName:DomainEvents.MIRFE_CORRECTION_RECORDED,entityType:'mirfe.correction',entityId:aggregateId,reinforcementId,occurredAt,actorId:actor.id,summary:`Corrección: ${preview.correction.action}`,transition:MIRFE_WORKFLOW_TRANSITIONS.CORRECT,from:record.status,to:preview.reinforcement.status,evidence:{reason:preview.correction.reason,action:preview.correction.action,nextReview:preview.correction.nextReview}})
+ const apply=current=>mutateIrrigationMirfeState(current,tenant=>{
+  const records=list(tenant.mirfeReinforcements),matches=records.filter(item=>item.id===reinforcementId)
+  if(matches.length!==1)throw new Error('El refuerzo MIRFE cambió antes de confirmar la corrección.')
+  const currentRecord=matches[0]
+  if(Number(currentRecord.workflowVersion||currentRecord.workflow?.version||0)!==expectedVersion||currentRecord.status!==record.status)throw new Error('El workflow MIRFE cambió antes de confirmar la corrección.')
+  const corrections=list(tenant.irrigationCorrections),historyItems=list(tenant.irrigationHistory)
+  if(corrections.some(item=>item.id===aggregateId)||historyItems.some(item=>item.id===history.id))throw new Error('La corrección ya existe en la empresa activa.')
+  const next=createMirfeCorrection(correctionInput,currentRecord)
+  return{...tenant,mirfeReinforcements:records.map(item=>item.id===reinforcementId?next.reinforcement:item),irrigationCorrections:[...corrections,next.correction],irrigationHistory:[...historyItems,history]}
+ })
+ return{aggregateType:'mirfe.correction',aggregateId,eventName:DomainEvents.MIRFE_CORRECTION_RECORDED,siteId:record.siteId,eventPayload,collection:'irrigationCorrections',apply}
+}
+
 function buildPlan(state,operation,input,aggregateId,organizationId,occurredAt,commandId){
  if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_IRRIGATION_PLAN)return planIrrigation(state,input,aggregateId,organizationId,occurredAt)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_WATER_ANALYSIS)return planWaterAnalysis(state,input,aggregateId,organizationId,occurredAt)
@@ -257,6 +361,11 @@ function buildPlan(state,operation,input,aggregateId,organizationId,occurredAt,c
  if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_PREPARATION)return planPreparation(state,input,aggregateId,organizationId,occurredAt)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION)return planExecution(state,input,organizationId,occurredAt,commandId)
  if(operation===IRRIGATION_MIRFE_OPERATIONS.REGISTER_APPLICATION)return planApplication(state,input,aggregateId,organizationId,occurredAt)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_MIRFE_PROGRAM)return planMirfeProgram(state,input,aggregateId,organizationId,occurredAt,commandId)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_MIRFE_MONITORING)return planMirfeMonitoring(state,input,aggregateId,organizationId,occurredAt,commandId)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.CREATE_MIRFE_REINFORCEMENT)return planMirfeReinforcement(state,input,aggregateId,organizationId,occurredAt,commandId)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.TRANSITION_MIRFE_REINFORCEMENT)return planMirfeTransition(state,input,aggregateId,organizationId,occurredAt,commandId)
+ if(operation===IRRIGATION_MIRFE_OPERATIONS.RECORD_MIRFE_CORRECTION)return planMirfeCorrection(state,input,aggregateId,organizationId,occurredAt,commandId)
  throw new Error('Operación Irrigation/MIRFE no soportada.')
 }
 
@@ -267,7 +376,8 @@ export async function executeIrrigationMirfeCommand(state,{operation,input={},en
  const organizationId=activeOrganizationId(state),declaredOwner=explicitOrganizationId(input)
  if(declaredOwner&&declaredOwner!==organizationId)throw new Error('La operación MIRFE declara otra empresa.')
  const scheduledPreparationId=normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.CREATE_PREPARATION&&text(input.loadId)?`${text(input.loadId)}:preparation`:''
- const provisionalAggregateId=text(scheduledPreparationId||entityId||input.id||(normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION?input.preparationId:normalizedCommandId))
+ const workflowEntityId=normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.TRANSITION_MIRFE_REINFORCEMENT?text(input.reinforcementId):''
+ const provisionalAggregateId=text(scheduledPreparationId||workflowEntityId||entityId||input.id||(normalizedOperation===IRRIGATION_MIRFE_OPERATIONS.EXECUTE_PREPARATION?input.preparationId:normalizedCommandId))
  const signature=irrigationMirfeCommandSignature({operation:normalizedOperation,aggregateId:provisionalAggregateId,input}),existing=findReceipt(state,organizationId,normalizedCommandId)
  assertReceipt(existing?.receipt,signature)
  const initialSiteId=text(existing?.receipt?.siteId||input.siteId||state.currentContext?.siteId)
