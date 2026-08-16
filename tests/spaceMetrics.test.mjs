@@ -18,8 +18,7 @@ test('calcula capacidad de bandejas, ocupación y densidad',()=>{
 
 test('migra dimensiones de naves y bancos al esquema actual',()=>{
  const state=migrateState({houses:[{id:'h1',length:'12',width:'6'}],propagationBanks:[{id:'b1',dimensionUnit:'cm',length:'250',width:'120',currentPlants:'100',trays:[{quantity:'2',cellsPerTray:'50'}]}]})
- assert.equal(CURRENT_SCHEMA_VERSION,10)
- assert.equal(state.schemaVersion,10)
+ assert.equal(state.schemaVersion,CURRENT_SCHEMA_VERSION)
  assert.equal(state.houses[0].dimensionUnit,'m')
  assert.equal(state.houses[0].length,12)
  assert.equal(state.propagationBanks[0].currentPlants,100)
