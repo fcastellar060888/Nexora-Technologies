@@ -1,14 +1,13 @@
-import{useMemo,useState}from'react'
+import{useState}from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import PermissionButton from'../components/PermissionButton'
-import{useIrrigationMirfeStore}from'../services/irrigationMirfeTenantStore'
+import{IRRIGATION_MIRFE_OPERATIONS,useIrrigationMirfeCommandStore}from'../services/irrigationMirfeCommandStore'
 import{netTargets,calculateSimpleFormula,validateFormula}from'../domain/formulation'
-import{activeUser,hasPermission}from'../services/permissions'
 
 export default function FormulationPage(){
- const{state,update}=useIrrigationMirfeStore();const c=state.currentContext
+ const{state,execute}=useIrrigationMirfeCommandStore();const c=state.currentContext
  const[form,setForm]=useState({siteId:c.siteId||state.sites[0]?.id||'',geneticId:c.geneticId||state.genetics[0]?.id||'',stage:c.stage||'Vegetativo fuerte',volumeL:1000})
  const[result,setResult]=useState([]);const[validation,setValidation]=useState(null)
  function calculate(){
@@ -19,11 +18,9 @@ export default function FormulationPage(){
   const targets=netTargets(objective,water),formula=calculateSimpleFormula(state.nutrientProducts,targets,form.volumeL)
   setResult(formula);setValidation(validateFormula(state.nutrientProducts,formula,targets,form.volumeL))
  }
- function save(status='Borrador'){
+ async function save(status='Borrador'){
   if(!result.length)return alert('Primero calcula la propuesta.')
-  if(status==='Aprobada'&&!hasPermission(state,'approve_formulas'))return alert('Tu rol no puede aprobar fórmulas.')
-  const user=activeUser(state)
-  update(s=>({...s,formulations:[...s.formulations,{id:crypto.randomUUID(),date:new Date().toISOString(),...form,items:result,status,validation,approvedBy:status==='Aprobada'?(user?.name||'Usuario local'):'',approvedAt:status==='Aprobada'?new Date().toISOString():''}]}),{module:'Fertirriego',action:`Fórmula ${status}`,detail:`${form.stage} · ${form.volumeL} L`})
+  try{await execute({operation:status==='Aprobada'?IRRIGATION_MIRFE_OPERATIONS.APPROVE_FORMULATION:IRRIGATION_MIRFE_OPERATIONS.CREATE_FORMULATION,input:{...form,items:result,validation}})}catch(error){alert(error.message)}
  }
  return <><PageHeader title="Formulación de fertirriego" subtitle="Convierte óxidos a elementos, descuenta el agua, valida desviaciones, solubilidad y compatibilidad básica."/>
  <Card title="Parámetros"><div className="form-grid"><Field label="Sede"><select value={form.siteId} onChange={e=>setForm({...form,siteId:e.target.value})}>{state.sites.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Genética"><select value={form.geneticId} onChange={e=>setForm({...form,geneticId:e.target.value})}>{state.genetics.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Etapa"><input value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})}/></Field><Field label="Volumen final L"><input type="number" value={form.volumeL} onChange={e=>setForm({...form,volumeL:Number(e.target.value)})}/></Field><div className="form-actions"><button className="button primary" onClick={calculate}>Calcular y validar</button><button className="button secondary" onClick={()=>save('Borrador')}>Guardar borrador</button><PermissionButton permission="approve_formulas" className="button warning" onClick={()=>save('Aprobada')}>Aprobar fórmula</PermissionButton></div></div></Card>
