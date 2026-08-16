@@ -29,13 +29,13 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F003 | P0 | **Verified** | Command/events | Nueve operaciones legacy pasan por un command boundary tenant-aware, permission-aware e idempotente; las siete páginas ya no mutan el Store. Intención y evento final usan IDs/causalidad deterministas. Quality #1857. |
 | M31-F004 | P0 | **Verified** | Irrigation topology | El plan consume Emitter → Sector → Assignment → POSITION/BED/TRAY con ownership, vigencia y filtros operativos; calcula por emisor físico, evita doble conteo y conserva fallback legacy explícito solo cuando la sede no tiene topología canónica. Quality #1861. |
 | M31-F005 | P0 | **Verified** | Formula/versioning | Un solver matricial usa composición normalizada y objetivos netos; aprobación recalcula evidencia tenant-aware en el command boundary y solo acepta validación sin advertencias. Cada cambio crea versión inmutable con lineage y snapshots. Quality #1865. |
-| M31-F006 | P0 | Open | Execution/inventory | El replay con el mismo `commandId` ya es idempotente y publica intención/evento causal, pero falta transacción o precondición remota para dos comandos distintos concurrentes o ejecución multi-dispositivo; esa carrera todavía puede producir doble consumo o conflicto de stock. |
+| M31-F006 | P0 | **Verified** | Execution/inventory | La ejecución usa un RPC transaccional remoto tenant/site-aware: bloquea y preflighta todas las versiones antes de escribir lote, movimientos, preparación, costo y orden como una unidad idempotente por `commandId`. Quality #1871. |
 | M31-F007 | P1 | Open | Tank/planning | La UI anuncia cargas máximas de 1.000 L pero acepta cualquier capacidad/volumen. El cálculo informa cargas, pero no persiste frecuencia de preparación ni divide un plan diario en preparaciones ejecutables. |
 | M31-F008 | P1 | Open | Water authority | Los análisis ya son tenant-owned, pero continúan como registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial ni comparación histórica canónica. |
 | M31-F009 | P1 | Open | Environment/measurements | Targets ambientales se duplican dentro de cada lectura. No existen fuente `SENSOR/CONTROLADOR/MANUAL/MUESTRA/IMPORTADO/CALCULADO`, dispositivos, calibración, setpoints ni alertas canónicas. |
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
 | M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
-| M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos y eventos; faltan carrera multi-dispositivo y proyección. |
+| M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos, eventos y carrera multi-dispositivo; falta la proyección end-to-end. |
 
 ## M31-F001 — cierre verificado
 
@@ -200,6 +200,38 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: 17/17 controles estáticos de autoridad, eliminación de la heurística, server revalidation, tenancy, lineage, snapshots, UI y evidencia adversarial pasaron.
 - M31-F006 continúa abierto como único P0: dos command IDs concurrentes todavía requieren precondición remota/transacción de inventario.
 
+## M31-F006 — cierre verificado
+
+### Solución
+
+- La ejecución de una preparación usa `commit_mirfe_inventory_execution`, un RPC `SECURITY DEFINER` que exige sesión, membresía activa, `manage_irrigation`, ausencia de deny y alcance de sede.
+- `mirfe_inventory_executions` conserva por empresa `commandId`, firma, preparación, sede y resultado canónico. Un replay idéntico devuelve el resultado persistido; una colisión de contenido falla cerrado y la autorización se revalida contra la sede original.
+- Un advisory lock serializa el mismo comando. Después, el RPC ordena y bloquea todos los `erp_records`, verifica todas las `baseVersion` y solo entonces escribe; cualquier conflicto revierte lote, movimientos, preparación, costo, orden y recibo remoto como una sola transacción.
+- El servidor rechaza colecciones, operaciones, IDs, ownership o sedes fuera del boundary; exige consecuencias nuevas, preparación remota pendiente y saldo inicial igual al lote remoto bloqueado. También valida continuidad de movimientos, saldo final, producto, sede y referencias MIRFE.
+- El command publica primero `core.operation.requested`, ejecuta la precondición remota y solo después confirma localmente y publica `mirfe.preparation.completed`. Un fallo remoto no hace commit local ni genera falso completion.
+- La confirmación debe contener exactamente el conjunto canónico esperado, sin identidades duplicadas o extranjeras. Se hidrata con versiones remotas y `sync:false`, evitando reencolar por el transporte genérico registros ya aplicados atómicamente.
+- IDs de movimiento, costo y orden derivan de `commandId`. Una respuesta perdida se recupera mediante el mismo ID sin repetir efectos; un cambio de tenant durante el RPC no hidrata el contexto equivocado ni publica completion.
+- Instalaciones sin Supabase conservan el comportamiento local histórico; la ruta remota fail-closed solo se activa cuando Supabase está configurado.
+
+### Pruebas adversariales
+
+- `tests/m3-1-inventory-concurrency.test.mjs`: siete casos para unidad remota completa, dos dispositivos desde la misma versión, perdedor sin efectos, cambio de tenant, replay tras respuesta perdida, confirmación parcial/ajena, contrato SQL y activación productiva.
+- `tests/m1-1-core-operation-command.test.mjs` demuestra el orden intención → precondición → commit → completion y que un fallo de precondición no muta ni completa.
+- `tests/sync-engine.test.mjs` fija la captura aditiva de `previousPayload`, origen de la versión base remota, sin cambiar el contrato histórico de la cola.
+- Pruebas dirigidas locales: 66/66, incluidas regresiones de command boundary, formulación, topología, inventario y sync.
+
+### Quality y reauditoría
+
+- Commit de solución: `b20228c179b564aef92feed5916aac64b9474621`.
+- Quality #1869: rojo útil, 901/902; la única incompatibilidad fue una aserción estática histórica que exigía la forma literal del commit local.
+- Commit de compatibilidad sin alterar la ruta transaccional: `c46828c386792dc672bc3fadcaef276b029ab4c2`.
+- Quality #1871: **verde**, 902/902 pruebas.
+- Cobertura global: 92.99% líneas / 74.96% ramas / 90.83% funciones.
+- `mirfeInventoryTransaction.js`: 100% líneas / 52.94% ramas / 100% funciones; `coreOperationCommand.js`: 100% / 80% / 100%; `irrigationMirfeCommand.js`: 90.57% / 82.81% / 84.72%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: 10/10 blobs leídos desde GitHub y 13/13 controles de RPC, locks/preflight, saldo remoto, tenant/sede, idempotencia, orden causal, sync y compatibilidad histórica pasaron.
+- Con F006 no quedan P0 abiertos en M3.1. F007–F012 permanecen P1 y no se atribuyen a este cierre.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -251,7 +283,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **5**
-- Open: **7**
-- P0 abiertos: **1**
+- Verified: **6**
+- Open: **6**
+- P0 abiertos: **0**
 - P1 abiertos: **6**
