@@ -27,7 +27,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F001 | P0 | **Verified** | Domain authority | `src/domain/irrigationMirfe.js` establece entidades inmutables y tenant-owned para Emitter/Sector/Assignment/Pulse/Measurement/Drainage y Product/Formula/Preparation/Application MIRFE. Quality #1847. |
 | M31-F002 | P0 | **Verified** | Tenancy | Planes, fórmulas, preparaciones, aplicaciones, análisis, objetivos y productos usan ownership explícito, vista/merge tenant-aware y resolución fail-closed. IDs repetidos entre empresas se preservan aislados. Quality #1853. |
 | M31-F003 | P0 | **Verified** | Command/events | Nueve operaciones legacy pasan por un command boundary tenant-aware, permission-aware e idempotente; las siete páginas ya no mutan el Store. Intención y evento final usan IDs/causalidad deterministas. Quality #1857. |
-| M31-F004 | P0 | Open | Irrigation topology | `hydraulics()` asume `plantas × drippers × caudal`; no representa anillo, gotero con varias estacas, gotero compartido, múltiples emisores, sectores, asignación por Position ni control manual/automático. |
+| M31-F004 | P0 | **Verified** | Irrigation topology | El plan consume Emitter → Sector → Assignment → POSITION/BED/TRAY con ownership, vigencia y filtros operativos; calcula por emisor físico, evita doble conteo y conserva fallback legacy explícito solo cuando la sede no tiene topología canónica. Quality #1861. |
 | M31-F005 | P0 | Open | Formula/versioning | `calculateSimpleFormula()` reparte el objetivo mediante una heurística de suma global, no resuelve nutrientes por composición; una fórmula puede aprobarse aun con advertencias. No hay versión inmutable ni lineage de fórmula. |
 | M31-F006 | P0 | Open | Execution/inventory | El replay con el mismo `commandId` ya es idempotente y publica intención/evento causal, pero falta transacción o precondición remota para dos comandos distintos concurrentes o ejecución multi-dispositivo; esa carrera todavía puede producir doble consumo o conflicto de stock. |
 | M31-F007 | P1 | Open | Tank/planning | La UI anuncia cargas máximas de 1.000 L pero acepta cualquier capacidad/volumen. El cálculo informa cargas, pero no persiste frecuencia de preparación ni divide un plan diario en preparaciones ejecutables. |
@@ -140,6 +140,34 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: 9/9 operaciones declaradas; 7/7 páginas sin mutación directa; permisos, tenant guard, recibos, persistencia/sync y causalidad confirmados contra el código real.
 - F004 topología, F005 autoridad/versionado matemático, F006 carrera transaccional multi-dispositivo y F011 persistencia de las entidades canónicas permanecen abiertos; no se atribuyen a F003.
 
+## M31-F004 — cierre verificado
+
+### Solución
+
+- `src/domain/irrigationTopology.js` proyecta la topología operativa Emitter → Sector → Assignment → POSITION/BED/TRAY dentro de la organización y sede activas.
+- `irrigationHydraulicsForPlan()` filtra por casa, sector, genética y vigencia; resuelve RING, STAKE, SHARED, MULTI y MANUAL desde emisores físicos, sin multiplicar accidentalmente el caudal por plantas o estacas.
+- La validación exige capacidad coherente de plantas, salidas y estacas. Referencias cross-tenant, targets duplicados y solapamientos BED/POSITION fallan cerrado antes del cálculo.
+- Una topología canónica configurada pero expirada o no coincidente no cae silenciosamente al cálculo agregado. `LEGACY_BEDS` se conserva solo para sedes sin Assignments canónicos.
+- El plan persiste `calculationMode` y un `topologySnapshot` con Assignments, sectores, emitters y desglose por asignación/sector; el evento publica sus conteos sin incluir homónimos extranjeros.
+- `IrrigationPlanPage` permite acotar por sector y muestra la fuente del cálculo y el modo de control manual/automático.
+- Este cierre consume colecciones canónicas presentes en estado, pero no las incorpora aún al schema/bootstrap/sync; M31-F011 permanece abierto de forma explícita.
+
+### Pruebas adversariales
+
+- `tests/m3-1-irrigation-topology.test.mjs`: nueve casos para IDs repetidos entre tenants, cinco tipologías, filtro por sector, fallback legacy, referencia extranjera, capacidad, doble conteo, vigencia y bandejas/genética.
+- `tests/m3-1-irrigation-topology-command.test.mjs`: snapshot y evento tenant-aware, rechazo previo a publicar ante emisor extranjero y contrato de UI para sector/fuente canónica.
+- La suite histórica permanece compatible y el cálculo legacy sigue disponible únicamente bajo su precondición declarada.
+
+### Quality y reauditoría
+
+- Commit de solución: `cf58fd056212045a80b1bd7baab39cdf0f6b45bd`.
+- Quality #1861: **verde**, 879/879 pruebas.
+- Cobertura global: 92.83% líneas / 74.86% ramas / 90.67% funciones.
+- `irrigationTopology.js`: 99.29% líneas / 64.89% ramas / 100% funciones.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: el command usa `irrigationHydraulicsForPlan()`, persiste el snapshot y publica modo/conteos; la página no reintroduce `update()`; las referencias y el cálculo fallan cerrado por tenant.
+- F005 autoridad matemática/versionado, F006 carrera transaccional multi-dispositivo y F011 persistencia/sync canónicos continúan abiertos y no se atribuyen a F004.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -191,7 +219,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **3**
-- Open: **9**
-- P0 abiertos: **3**
+- Verified: **4**
+- Open: **8**
+- P0 abiertos: **2**
 - P1 abiertos: **6**
