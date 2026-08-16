@@ -32,7 +32,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F006 | P0 | **Verified** | Execution/inventory | La ejecución usa un RPC transaccional remoto tenant/site-aware: bloquea y preflighta todas las versiones antes de escribir lote, movimientos, preparación, costo y orden como una unidad idempotente por `commandId`. Quality #1871. |
 | M31-F007 | P1 | **Verified** | Tank/planning | Capacidad máxima de 1.000 L, frecuencia entera y cargas por aplicación se derivan con identidad estable; el plan las persiste y cada carga crea una preparación ejecutable tenant-aware con concentración conservada. Quality #1875. |
 | M31-F008 | P1 | **Verified** | Water authority | Laboratorio, muestra, método, panel y resultados forman una autoridad tenant-owned e inmutable; admite parciales, versionado append-only, selección vigente determinista y comparación histórica técnicamente compatible. Quality #1879. |
-| M31-F009 | P1 | Open | Environment/measurements | Targets ambientales se duplican dentro de cada lectura. No existen fuente `SENSOR/CONTROLADOR/MANUAL/MUESTRA/IMPORTADO/CALCULADO`, dispositivos, calibración, setpoints ni alertas canónicas. |
+| M31-F009 | P1 | **Verified** | Environment/measurements | `EnvironmentDevice`, `CalibrationRecord`, setpoints versionados, lecturas con fuente/evidencia y alertas first-class reemplazan targets embebidos; tenancy, commands, migración v12 y sync quedan demostrados. Quality #1885. |
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
 | M31-F011 | P1 | Open | Persistence/sync | Las colecciones legacy corregidas llevan ownership y usan el sync tenant-aware heredado, pero las nuevas entidades canónicas de F001 aún no están incorporadas al schema persistente, bootstrap y transporte remoto. |
 | M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos, eventos y carrera multi-dispositivo; falta la proyección end-to-end. |
@@ -291,7 +291,41 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - `waterAnalysis.js`: 100% líneas / 80.32% ramas / 100% funciones; `irrigation.js`: 100% / 44.44% / 75%; `irrigationMirfeCommand.js`: 90.44% / 84.21% / 84.34%.
 - Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
 - Reauditoría del HEAD remoto: los 9/9 blobs coinciden con el commit publicado y pasaron 28/28 controles de catálogo, identidad, parcial, versión, tenancy, compatibilidad, command boundary, evento, UI, formulación, persistencia y sync.
-- F009–F012 permanecen P1 abiertos y no se atribuyen a este cierre.
+- F010–F012 permanecen P1 abiertos y no se atribuyen a este cierre.
+
+## M31-F009 — cierre verificado
+
+### Solución
+
+- `src/domain/environment.js` establece cinco autoridades tenant-owned: `environmentDevices`, `environmentCalibrations`, `environmentSetpoints`, `environmentalReadings` y `environmentAlerts`.
+- Dispositivos `SENSOR` y `CONTROLLER` declaran zona, variables e identidad de integración. Una lectura de dispositivo exige tipo coincidente y calibración `PASS`, vigente en el instante observado y compatible con todas sus variables.
+- Las seis fuentes transversales (`SENSOR`, `CONTROLLER`, `MANUAL`, `SAMPLE`, `IMPORTED`, `CALCULATED`) conservan evidencia específica; manual fija actor, muestra/importación fijan su ID y cálculo fija método y lecturas causales no futuras.
+- Los targets viven exclusivamente en setpoints inmutables y append-only mediante `setpointKey`, `version` y `supersedesSetpointId`. La selección vigente es determinista por empresa/sede/zona/tiempo y falla ante identidad, versión o lineage ambiguos.
+- Cada lectura conserva únicamente referencias exactas a dispositivo, calibración y setpoint. Las desviaciones generan `EnvironmentalAlert` first-class con identidad determinista; no se recalculan desde targets copiados dentro de la lectura.
+- `scopeEnvironmentState()` y `mergeEnvironmentState()` aplican identidad compuesta y preservan homónimos extranjeros. La resolución recorre sede/área/zona y excluye evidencia sin ownership inequívoco.
+- La migración v12 mueve targets legacy a setpoints, convierte su origen en `IMPORTED`, genera alertas históricas cuando la evidencia es válida y deja ownership o evidencia corrupta en cuarentena, sin secuestrar datos ni bloquear la carga.
+- Cuatro operaciones pasan por command boundary con permiso `manage_settings`, firma/recibo idempotente, retry estable y chequeo del tenant al commit: registrar dispositivo, calibración, setpoint y lectura.
+- Eventos: `core.operation.requested` seguido de `environment.device.registered`, `environment.calibration.recorded`, `environment.setpoint.created` o `environment.reading.recorded`, con correlación/causalidad deterministas.
+- La UI delega a `EnvironmentMeasurementsPanel`, conserva el control fecha/hora Safari-safe y expone fuentes, dispositivos, calibraciones, historial de setpoints, lecturas trazables y alertas canónicas.
+- Las cinco colecciones están inicializadas por schema, participan del bootstrap genérico y de `SYNCABLE_COLLECTIONS`; payload, referencias, recibos y homónimos extranjeros sobreviven el round-trip. F011 permanece abierto para las entidades canónicas de F001 aún no integradas.
+
+### Pruebas adversariales
+
+- `tests/m3-1-environment-authority.test.mjs`: 8 casos para inmutabilidad, límites físicos/unidades, SENSOR/CONTROLLER, calibración vigente/FAIL, seis fuentes, setpoints/versiones, IDs repetidos, scope/merge, migración idempotente, ownership ambiguo y cuarentena de evidencia corrupta.
+- `tests/m3-1-environment-command.test.mjs`: 9 casos para cuatro operaciones, eventos/recibos, replay/colisión, permisos, referencias extranjeras, identidad duplicada, cambio de empresa entre intención y commit, causalidad calculada, persistencia/sync y contrato UI.
+- `tests/stateMigration.test.mjs` demuestra schema v12 y separación de targets; `tests/ux-f001-r1-date-time-controls.test.mjs` sigue la delegación y conserva la protección Safari histórica.
+- Pruebas locales disponibles: 119/119, incluidas regresiones F001–F008, inventario, migración y sync.
+
+### Quality y reauditoría
+
+- Commit de solución: `700ee7a53fa2fb77daea691882996c3553a6a22e`; compatibilidad histórica focalizada: `27984bca7bd4d83ec5f2dc3ca16a3d238b0bda3e`.
+- Quality #1883 reprodujo un único contrato histórico que aún buscaba `DateTimeFields` en la página padre; 941/942 pruebas pasaron. El test se actualizó para verificar la delegación real, sin import muerto ni cambio productivo.
+- Quality #1885: **verde**, 942/942 pruebas.
+- Cobertura global: 93.45% líneas / 75.46% ramas / 91.04% funciones.
+- `environment.js`: 95.79% líneas / 76.37% ramas / 93.44% funciones; `environmentCommand.js`: 98.61% / 75.86% / 88.64%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: 12/12 blobs coinciden byte a byte con la publicación y 58/58 controles semánticos pasaron para autoridad, fuentes, calibración, setpoints, alerts, migración, tenancy, commands, eventos, UI, persistencia, sync y compatibilidad histórica.
+- F010–F012 permanecen P1 abiertos; el próximo cierre es workflow/history y no se atribuye a F009.
 
 ## Evidencia de baseline
 
@@ -344,7 +378,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **8**
-- Open: **4**
+- Verified: **9**
+- Open: **3**
 - P0 abiertos: **0**
-- P1 abiertos: **4**
+- P1 abiertos: **3**
