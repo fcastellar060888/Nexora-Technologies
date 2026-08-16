@@ -1,5 +1,5 @@
 import{DomainEvents}from'../core/events/eventCatalog.js'
-import{hydraulics}from'../domain/irrigation.js'
+import{irrigationHydraulicsForPlan}from'../domain/irrigationTopology.js'
 import{activeOrganizationId,explicitOrganizationId}from'../domain/organizationOwnership.js'
 import{createTankPreparation,executeTankPreparation,registerIrrigationApplication}from'../domain/irrigationExecution.js'
 import{IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,mutateIrrigationMirfeState,scopeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
@@ -95,12 +95,13 @@ function appendRecord(current,collection,record){
 function activeTenantState(state,organizationId){return scopeIrrigationMirfeState(state,organizationId)}
 
 function planIrrigation(state,input,aggregateId,organizationId,occurredAt){
- const tenant=activeTenantState(state,organizationId),siteId=required(input.siteId,'siteId'),houseId=text(input.houseId),geneticId=text(input.geneticId)
+ const tenant=activeTenantState(state,organizationId),siteId=required(input.siteId,'siteId'),houseId=text(input.houseId),sectorId=text(input.sectorId),geneticId=text(input.geneticId)
  const rows=list(tenant.beds).filter(bed=>!houseId||bed.houseId===houseId).filter(bed=>!geneticId||bed.geneticId===geneticId).map(bed=>({...bed,drippers:bed.drippers||1,flow:bed.flow||2}))
- const apps=finite(input.apps,'apps',{positive:true}),minutes=finite(input.minutes,'minutes',{positive:true}),tank=finite(input.tank,'tank',{positive:true}),result=hydraulics(rows,apps,minutes,tank)
+ const apps=finite(input.apps,'apps',{positive:true}),minutes=finite(input.minutes,'minutes',{positive:true}),tank=finite(input.tank,'tank',{positive:true})
+ const result=irrigationHydraulicsForPlan(state,{organizationId,siteId,houseId,sectorId,geneticId,at:occurredAt,apps,minutes,tank,legacyRows:rows})
  const water=[...list(tenant.waterAnalyses)].reverse().find(item=>item.siteId===siteId&&item.status==='Vigente')
- const record={id:aggregateId,organizationId,date:text(input.date)||occurredAt.slice(0,10),siteId,houseId,geneticId,stage:text(input.stage),apps,minutes,tank,...result,waterStatus:water?'Vigente':'Pendiente'}
- return{aggregateType:'mirfe.irrigation-plan',aggregateId,eventName:DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED,siteId,eventPayload:{planId:aggregateId,siteId,houseId,geneticId,plants:result.plants,dailyLiters:result.daily,loads:result.loads},collection:'irrigationPlans',apply:current=>appendRecord(current,'irrigationPlans',record)}
+ const record={id:aggregateId,organizationId,date:text(input.date)||occurredAt.slice(0,10),siteId,houseId,sectorId,geneticId,stage:text(input.stage),apps,minutes,tank,...result,waterStatus:water?'Vigente':'Pendiente'}
+ return{aggregateType:'mirfe.irrigation-plan',aggregateId,eventName:DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED,siteId,eventPayload:{planId:aggregateId,siteId,houseId,sectorId,geneticId,plants:result.plants,dailyLiters:result.daily,loads:result.loads,calculationMode:result.calculationMode,assignmentCount:result.assignmentCount,sectorCount:result.sectorCount,emitterCount:result.emitterCount},collection:'irrigationPlans',apply:current=>appendRecord(current,'irrigationPlans',record)}
 }
 
 function planWaterAnalysis(input,aggregateId,organizationId,occurredAt){

@@ -8,7 +8,8 @@ export const IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS=Object.freeze([
 ])
 
 export const IRRIGATION_MIRFE_SCOPED_COLLECTIONS=Object.freeze([
- 'sites','houses','beds','plantPositions','genetics','products','inventoryLots','inventoryMovements',
+ 'sites','houses','beds','plantPositions','propagationBanks','propagationUnits','genetics','products','inventoryLots','inventoryMovements',
+ 'irrigationEmitters','irrigationSectors','irrigationAssignments','irrigationPulses','irrigationMeasurements','drainageMeasurements',
  ...IRRIGATION_MIRFE_OWNERSHIP_COLLECTIONS,'workOrders','costEntries','mirfePrograms','mirfeMonitoring','mirfeReinforcements','irrigationCorrections','irrigationHistory'
 ])
 
@@ -16,6 +17,14 @@ const REFERENCES=Object.freeze({
  houses:[['sites','siteId','sede']],
  beds:[['houses','houseId','nave']],
  plantPositions:[['beds','bedId','cama']],
+ propagationBanks:[['sites','siteId','sede']],
+ propagationUnits:[['sites','siteId','sede']],
+ irrigationEmitters:[['sites','siteId','sede']],
+ irrigationSectors:[['sites','siteId','sede'],['houses','houseId','nave']],
+ irrigationAssignments:[['sites','siteId','sede'],['irrigationSectors','sectorId','sector'],['irrigationEmitters','emitterId','emisor']],
+ irrigationPulses:[['sites','siteId','sede'],['irrigationSectors','sectorId','sector']],
+ irrigationMeasurements:[['sites','siteId','sede'],['irrigationSectors','sectorId','sector'],['irrigationPulses','pulseId','pulso']],
+ drainageMeasurements:[['sites','siteId','sede'],['irrigationSectors','sectorId','sector'],['irrigationPulses','pulseId','pulso']],
  inventoryLots:[['sites','siteId','sede'],['products','productId','producto de inventario']],
  inventoryMovements:[['inventoryLots','lotId','lote de inventario'],['products','productId','producto de inventario'],['sites','siteId','sede']],
  waterAnalyses:[['sites','siteId','sede']],

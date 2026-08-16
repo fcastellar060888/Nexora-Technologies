@@ -30,6 +30,7 @@ test('M31-F003: plan usa datos del tenant y publica intent más evento canónico
  assert.equal(state.irrigationPlans.length,1)
  assert.equal(state.irrigationPlans[0].organizationId,'org-a')
  assert.equal(state.irrigationPlans[0].plants,10)
+ assert.equal(state.irrigationPlans[0].calculationMode,'LEGACY_BEDS')
  assert.deepEqual(events.map(event=>event.name),[DomainEvents.CORE_OPERATION_REQUESTED,DomainEvents.MIRFE_IRRIGATION_PLAN_CREATED])
  assert.deepEqual(events.map(event=>event.eventId),['cmd-plan:requested','cmd-plan:completed'])
  assert.equal(events[1].causationId,'cmd-plan:requested')
