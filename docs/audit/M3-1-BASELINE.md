@@ -30,7 +30,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F004 | P0 | **Verified** | Irrigation topology | El plan consume Emitter → Sector → Assignment → POSITION/BED/TRAY con ownership, vigencia y filtros operativos; calcula por emisor físico, evita doble conteo y conserva fallback legacy explícito solo cuando la sede no tiene topología canónica. Quality #1861. |
 | M31-F005 | P0 | **Verified** | Formula/versioning | Un solver matricial usa composición normalizada y objetivos netos; aprobación recalcula evidencia tenant-aware en el command boundary y solo acepta validación sin advertencias. Cada cambio crea versión inmutable con lineage y snapshots. Quality #1865. |
 | M31-F006 | P0 | **Verified** | Execution/inventory | La ejecución usa un RPC transaccional remoto tenant/site-aware: bloquea y preflighta todas las versiones antes de escribir lote, movimientos, preparación, costo y orden como una unidad idempotente por `commandId`. Quality #1871. |
-| M31-F007 | P1 | Open | Tank/planning | La UI anuncia cargas máximas de 1.000 L pero acepta cualquier capacidad/volumen. El cálculo informa cargas, pero no persiste frecuencia de preparación ni divide un plan diario en preparaciones ejecutables. |
+| M31-F007 | P1 | **Verified** | Tank/planning | Capacidad máxima de 1.000 L, frecuencia entera y cargas por aplicación se derivan con identidad estable; el plan las persiste y cada carga crea una preparación ejecutable tenant-aware con concentración conservada. Quality #1875. |
 | M31-F008 | P1 | Open | Water authority | Los análisis ya son tenant-owned, pero continúan como registros planos creados desde React; no existe identidad de laboratorio/muestra/versión, soporte parcial ni comparación histórica canónica. |
 | M31-F009 | P1 | Open | Environment/measurements | Targets ambientales se duplican dentro de cada lectura. No existen fuente `SENSOR/CONTROLADOR/MANUAL/MUESTRA/IMPORTADO/CALCULADO`, dispositivos, calibración, setpoints ni alertas canónicas. |
 | M31-F010 | P1 | Open | Workflow/history | Programas, monitoreo, refuerzos, correcciones e historia mantienen estados y transiciones dentro de páginas; no hay workflow compartido ni Timeline/Ledger agronómico demostrable. |
@@ -232,6 +232,35 @@ Evidencia: `tests/m3-1-irrigation-mirfe-command.test.mjs` y `tests/m3-1-irrigati
 - Reauditoría del HEAD remoto: 10/10 blobs leídos desde GitHub y 13/13 controles de RPC, locks/preflight, saldo remoto, tenant/sede, idempotencia, orden causal, sync y compatibilidad histórica pasaron.
 - Con F006 no quedan P0 abiertos en M3.1. F007–F012 permanecen P1 y no se atribuyen a este cierre.
 
+## M31-F007 — cierre verificado
+
+### Solución
+
+- `irrigationTankPlanning.js` establece 1.000 L como máximo operativo, exige una frecuencia diaria entera positiva y limita tanto aplicaciones como preparaciones para evitar planes no ejecutables.
+- Cada aplicación se divide de forma independiente: una carga nunca mezcla volumen de aplicaciones distintas. El plan verifica conservación del volumen diario y expone frecuencia, preparaciones por aplicación, total diario, última carga y un `loadSchedule` inmutable.
+- Las identidades derivan de plan → aplicación → carga. La topología canónica y el fallback legacy usan el mismo planificador, mientras `hydraulics()` conserva los alias históricos `daily`, `loads` y `last`.
+- El command persiste cada carga con empresa, sede, casa, sector, genética, etapa y fecha. La resolución exige una única carga dentro del tenant activo y la reserva `PLANNED → PREPARATION_CREATED` ocurre en el mismo commit que crea la preparación.
+- Una preparación planificada exige `irrigationPlanId` y `loadId`; su ID deriva de la carga e ignora un `entityId` arbitrario del cliente. Sede, etapa y genética de plan/fórmula deben coincidir antes de publicar eventos o mutar estado.
+- El volumen real de la carga no puede superar 1.000 L y escala proporcionalmente los gramos de la fórmula, conservando concentración. Varias cargas de una misma fórmula generan preparaciones e ítems distintos sin relajar el bloqueo histórico para preparaciones libres.
+- `IrrigationPlanPage` limita la capacidad, exige aplicaciones enteras y muestra frecuencia/cargas. `PreparationsPage` materializa cargas pendientes solo con fórmulas aprobadas compatibles y conserva por separado el flujo libre histórico.
+- F011 sigue abierto: este cierre persiste el calendario dentro del plan legacy ya sincronizado, pero no atribuye schema/bootstrap/sync a las entidades canónicas pendientes.
+
+### Pruebas adversariales
+
+- `tests/m3-1-tank-planning.test.mjs`: límites, aplicaciones fraccionarias, división por aplicación sin agregación cruzada, conservación de volumen y escalado de una fórmula de 1.000 L a una carga parcial.
+- `tests/m3-1-tank-planning-command.test.mjs`: IDs repetidos entre empresas, contexto persistido, payload cliente hostil, fórmula homónima extranjera, dos cargas de una misma fórmula, doble reserva, incompatibilidad de etapa/genética, fallo antes de eventos y contrato de UI.
+- Pruebas dirigidas locales: 78/78, incluidas regresiones F001–F006, inventario y sync.
+
+### Quality y reauditoría
+
+- Commit de solución: `7e254b41bd2ee9f51aa73b35aba58332e36c291f`.
+- Quality #1875: **verde**, 911/911 pruebas.
+- Cobertura global: 93.07% líneas / 75.15% ramas / 90.93% funciones.
+- `irrigationTankPlanning.js`: 100% líneas / 83.87% ramas / 100% funciones; `irrigationExecution.js`: 100% / 52.21% / 92.59%; `irrigationMirfeCommand.js`: 91.67% / 81.70% / 86.42%.
+- Static, dependency, environment y session audits, functional evidence, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría del HEAD remoto: los 10/10 blobs coinciden con el commit publicado y pasaron 21/21 controles de límites, frecuencia, identidad, conservación, tenancy, compatibilidad, reserva atómica, eventos, UI y evidencia adversarial.
+- F008–F012 permanecen P1 abiertos y no se atribuyen a este cierre.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -283,7 +312,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **6**
-- Open: **6**
+- Verified: **7**
+- Open: **5**
 - P0 abiertos: **0**
-- P1 abiertos: **6**
+- P1 abiertos: **5**
