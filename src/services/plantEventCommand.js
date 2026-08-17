@@ -31,19 +31,19 @@ function existingCommand(state,commandId,organizationId){
 }
 
 export function preparePlantEventCommand(state,{plantId,commandId,type='Observación',title,detail='',date=new Date().toISOString()}={}){
- if(!hasPermission(state,'record_observations'))throw new Error('No tienes permiso para registrar observaciones de planta.')
  const id=text(plantId),cmd=text(commandId)
  if(!id)throw new Error('La planta es obligatoria.')
  if(!cmd)throw new Error('El commandId es obligatorio para garantizar idempotencia.')
  const organizationId=activeOrganizationId(state)
  const plant=findIrrigationMirfeRecord(state,'plantPositions',id,{label:'planta productiva',organizationId})
- const location=plantLocation(state,plant,organizationId)
+ const location=plantLocation(state,plant,organizationId),siteId=location.site?.id||plant.siteId||''
+ if(!hasPermission(state,'record_observations',{companyId:organizationId,siteId}))throw new Error('No tienes permiso para registrar observaciones en la sede de esta planta.')
  const normalizedType=text(type)
  if(!ALLOWED_TYPES.has(normalizedType))throw new Error('El tipo de evento de planta no es válido.')
  const normalizedTitle=text(title)
  if(!normalizedTitle)throw new Error('El título del evento de planta es obligatorio.')
  const occurredAt=normalizedDate(date),actor=activeUser(state)
- const record=Object.freeze({id:cmd,commandId:cmd,plantId:id,organizationId,siteId:location.site?.id||plant.siteId||null,actorId:actor?.remoteId||actor?.id||'system',type:normalizedType,title:normalizedTitle,detail:text(detail),date:occurredAt})
+ const record=Object.freeze({id:cmd,commandId:cmd,plantId:id,organizationId,siteId:siteId||null,actorId:actor?.remoteId||actor?.id||'system',type:normalizedType,title:normalizedTitle,detail:text(detail),date:occurredAt})
  const existing=existingCommand(state,cmd,organizationId)
  if(existing){
   if(!sameCommand(existing,record))throw new Error('El commandId ya fue usado con contenido diferente.')
@@ -61,7 +61,8 @@ export function applyPreparedPlantEvent(state,prepared){
  const active=activeOrganizationId(state)
  if(active!==prepared.organizationId)throw new Error('La empresa activa cambió antes de confirmar el evento de planta.')
  const plant=findIrrigationMirfeRecord(state,'plantPositions',prepared.record.plantId,{label:'planta productiva',organizationId:prepared.organizationId})
- plantLocation(state,plant,prepared.organizationId)
+ const location=plantLocation(state,plant,prepared.organizationId),siteId=location.site?.id||plant.siteId||''
+ if(!hasPermission(state,'record_observations',{companyId:prepared.organizationId,siteId}))throw new Error('El permiso sobre la sede de la planta cambió antes de confirmar el evento.')
  return{...state,plantEvents:[...list(state?.plantEvents),prepared.record]}
 }
 
