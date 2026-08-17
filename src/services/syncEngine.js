@@ -2,7 +2,7 @@ import{CANONICAL_IRRIGATION_COLLECTIONS}from'../domain/irrigationMirfeTenancy.js
 
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentDevices','environmentCalibrations','environmentSetpoints','environmentalReadings','environmentAlerts',
- 'genetics','incidents','findings','treatments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
+ 'genetics','incidents','findings','treatments','mipeInterventions','mipeCommandReceipts','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
  'growingMediumProducts','growingMediumFormulas','growingMediumBatches','growingMediumAssignments','growingMediumReusePolicies','growingMediumReuseCycles','growingMediumPurchaseRequirements',
  ...CANONICAL_IRRIGATION_COLLECTIONS,
  'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
@@ -14,14 +14,16 @@ const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
-const recordId=record=>text(record?.id)
+const recordId=record=>text(record?.id||record?.commandId)
 const recordKey=record=>JSON.stringify([recordOrganizationId(record),recordId(record)])
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
  const changes=[]
  for(const collection of collections){
-  const before=new Map(list(prev?.[collection]).map(item=>[recordKey(item),item]))
-  const after=new Map(list(next?.[collection]).map(item=>[recordKey(item),item]))
+  const beforeItems=list(prev?.[collection]),afterItems=list(next?.[collection])
+  if([...beforeItems,...afterItems].some(item=>!recordId(item)))throw new Error(`${collection} contiene un registro sin identidad sincronizable.`)
+  const before=new Map(beforeItems.map(item=>[recordKey(item),item]))
+  const after=new Map(afterItems.map(item=>[recordKey(item),item]))
   for(const [key,item] of after){
    const old=before.get(key)
    if(!old||JSON.stringify(old)!==JSON.stringify(item))changes.push({collection,recordId:recordId(item),organizationId:recordOrganizationId(item),operation:'upsert',payload:item,previousPayload:old||null})
@@ -37,12 +39,13 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  const queued=changes.map(change=>{
   const declaredOwner=text(change.organizationId)
   if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
+  if(!text(change.recordId))throw new Error('No se puede sincronizar un registro sin identidad estable')
   let payload=change.payload
   if(change.operation==='upsert'){
    if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
    const owner=recordOrganizationId(payload)
    if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
-   payload={...payload,_organizationId:tenant}
+   payload={...payload,id:recordId(payload),_organizationId:tenant}
   }
   return{
    id:uid(),companyId:tenant,userId:userId||'',deviceId:deviceId||'',
@@ -83,6 +86,7 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
   const items=list(next[row.collection]),remoteId=text(row.recordId)
+  if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
   const isTenantRecord=item=>recordId(item)===remoteId&&(!recordOrganizationId(item)||recordOrganizationId(item)===tenant)
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
   const record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
