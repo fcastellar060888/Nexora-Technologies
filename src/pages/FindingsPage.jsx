@@ -1,20 +1,24 @@
-import {useMemo,useState} from'react'
+import {useEffect,useMemo,useState} from'react'
 import Card from'../components/Card'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
 import StateMessage from'../components/StateMessage'
 import {FormActions,ValidationMessage} from'../components/forms/FormKit.jsx'
+import {scopeOperationalState} from'../domain/operationalContext.js'
 import {availableMipeFindingTransitions} from'../domain/mipeFindingWorkflow.js'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
 import {MIPE_OPERATIONS} from'../services/mipeCommand.js'
 import {useMipeCommandStore} from'../services/mipeCommandStore.js'
 
 export default function FindingsPage(){
- const {state,execute}=useMipeCommandStore()
+ const {state:tenantState,execute}=useMipeCommandStore()
+ const state=useMemo(()=>scopeOperationalState(tenantState,tenantState.currentContext),[tenantState])
+ const contextKey=['companyId','siteId','houseId','bedId','plantId'].map(key=>state.currentContext?.[key]||'').join(':')
  const [filters,setFilters]=useState({status:'Todos',incidentId:'Todos',houseId:'Todos',followUp:'Todos'})
  const [editing,setEditing]=useState(null)
  const [transitioning,setTransitioning]=useState(null)
+ useEffect(()=>{setFilters(current=>({...current,houseId:'Todos'}));setEditing(null);setTransitioning(null)},[contextKey])
 
  const rows=useMemo(()=>state.findings.filter(f=>{
    const loc=findingLocation(state,f)
@@ -48,7 +52,7 @@ export default function FindingsPage(){
  }
 
  return <>
-  <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución auditable de cada caso."/>
+  <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución auditable de cada caso dentro del contexto operativo activo."/>
   <Card title="Filtros">
    <div className="form-grid four">
     <Field label="Estado"><select value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option>Todos</option>{findingStatuses.map(x=><option key={x}>{x}</option>)}</select></Field>
@@ -69,7 +73,7 @@ export default function FindingsPage(){
 
   <Card title="Registros">
    {!hasFindings?<StateMessage title="No hay hallazgos MIPE" message="Los reportes sanitarios aparecerán aquí cuando se registre el primer hallazgo desde la operación o el mapa de cultivo."/>:
-   !rows.length?<StateMessage type="info" title="Sin coincidencias" message="Hay hallazgos registrados, pero ninguno coincide con los filtros seleccionados. Ajusta el estado, la incidencia, la nave o el seguimiento."/>:
+   !rows.length?<StateMessage type="info" title="Sin coincidencias" message="Hay hallazgos registrados, pero ninguno coincide con el contexto y los filtros seleccionados."/>:
    <div className="table-scroll">
     <table>
      <thead><tr><th>Fecha reporte</th><th>Próximo seguimiento</th><th>Ubicación</th><th>Genética</th><th>Incidencia</th><th>Severidad</th><th>Estado</th><th>Responsable</th><th>Acción/observación</th><th>Acciones</th></tr></thead>
