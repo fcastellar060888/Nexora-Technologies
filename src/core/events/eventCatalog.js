@@ -44,6 +44,7 @@ export const DomainEvents=Object.freeze({
  DOCUMENT_ARCHIVED:'document.archived',
  CROP_LOT_CREATED:'cultivation.lot.created',
  CROP_PHASE_CHANGED:'cultivation.lot.phase_changed',
+ PLANT_PHASE_CHANGED:'cultivation.plant.phase_changed',
  PLANT_EVENT_REQUESTED:'cultivation.plant.event_requested',
  PLANT_EVENT_RECORDED:'cultivation.plant.event_recorded',
  MIPE_FINDING_RECORDED:'mipe.finding.recorded',
