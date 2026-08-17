@@ -136,6 +136,7 @@ function planMaterialFindings(state,input,aggregateId,organizationId,occurredAt,
  const findingIdFactory=plant=>`${organizationId}:${commandId}:finding:${plant.id}`,availabilityEventIdFactory=plant=>`${organizationId}:${commandId}:material-block:${plant.id}`
  const draft={incidentId:incident.id,type:incident.name,severity:text(input.severity)||'Media',notes:text(input.notes),reportedAt:occurredAt,restrictAvailability:input.restrictAvailability===true,idFactory:findingIdFactory,availabilityEventIdFactory}
  const siteIds=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))],siteId=siteIds.length===1?siteIds[0]:null
+ appendMaterialPlantFindings(state,targets,draft)
  return{aggregateType:'mipe.finding-batch',aggregateId,eventName:DomainEvents.MIPE_FINDING_RECORDED,siteId,payload:{plantIds:targets.map(item=>item.id),incidentId:incident.id,type:draft.type,severity:draft.severity,restrictAvailability:draft.restrictAvailability,targetCount:targets.length},apply:current=>{
    const beforeFindings=new Set(list(current.findings).filter(item=>text(item?.organizationId||item?.companyId||item?._organizationId)===organizationId).map(item=>item.id))
    const next=appendMaterialPlantFindings(current,targets,draft)
