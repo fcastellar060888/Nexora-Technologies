@@ -13,7 +13,7 @@ function recordsFor(state,collection,organizationId,{matches=()=>true,label=coll
   if(!matches(item))continue
   const resolved=irrigationMirfeRecordOrganizationId(state,collection,item)
   if(resolved===organizationId){accepted.push(item);continue}
-  if(declaredOrganizationId(item)===organizationId&&!resolved)throw new Error(`${label} de la empresa de la planta tiene referencias extranjeras o ownership ambiguo`)
+  if(declaredOrganizationId(item)===organizationId&&!resolved)throw new Error(`${label} tiene ownership ambiguo: el sector de riego pertenece a otra empresa o no existe en la empresa de la planta, o alguna referencia estructural es extranjera`)
  }
  return accepted
 }
