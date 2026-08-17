@@ -85,7 +85,7 @@ test('M32-F003: tenant change between intent and commit fails closed and emits n
 
 test('M32-F003: treatment execution mutates only active tenant and replay does not double consume',async()=>{
  const state=baseState(),h=harness(state)
- await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.SCHEDULE_TREATMENT,input:{findingId:'finding-shared',productId:'product-shared',dose:2,doseUnit:'mL/L',mixVolume:100,date:'2026-08-17',responsible:'Operador'},commandId:'cmd-schedule'},h.deps)
+ await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.SCHEDULE_TREATMENT,input:{findingId:'finding-shared',productId:'product-shared',dose:2,doseUnit:'mL/L',mixVolume:100,date:'2026-08-17',responsible:'Operador'},commandId:'cmd-schedule',occurredAt:'2026-08-17T09:00:00.000Z'},h.deps)
  const executeRequest={operation:MIPE_OPERATIONS.EXECUTE_TREATMENT,entityId:'cmd-schedule',input:{lotId:'lot-shared',responsible:'Operador'},commandId:'cmd-execute-once',occurredAt:'2026-08-17T10:00:00.000Z'}
  await executeMipeCommand(h.state,executeRequest,h.deps)
  const activeAfter=h.state.inventoryLots.find(item=>item.organizationId==='org-a'),foreignAfter=h.state.inventoryLots.find(item=>item.organizationId==='org-b')
