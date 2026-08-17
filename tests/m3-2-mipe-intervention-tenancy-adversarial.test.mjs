@@ -23,6 +23,19 @@ test('M32-F006: unowned legacy intervention cannot complete a tenant-owned revie
  assert.equal(tasks[0].completedByInterventionId,'')
 })
 
+test('M32-F006: tenant-owned review refuses an unowned Finding instead of adopting it by id',()=>{
+ const origin=source(),legacyFinding={...finding};delete legacyFinding.organizationId
+ assert.throws(()=>projectMipeReviewTasks({findings:[legacyFinding],mipeInterventions:[origin]},{now:'2026-08-17T13:00:00.000Z'}),/no se pudo resolver de forma inequívoca/i)
+})
+
+test('M32-F006: organization filter isolates foreign duplicate identities before resolution',()=>{
+ const origin=source(),foreign={...finding,organizationId:'org-b',siteId:'site-b',plantPositionId:'position-b',targetId:'position-b'}
+ const foreignDuplicate={...foreign,plantPositionId:'position-c',targetId:'position-c'}
+ const tasks=projectMipeReviewTasks({findings:[finding,foreign,foreignDuplicate],mipeInterventions:[origin]},{organizationId:'org-a',now:'2026-08-17T13:00:00.000Z',includeCompleted:true})
+ assert.equal(tasks.length,1)
+ assert.equal(tasks[0].organizationId,'org-a')
+})
+
 test('M32-F006: duplicate Finding identity inside one tenant fails closed',()=>{
  const origin=source(),duplicate={...finding,plantPositionId:'position-b',targetId:'position-b'}
  assert.throws(()=>projectMipeReviewTasks({findings:[finding,duplicate],mipeInterventions:[origin]},{now:'2026-08-17T13:00:00.000Z'}),/duplicado dentro de la empresa/)
