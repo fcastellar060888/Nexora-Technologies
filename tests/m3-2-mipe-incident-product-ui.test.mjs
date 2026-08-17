@@ -45,11 +45,15 @@ test('M32-F007: Treatment scheduling locks dose unit to the selected technical p
  assert.match(text,/t\.productSnapshot\|\|liveProduct/)
 })
 
-test('M32-F007: shared Inventory captures tenant-owned executable product metadata',async()=>{
+test('M32-F007: shared Inventory captures tenant-owned executable product metadata and coherent units',async()=>{
  const text=await source('pages/InventoryPage.jsx')
  for(const token of['manufacturer','registrationNumber','validFrom','validUntil','technicalRevision'])assert.match(text,new RegExp(token))
  assert.match(text,/state\.currentContext\?\.companyId/)
  assert.match(text,/organizationId/)
+ assert.match(text,/executableMipeCategory/)
+ assert.match(text,/expectedInventoryUnit/)
+ assert.match(text,/p\.unit!==expected/)
+ assert.match(text,/La unidad de inventario debe ser/)
 })
 
 test('M32-F007: command and execution consume canonical catalog authority and frozen snapshot',async()=>{
