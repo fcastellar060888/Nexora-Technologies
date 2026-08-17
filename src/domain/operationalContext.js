@@ -9,11 +9,15 @@ const terminalFinding=status=>['Resuelto','Falso positivo','Planta eliminada'].i
 
 export const OPERATIONAL_CONTEXT_FIELDS=Object.freeze(['companyId','siteId','houseId','bedId','plantId'])
 
-function activeMemberships(state){return list(state?.memberships).filter(item=>text(item?.status||'active')==='active')}
+function activeUserId(state){return text(list(state?.users).find(item=>item?.activeSession&&item?.active!==false)?.id)}
+function activeMemberships(state){
+ const memberships=list(state?.memberships).filter(item=>text(item?.status||'active')==='active'),userId=activeUserId(state)
+ return userId?memberships.filter(item=>text(item?.userId)===userId):memberships
+}
 function allowedCompanyIds(state){const memberships=activeMemberships(state);return memberships.length?new Set(memberships.map(item=>text(item?.companyId||item?.organizationId)).filter(Boolean)):new Set(list(state?.companies).map(item=>text(item?.id)).filter(Boolean))}
 function membershipSites(state,organizationId){
- const memberships=activeMemberships(state).filter(item=>same(item?.companyId||item?.organizationId,organizationId))
- if(!activeMemberships(state).length)return null
+ const all=activeMemberships(state),memberships=all.filter(item=>same(item?.companyId||item?.organizationId,organizationId))
+ if(!all.length)return null
  if(!memberships.length)return new Set()
  if(memberships.some(item=>list(item?.siteIds).length===0))return null
  return new Set(memberships.flatMap(item=>list(item?.siteIds)).map(text).filter(Boolean))
@@ -31,10 +35,7 @@ function companyFor(state,companyId){
  if(matches.length>1)throw new Error('La empresa activa tiene identidad duplicada.')
  return matches[0]||null
 }
-function organizationGenetics(state,organizationId){return list(state?.genetics).filter(record=>{
- const owner=irrigationMirfeRecordOrganizationId(state,'genetics',record)
- return owner===organizationId
- })}
+function organizationGenetics(state,organizationId){return list(state?.genetics).filter(record=>irrigationMirfeRecordOrganizationId(state,'genetics',record)===organizationId)}
 
 export function operationalContextOptions(state,requested=state?.currentContext||{}){
  const allowedCompanies=allowedCompanyIds(state)
@@ -101,7 +102,7 @@ function scopeDirect(state,key,organizationId,allowedSiteIds){return list(state?
 export function scopeOperationalState(state,requested=state?.currentContext||{}){
  const context=normalizeOperationalContext(state,requested),organizationId=context.companyId,options=operationalContextOptions(state,context)
  if(!organizationId)return{...state,currentContext:context}
- const allSites=options.sites,siteIds=new Set((context.siteId?allSites.filter(item=>same(item.id,context.siteId)):allSites).map(item=>text(item.id)))
+ const siteRestriction=membershipSites(state,organizationId),allSites=options.sites,siteIds=new Set((context.siteId?allSites.filter(item=>same(item.id,context.siteId)):allSites).map(item=>text(item.id)))
  const allHouses=recordsForOrganization(state,'houses',organizationId).filter(item=>siteIds.has(text(item?.siteId)))
  const houses=context.houseId?allHouses.filter(item=>same(item.id,context.houseId)):allHouses,houseIds=new Set(houses.map(item=>text(item.id)))
  const allBeds=recordsForOrganization(state,'beds',organizationId).filter(item=>houseIds.has(text(item?.houseId)))
@@ -111,11 +112,11 @@ export function scopeOperationalState(state,requested=state?.currentContext||{})
  const sites=allSites.filter(item=>siteIds.has(text(item.id)))
  const tenantFindings=list(state?.findings).filter(record=>mipeRecordOrganizationId(state,'findings',record)===organizationId)
  const findings=tenantFindings.filter(finding=>{
-  if(!context.siteId)return true
   const positionId=text(finding?.plantPositionId)||(text(finding?.targetType)==='POSITION'?text(finding?.targetId):'')
   if(positionId)return plantIds.has(positionId)
   if(context.houseId||context.bedId||context.plantId)return false
-  return!finding?.siteId||siteIds.has(text(finding.siteId))
+  if(finding?.siteId)return siteIds.has(text(finding.siteId))
+  return!context.siteId&&siteRestriction===null
  })
  const findingIds=new Set(findings.map(item=>text(item.id)))
  const treatments=list(state?.treatments).filter(record=>mipeRecordOrganizationId(state,'treatments',record)===organizationId&&findingIds.has(text(record?.findingId)))
