@@ -22,7 +22,8 @@ function assertCommandReceiptPayload(payload,recordIdValue,tenant){
  if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('El receipt MIPE remoto requiere payload válido')
  const commandId=text(payload.commandId||payload.id),owner=recordOrganizationId(payload),signature=text(payload.signature)
  if(!commandId||commandId!==text(recordIdValue))throw new Error('El receipt MIPE no coincide con su commandId sincronizable')
- if(owner&&owner!==tenant)throw new Error('El receipt MIPE pertenece a otra empresa')
+ if(!owner)throw new Error('El receipt MIPE sincronizable requiere organizationId explícito; un receipt legacy sin tenant debe migrarse antes de sync')
+ if(owner!==tenant)throw new Error('El receipt MIPE pertenece a otra empresa')
  if(!signature)throw new Error('El receipt MIPE requiere firma durable')
  return{commandId,signature}
 }
@@ -33,7 +34,8 @@ function assertRemoteReceiptIntegrity(state,records,tenant){
   const identity=text(row.recordId),validated=assertCommandReceiptPayload(row.payload,identity,tenant),key=`${tenant}|${identity}`
   if(seen.has(key)&&seen.get(key)!==validated.signature)throw new Error('La respuesta remota contiene receipts MIPE contradictorios')
   seen.set(key,validated.signature)
-  const existing=list(state?.mipeCommandReceipts).filter(item=>recordOrganizationId(item)===tenant&&text(item.commandId||item.id)===identity)
+  const homonyms=list(state?.mipeCommandReceipts).filter(item=>text(item.commandId||item.id)===identity),legacy=homonyms.filter(item=>!recordOrganizationId(item)),existing=homonyms.filter(item=>recordOrganizationId(item)===tenant)
+  if(legacy.length)throw new Error('El estado local contiene un receipt MIPE legacy sin tenant ambiguo; migra su organizationId antes de hidratar sync')
   if(existing.length>1)throw new Error('El estado local contiene receipts MIPE duplicados antes de hidratar sync')
   if(existing.length===1&&text(existing[0].signature)!==validated.signature)throw new Error('El receipt MIPE remoto contradice la firma durable local')
  }
@@ -113,10 +115,11 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
   const items=list(next[row.collection]),remoteId=text(row.recordId)
   if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
-  const isTenantRecord=item=>recordId(item)===remoteId&&(!recordOrganizationId(item)||recordOrganizationId(item)===tenant)
+  const receiptCollection=row.collection==='mipeCommandReceipts'
+  const isTenantRecord=item=>recordId(item)===remoteId&&(receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
   let record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
-  if(row.collection==='mipeCommandReceipts')record={...record,commandId:row.recordId,organizationId:tenant}
+  if(receiptCollection)record={...record,commandId:row.recordId,organizationId:tenant}
   const index=items.findIndex(isTenantRecord)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
  }
