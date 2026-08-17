@@ -86,19 +86,6 @@ export function projectMipeReviewTasks(state,{now=new Date(),organizationId='',s
  return Object.freeze(tasks.sort((a,b)=>timestamp(a.dueAt)-timestamp(b.dueAt)||a.id.localeCompare(b.id)))
 }
 
-export function reassignMipeReviewTask(state,{interventionId,responsible}={}){
- if(!interventionId)throw new Error('Selecciona la tarea MIPE que deseas reasignar')
- const assigned=text(responsible)
- if(!assigned)throw new Error('Selecciona o escribe el nuevo responsable')
- const interventions=list(state?.mipeInterventions)
- const source=interventions.find(item=>item.id===interventionId)
- if(!source)throw new Error('No se encontró la intervención que originó la tarea MIPE')
- if(!validDate(source.nextReviewAt))throw new Error('La intervención no tiene una próxima revisión programada')
- const updatedAt=new Date().toISOString()
- const mipeInterventions=interventions.map(item=>item.id===interventionId?{...item,responsible:assigned,updatedAt}:item)
- return{...state,mipeInterventions}
-}
-
 export function summarizeMipeReviewTasks(tasks){
  const source=list(tasks)
  return Object.freeze({
