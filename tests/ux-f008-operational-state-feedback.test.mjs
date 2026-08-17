@@ -40,11 +40,13 @@ test('MIPE sanitary catalog explains the empty configuration state',async()=>{
 test('MIPE findings distinguish empty data, filtered results and healthy follow-ups',async()=>{
  const source=await read('src/pages/FindingsPage.jsx')
  assert.match(source,/import StateMessage/)
- assert.match(source,/import DateTimeFields/)
  assert.match(source,/No hay hallazgos MIPE/)
  assert.match(source,/Sin coincidencias/)
  assert.match(source,/type="success" title="Seguimientos al día"/)
- assert.match(source,/DateTimeFields value=/)
+ assert.match(source,/Fecha original/)
+ assert.match(source,/value=\{formatDateTime\(editing\.createdAt\)\} disabled/)
+ assert.doesNotMatch(source,/import DateTimeFields/)
+ assert.doesNotMatch(source,/DateTimeFields value=/)
  assert.doesNotMatch(source,/type="datetime-local"/)
 })
 
