@@ -135,9 +135,9 @@ function planMaterialFindings(state,input,aggregateId,organizationId,occurredAt,
  assertMipeIncidentUsable(incident,{organizationId,at:occurredAt})
  const findingIdFactory=plant=>`${organizationId}:${commandId}:finding:${plant.id}`,availabilityEventIdFactory=plant=>`${organizationId}:${commandId}:material-block:${plant.id}`
  const draft={incidentId:incident.id,type:incident.name,severity:text(input.severity)||'Media',notes:text(input.notes),reportedAt:occurredAt,restrictAvailability:input.restrictAvailability===true,idFactory:findingIdFactory,availabilityEventIdFactory}
- const siteIds=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))],siteId=siteIds.length===1?siteIds[0]:null
+ const siteIds=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))].sort(),siteId=siteIds.length===1?siteIds[0]:null
  appendMaterialPlantFindings(state,targets,draft)
- return{aggregateType:'mipe.finding-batch',aggregateId,eventName:DomainEvents.MIPE_FINDING_RECORDED,siteId,payload:{plantIds:targets.map(item=>item.id),incidentId:incident.id,type:draft.type,severity:draft.severity,restrictAvailability:draft.restrictAvailability,targetCount:targets.length},apply:current=>{
+ return{aggregateType:'mipe.finding-batch',aggregateId,eventName:DomainEvents.MIPE_FINDING_RECORDED,siteId,payload:{plantIds:targets.map(item=>item.id),siteIds,incidentId:incident.id,type:draft.type,severity:draft.severity,restrictAvailability:draft.restrictAvailability,targetCount:targets.length},apply:current=>{
    const beforeFindings=new Set(list(current.findings).filter(item=>text(item?.organizationId||item?.companyId||item?._organizationId)===organizationId).map(item=>item.id))
    const next=appendMaterialPlantFindings(current,targets,draft)
    const findings=list(next.findings).map(item=>{
@@ -259,6 +259,31 @@ function plan(state,{operation,input,aggregateId,organizationId,occurredAt,comma
  throw new Error('Operación MIPE desconocida.')
 }
 
+function assertSameCommitSite(actualSiteId,plannedSiteId,label){
+ const actual=text(actualSiteId),planned=text(plannedSiteId)
+ if(actual!==planned)throw new Error(`${label} cambió de sede entre requested y commit.`)
+ return actual
+}
+function assertMipeCommitScope(current,{operation,aggregateId,organizationId,planned}){
+ if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIPE.')
+ const plannedSite=text(planned.siteId)
+ if(operation===MIPE_OPERATIONS.CREATE_MATERIAL_FINDINGS){
+  const targets=materialTargets(current,organizationId,planned.payload.plantIds),currentSites=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))].sort(),expectedSites=list(planned.payload.siteIds).map(text).filter(Boolean).sort()
+  if(stable(currentSites)!==stable(expectedSites))throw new Error('La sede real del target material cambió entre requested y commit.')
+  if(currentSites.length)for(const siteId of currentSites)authorize(current,operation,organizationId,siteId);else authorize(current,operation,organizationId,null)
+  return
+ }
+ let actualSite=plannedSite
+ if(operation===MIPE_OPERATIONS.CREATE_FINDING){const plant=activeRecord(current,'plantPositions',planned.payload.plantPositionId,'planta/Position',organizationId);actualSite=siteForPosition(current,plant)}
+ else if([MIPE_OPERATIONS.UPDATE_FINDING,MIPE_OPERATIONS.CORRECT_FINDING,MIPE_OPERATIONS.TRANSITION_FINDING,MIPE_OPERATIONS.RESOLVE_FINDING].includes(operation))actualSite=text(activeRecord(current,'findings',aggregateId,'hallazgo',organizationId).siteId)
+ else if(operation===MIPE_OPERATIONS.SCHEDULE_TREATMENT){const finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId),product=activeRecord(current,'products',planned.payload.productId,'producto',organizationId);actualSite=text(finding.siteId||product.siteId)}
+ else if(operation===MIPE_OPERATIONS.EXECUTE_TREATMENT){const treatment=activeRecord(current,'treatments',aggregateId,'tratamiento',organizationId),finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId),lot=activeRecord(current,'inventoryLots',planned.payload.lotId,'lote de inventario',organizationId);actualSite=text(treatment.siteId||finding.siteId||lot.siteId)}
+ else if(operation===MIPE_OPERATIONS.RECORD_INTERVENTION)actualSite=text(activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId).siteId)
+ else if(operation===MIPE_OPERATIONS.REASSIGN_INTERVENTION){const intervention=activeRecord(current,'mipeInterventions',aggregateId,'intervención',organizationId),finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId);actualSite=text(intervention.siteId||finding.siteId)}
+ assertSameCommitSite(actualSite,plannedSite,'La sede real del target MIPE')
+ authorize(current,operation,organizationId,actualSite||null)
+}
+
 export async function executeMipeCommand(state,{operation,entityId='',input={},commandId,occurredAt=new Date().toISOString()}={},deps={}){
  if(!knownOperation(operation))throw new Error('Operación MIPE desconocida.')
  const organizationId=activeOrganizationId(state),id=required(commandId,'commandId'),aggregateId=text(entityId)||id,normalizedInput=plainObject(input)?input:{},signature=mipeCommandSignature({operation,aggregateId,input:normalizedInput}),existing=findReceipt(state,organizationId,id),commandActor=actor(state)
@@ -266,12 +291,12 @@ export async function executeMipeCommand(state,{operation,entityId='',input={},c
  const planned=plan(state,{operation,input:{...normalizedInput,commandId:id},aggregateId,organizationId,occurredAt,commandActor})
  authorize(state,operation,organizationId,planned.siteId)
  const receipt=Object.freeze({commandId:id,organizationId,signature,operation,aggregateId,occurredAt,actor:commandActor})
- const localApply=current=>applyOnce(current,organizationId,receipt,planned.apply)
+ const localApply=current=>{assertMipeCommitScope(current,{operation,aggregateId,organizationId,planned});return applyOnce(current,organizationId,receipt,planned.apply)}
  const remoteTreatment=operation===MIPE_OPERATIONS.EXECUTE_TREATMENT&&!existing&&typeof deps.commitTreatmentTransaction==='function'
  const transaction=remoteTreatment?buildMipeTreatmentTransaction(state,localApply(state),{commandId:id,signature,organizationId,treatmentId:aggregateId,siteId:planned.siteId}):null
  const prepareCommit=remoteTreatment?()=>deps.commitTreatmentTransaction(transaction):null
  const apply=remoteTreatment?(current,confirmation)=>{
-  if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIPE.')
+  assertMipeCommitScope(current,{operation,aggregateId,organizationId,planned})
   const hydrated=applyMipeTreatmentConfirmation(current,confirmation,organizationId)
   return applyReceiptOnly(hydrated,organizationId,receipt)
  }:localApply
