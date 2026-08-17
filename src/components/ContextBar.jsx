@@ -5,6 +5,7 @@ import{useStore}from'../services/store'
 const rules=[
  [/^\/(companies|users|audit|diagnostics|settings)/,['company']],
  [/^\/sites/,['company','site']],
+ [/^\/infrastructure(?:-map|\/operations|$)/,['company','site']],
  [/^\/(inventory|costs)/,['company','site']],
  [/^\/irrigation\/(products|water)/,['company','site']],
  [/^\/irrigation\/(objectives|formulation)/,['company','site','genetic','stage']],
