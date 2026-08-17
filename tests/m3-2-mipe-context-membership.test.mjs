@@ -107,3 +107,15 @@ test('F010: múltiples usuarios con activeSession fallan cerrado en vez de escog
  const current=state();current.users[1].activeSession=true
  assert.throws(()=>operationalContextOptions(current,current.currentContext),/sesión activa es ambigua/i)
 })
+
+test('F010: registro legacy sin organizationId conserva inferencia por sede cuando el owner es inequívoco',()=>{
+ const current=state();current.companies.push({id:'org-b'});current.sites.push({id:'site-b',organizationId:'org-b',companyId:'org-b'});current.mapElements.push({id:'legacy-unique',siteId:'site-1'})
+ const scoped=scopeOperationalState(current,current.currentContext)
+ assert.equal(scoped.mapElements.some(item=>item.id==='legacy-unique'),true)
+})
+
+test('F010: registro legacy con siteId homónimo cross-tenant falla cerrado',()=>{
+ const current=state();current.companies.push({id:'org-b'});current.sites.push({id:'site-1',organizationId:'org-b',companyId:'org-b'});current.mapElements.push({id:'legacy-ambiguous',siteId:'site-1'})
+ const scoped=scopeOperationalState(current,current.currentContext)
+ assert.equal(scoped.mapElements.some(item=>item.id==='legacy-ambiguous'),false)
+})
