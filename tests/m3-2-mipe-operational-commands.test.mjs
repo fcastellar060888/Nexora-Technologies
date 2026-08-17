@@ -48,7 +48,7 @@ function propagationState({availability='Disponible para corte',findingStatus='D
  currentOrganizationId:'org-a',currentCompanyId:'org-a',
  companies:[{id:'org-a',name:'A'}],sites:[{id:'site-a',name:'Site A',companyId:'org-a'}],
  geneticProfiles:[{id:'g-1',organizationId:'org-a',name:'G1',code:'G1',active:true}],
- propagationBanks:[{id:'bank-1',organizationId:'org-a',siteId:'site-a',name:'Banco 1',active:true,capacity:30}],propagationUnits:[],propagationBatches:[],lotEvents:[],
+ propagationBanks:[{id:'bank-1',organizationId:'org-a',siteId:'site-a',name:'Banco 1',active:true,trays:[{id:'tray-1',quantity:1,cellsPerTray:30}]}],propagationUnits:[],propagationBatches:[],lotEvents:[],
  motherPlants:[{id:'mother-lot',organizationId:'org-a',siteId:'site-a',geneticId:'g-1',lotCode:'MAD-01',quantity:1,status:'Activa',healthStatus:'Sana',createdAt:'2026-08-01T00:00:00.000Z'}],grandmotherPlants:[],
  materialPlantUnits:[{id:'mother-unit-1',organizationId:'org-a',lotId:'mother-lot',plantType:'MOTHER',unitIndex:0,siteId:'site-a',geneticId:'g-1',status:'Activa',healthStatus:'Sana',operationalAvailability:availability,createdAt:'2026-08-01T00:00:00.000Z'}],
  findings:withFinding?[{id:'material-finding',organizationId:'org-a',siteId:'site-a',targetType:'MATERIAL_PLANT',targetId:'mother-unit-1',materialPlantId:'mother-unit-1',status:findingStatus,restrictsPropagation:true,createdAt:'2026-08-17T08:00:00.000Z',reportedAt:'2026-08-17T08:00:00.000Z'}]:[],treatments:[]
