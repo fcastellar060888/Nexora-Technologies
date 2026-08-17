@@ -25,9 +25,8 @@ function tenantFiltered(records,organizationId,label){
 function stableFactory(candidate,fallback,label){const factory=typeof candidate==='function'?candidate:fallback;return(...args)=>{const id=required(factory(...args));if(!id)throw new Error(`${label} requiere una identidad estable.`);return id}}
 function idPart(value){const normalized=required(value);return`${normalized.length}-${normalized}`}
 function sameTenantIdentity(record,candidate){const owner=organizationOf(record),candidateOwner=organizationOf(candidate);return record?.id===candidate?.id&&owner===candidateOwner}
-function assertReplayCompatible(existing,record){
- if(organizationOf(existing)!==organizationOf(record)||required(existing?.materialPlantId)!==required(record?.materialPlantId)||required(existing?.incidentId)!==required(record?.incidentId))throw new Error(`El Finding ${record.id} colisiona con evidencia MIPE diferente dentro de la empresa.`)
-}
+function creationEvidence(record){return JSON.stringify({organizationId:organizationOf(record),materialPlantId:required(record?.materialPlantId),targetType:required(record?.targetType),targetId:required(record?.targetId),incidentId:required(record?.incidentId),type:required(record?.type),severity:required(record?.severity),notes:required(record?.notes),reportedAt:required(record?.reportedAt),siteId:required(record?.siteId),plantType:required(record?.plantType),lotId:required(record?.lotId),unitIndex:Number(record?.unitIndex??0),restrictsPropagation:record?.restrictsPropagation===true})}
+function assertReplayCompatible(existing,record){if(creationEvidence(existing)!==creationEvidence(record))throw new Error(`El Finding ${record.id} colisiona con evidencia MIPE diferente dentro de la empresa.`)}
 
 export function shouldSuggestMipeBlock(severity){return MIPE_BLOCKING_SEVERITIES.includes(required(severity))}
 export function isOpenMipeFinding(finding){return Boolean(finding)&&!closedStatuses.has(finding.status)}
