@@ -131,20 +131,21 @@ function materialTargets(state,organizationId,ids){
  return targets
 }
 function planMaterialFindings(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const targets=materialTargets(state,organizationId,input.plantIds),incident=activeRecord(state,'incidents',required(input.incidentId,'incidentId'),'incidencia',organizationId)
+ const targets=materialTargets(state,organizationId,input.plantIds),incident=activeRecord(state,'incidents',required(input.incidentId,'incidentId'),'incidencia',organizationId),commandId=required(input.commandId,'commandId')
  assertMipeIncidentUsable(incident,{organizationId,at:occurredAt})
- const draft={incidentId:incident.id,type:incident.name,severity:text(input.severity)||'Media',notes:text(input.notes),reportedAt:occurredAt,restrictAvailability:input.restrictAvailability===true}
+ const findingIdFactory=plant=>`${organizationId}:${commandId}:finding:${plant.id}`,availabilityEventIdFactory=plant=>`${organizationId}:${commandId}:material-block:${plant.id}`
+ const draft={incidentId:incident.id,type:incident.name,severity:text(input.severity)||'Media',notes:text(input.notes),reportedAt:occurredAt,restrictAvailability:input.restrictAvailability===true,idFactory:findingIdFactory,availabilityEventIdFactory}
  const siteIds=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))],siteId=siteIds.length===1?siteIds[0]:null
  return{aggregateType:'mipe.finding-batch',aggregateId,eventName:DomainEvents.MIPE_FINDING_RECORDED,siteId,payload:{plantIds:targets.map(item=>item.id),incidentId:incident.id,type:draft.type,severity:draft.severity,restrictAvailability:draft.restrictAvailability,targetCount:targets.length},apply:current=>{
-   const beforeFindings=new Set(list(current.findings).map(item=>item.id)),beforeInterventions=new Set(list(current.mipeInterventions).map(item=>item.id))
+   const beforeFindings=new Set(list(current.findings).filter(item=>text(item?.organizationId||item?.companyId||item?._organizationId)===organizationId).map(item=>item.id))
    const next=appendMaterialPlantFindings(current,targets,draft)
    const findings=list(next.findings).map(item=>{
-    if(beforeFindings.has(item.id))return item
+    const owner=text(item?.organizationId||item?.companyId||item?._organizationId)
+    if(owner!==organizationId||beforeFindings.has(item.id))return item
     const owned={...item,organizationId,siteId:text(item.siteId)||siteId,status:text(item.status)||MIPE_FINDING_STATES.DETECTED,createdAt:item.createdAt||item.reportedAt||occurredAt,reportedAt:item.reportedAt||occurredAt}
-    return createMipeFindingWorkflow(owned,{commandId:`${aggregateId}:${item.id}`,actor:commandActor,occurredAt:owned.reportedAt})
+    return createMipeFindingWorkflow(owned,{commandId:`${commandId}:material:${item.materialPlantId}`,actor:commandActor,occurredAt:owned.reportedAt})
    })
-   const mipeInterventions=list(next.mipeInterventions).map(item=>beforeInterventions.has(item.id)?item:{...item,organizationId})
-   return{...next,findings,mipeInterventions}
+   return{...next,findings}
  }}
 }
 function correctionInput(input){
