@@ -22,7 +22,10 @@ export default function HouseMapPage(){
  const[f,setF]=useState({incidentId:activeIncidents[0]?.id||'',severity:1,notes:'',action:'',responsible:'',followUpDate:''})
  const house=mapState.houses.find(item=>item.id===houseId)||null
  const beds=useMemo(()=>mapState.beds.filter(item=>item.houseId===houseId).sort((a,b)=>(a.order||0)-(b.order||0)),[mapState.beds,houseId])
- useEffect(()=>{if((!context.siteId&&siteId)||(!context.houseId&&houseId))rawUpdate(current=>({...current,currentContext:transitionOperationalContext(current,{siteId,houseId})}),{audit:false,sync:false})},[context.siteId,context.houseId,siteId,houseId,rawUpdate])
+ useEffect(()=>{
+  if(!context.siteId&&siteId){rawUpdate(current=>({...current,currentContext:transitionOperationalContext(current,{siteId})}),{audit:false,sync:false});return}
+  if(context.siteId===siteId&&!context.houseId&&houseId)rawUpdate(current=>({...current,currentContext:transitionOperationalContext(current,{houseId})}),{audit:false,sync:false})
+ },[context.siteId,context.houseId,siteId,houseId,rawUpdate])
  async function save(e){e.preventDefault();if(!plant)return;try{await execute({operation:MIPE_OPERATIONS.CREATE_FINDING,input:{plantPositionId:plant.id,...f}});setOpen(false)}catch(error){alert(error.message)}}
  function changeSite(nextSiteId){rawUpdate(current=>({...current,currentContext:transitionOperationalContext(current,{siteId:nextSiteId})}),{audit:false,sync:false});setOpen(false)}
  function changeHouse(nextHouseId){rawUpdate(current=>({...current,currentContext:transitionOperationalContext(current,{houseId:nextHouseId})}),{audit:false,sync:false});setOpen(false)}
