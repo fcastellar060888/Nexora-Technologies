@@ -6,11 +6,11 @@ import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
 import StateMessage from'../components/StateMessage'
 import {FormActions,ValidationMessage} from'../components/forms/FormKit.jsx'
-import {useStore} from'../services/store'
+import {useMipeStore} from'../services/mipeTenantStore.js'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
 
 export default function FindingsPage(){
- const {state,update}=useStore()
+ const {state,update}=useMipeStore()
  const [filters,setFilters]=useState({status:'Todos',incidentId:'Todos',houseId:'Todos',followUp:'Todos'})
  const [editing,setEditing]=useState(null)
 
