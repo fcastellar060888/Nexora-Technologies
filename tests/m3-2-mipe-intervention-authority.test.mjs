@@ -57,7 +57,7 @@ test('M32-F006: simultaneous interventions do not complete each other review obl
  assert.equal(interventionCompletesReview(source,simultaneous),false)
  const tasks=projectMipeReviewTasks({findings:[positionFinding],mipeInterventions:[source,simultaneous]},{now:'2026-08-17T10:00:00.000Z'})
  assert.equal(tasks.find(item=>item.interventionId==='same-source').status,MIPE_REVIEW_TASK_STATUS.OVERDUE)
- assert.equal(tasks.find(item=>item.interventionId==='same-peer').status,MIPE_REVIEW_TASK_STATUS.PENDING)
+ assert.equal(tasks.find(item=>item.interventionId==='same-peer').status,MIPE_REVIEW_TASK_STATUS.UPCOMING)
 })
 
 test('M32-F006: review projection isolates same Finding id across organizations',()=>{
