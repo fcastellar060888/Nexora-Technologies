@@ -1,6 +1,7 @@
 import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{migrateState}from'./stateMigration.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
+import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
@@ -9,7 +10,7 @@ const LOCAL_ONLY_COLLECTIONS=new Set([
 ])
 
 const list=value=>Array.isArray(value)?value:[]
-const recordId=record=>String(record?.id||'')
+const recordId=record=>String(record?.id||record?.commandId||'')
 const recordOrganizationId=record=>String(record?._organizationId||record?.companyId||record?.organizationId||'')
 const recordKey=(record,fallbackCompanyId='')=>`${recordOrganizationId(record)||fallbackCompanyId}:${recordId(record)}`
 const serialize=value=>{try{return JSON.stringify(value)}catch{return String(value)}}
@@ -88,7 +89,7 @@ export function overlayPendingMutations(state,base){
   if(!item.collection||!Array.isArray(next[item.collection]))continue
   if(item.operation==='delete')next[item.collection]=next[item.collection].filter(record=>recordKey(record,companyId)!==`${companyId}:${item.recordId}`)
   else{
-   const record={...(item.payload||{}),id:item.payload?.id||item.recordId,_organizationId:companyId}
+   const record={...(item.payload||{}),id:item.payload?.id||item.payload?.commandId||item.recordId,_organizationId:companyId}
    const key=`${companyId}:${item.recordId}`
    const index=next[item.collection].findIndex(candidate=>recordKey(candidate,companyId)===key)
    if(index>=0)next[item.collection]=next[item.collection].map((candidate,position)=>position===index?{...candidate,...record}:candidate)
@@ -107,7 +108,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  for(const collection of collections)authoritative[collection]=replaceCompanyPartition(localState[collection],grouped[collection],companyId)
  const concurrent=overlayConcurrentChanges(initialState,localState,authoritative,{companyId})
  const reconciled=overlayPendingMutations({...localState,currentContext:{...(localState.currentContext||{}),companyId}},concurrent)
- return migrateMaterialPlantIdentity(migrateState({
+ return migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId},
   syncQueue:list(localState.syncQueue).map(item=>item?.companyId?item:{...item,companyId}),
@@ -119,7 +120,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   operationalLedgerEntries:list(localState.operationalLedgerEntries),
   timelineEntries:list(localState.timelineEntries),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId}
- }))
+ })))
 }
 
 export async function loadAuthoritativeOrganization(companyId){
