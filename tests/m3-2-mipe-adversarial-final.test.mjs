@@ -27,6 +27,18 @@ function causalState(){return{
  treatments:[{id:'treatment-b',organizationId:'org-a',siteId:'site-b',findingId:'finding-b',productId:'product-b',lotId:'lot-b',status:'Ejecutado'}],mipeInterventions:[]
 }}
 
+function materialHomonymState(){
+ const materialId='material-plant:GRANDMOTHER:gm-shared:1'
+ return{materialId,state:{
+  currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a'},{id:'org-b'}],
+  users:[{id:'user-a',name:'Operador A',activeSession:true,active:true,remote:true}],roles:[{id:'site-mipe',permissions:['manage_mipe']}],memberships:[{id:'membership-a',userId:'user-a',companyId:'org-a',roleId:'site-mipe',siteIds:['site-a'],status:'active'}],
+  sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-a2',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-b',companyId:'org-b'}],houses:[],beds:[],plantPositions:[],
+  grandmotherPlants:[{id:'gm-shared',organizationId:'org-a',siteId:'site-a',lotCode:'GM-A',quantity:1,geneticId:'gen-a',status:'Activa',createdAt:'2026-08-17T08:00:00.000Z'},{id:'gm-shared',organizationId:'org-b',siteId:'site-b',lotCode:'GM-B',quantity:1,geneticId:'gen-b',status:'Activa',createdAt:'2026-08-17T08:00:00.000Z'}],motherPlants:[],
+  materialPlantUnits:[{id:materialId,organizationId:'org-b',plantType:'GRANDMOTHER',unitIndex:0,lotId:'gm-shared',siteId:'site-b',geneticId:'gen-b',code:'GM-B-A001',status:'Activa',healthStatus:'Sana',operationalAvailability:'Disponible para corte',createdAt:'2026-08-17T08:00:00.000Z',updatedAt:'2026-08-17T08:00:00.000Z'}],materialPlantIdentityRegistry:{},
+  genetics:[{id:'gen-a',organizationId:'org-a',name:'A'},{id:'gen-b',organizationId:'org-b',name:'B'}],incidents:[{id:'incident-a',organizationId:'org-a',name:'Botritis',active:true}],findings:[],products:[],inventoryLots:[],inventoryMovements:[],costEntries:[],treatments:[],mipeInterventions:[],mipeCommandReceipts:[],plantEvents:[]
+ }}
+}
+
 test('F012: Position no puede declarar Sede A si su Bed→House pertenece a Sede B',()=>{
  const state=spoofedState()
  assert.equal(mipeRecordOrganizationId(state,'plantPositions',state.plantPositions[0]),'')
@@ -77,4 +89,20 @@ test('F012: applyRemoteRecords puede conservar evidencia hostil raw, pero scope 
  const scoped=scopeMipeState(hydrated,'org-a')
  assert.equal(scoped.findings.some(item=>item.id===payload.id),false)
  assert.equal(mipeRecordOrganizationId(hydrated,'findings',hydrated.findings.find(item=>item.id===payload.id)),'')
+})
+
+test('F012: materialPlantId se resuelve contra la planta individual y no permite spoofing de sede same-tenant',()=>{
+ const{state,materialId}=materialHomonymState(),record={id:'finding-material-spoof',organizationId:'org-a',siteId:'site-a2',targetType:'MATERIAL_PLANT',targetId:materialId,materialPlantId:materialId,incidentId:'incident-a'}
+ assert.equal(mipeRecordOrganizationId(state,'findings',record),'')
+})
+
+test('F012: CREATE_MATERIAL_FINDINGS no puede parchear la planta homónima de otro tenant',async()=>{
+ const fixture=materialHomonymState();let state=fixture.state;const events=[]
+ const deps={publishEvent:async spec=>{events.push(spec);return spec},commit:recipe=>{state=recipe(state)}}
+ await executeMipeCommand(state,{operation:MIPE_OPERATIONS.CREATE_MATERIAL_FINDINGS,input:{plantIds:[fixture.materialId],incidentId:'incident-a',severity:'Crítica',notes:'Bloqueo tenant-aware',restrictAvailability:true},commandId:'cmd-material-homonym',occurredAt:'2026-08-17T15:00:00.000Z'},deps)
+ const foreign=state.materialPlantUnits.find(item=>item.organizationId==='org-b'&&item.id===fixture.materialId),local=state.materialPlantUnits.find(item=>item.organizationId==='org-a'&&item.id===fixture.materialId)
+ assert.equal(foreign.operationalAvailability,'Disponible para corte')
+ assert.ok(local,'Debe materializarse la identidad de org-a sin reutilizar la de org-b')
+ assert.equal(local.operationalAvailability,'Bloqueada por MIPE')
+ assert.equal(state.findings.filter(item=>item.organizationId==='org-a'&&item.materialPlantId===fixture.materialId).length,1)
 })
