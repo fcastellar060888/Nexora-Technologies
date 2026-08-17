@@ -1,6 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{DomainEvents}from'../src/core/events/eventCatalog.js'
+import{isFollowUpDue,scheduleTreatment}from'../src/domain/mipe.js'
 import{MIPE_OPERATIONS,executeMipeCommand}from'../src/services/mipeCommand.js'
 
 function state(){return{
@@ -15,6 +16,7 @@ function state(){return{
  grandmotherPlants:[],motherPlants:[],materialPlantUnits:[],genetics:[],products:[],inventoryLots:[],inventoryMovements:[],costEntries:[],plantEvents:[]
 }}
 function request(){return{operation:MIPE_OPERATIONS.CREATE_FINDING,input:{plantPositionId:'plant-a',incidentId:'incident-a',severity:3,notes:'Prueba commit-scope'},commandId:'cmd-mipe-commit-scope',occurredAt:'2026-08-17T19:58:00.000Z'}}
+function openFinding(){return{id:'finding-a',organizationId:'org-a',siteId:'site-a',plantPositionId:'plant-a',targetType:'POSITION',targetId:'plant-a',incidentId:'incident-a',severity:3,status:'Seguimiento',reportedAt:'2026-08-17T18:00:00.000Z',createdAt:'2026-08-17T18:00:00.000Z'}}
 
 test('F012: MIPE revalida permiso site-scoped entre requested y commit',async()=>{
  let current=state(),events=[]
@@ -40,4 +42,36 @@ test('F012: MIPE revalida la sede causal del target entre requested y commit',as
  assert.equal(events[0].name,DomainEvents.CORE_OPERATION_REQUESTED)
  assert.deepEqual(current.findings,[])
  assert.deepEqual(current.mipeCommandReceipts,[])
+})
+
+test('F012: CREATE_FINDING revalida Incident usable entre requested y commit',async()=>{
+ let current=state(),events=[]
+ const deps={
+  publishEvent:async event=>{events.push(event);if(event.name===DomainEvents.CORE_OPERATION_REQUESTED)current={...current,incidents:current.incidents.map(item=>item.id==='incident-a'?{...item,active:false,archivedAt:'2026-08-17T19:58:30.000Z'}:item)};return event},
+  commit:recipe=>{current=recipe(current)}
+ }
+ await assert.rejects(()=>executeMipeCommand(current,{...request(),commandId:'cmd-incident-toctou'},deps),/incidencia.*archivada|no admite nuevos hallazgos/i)
+ assert.equal(events.length,1)
+ assert.deepEqual(current.findings,[])
+ assert.deepEqual(current.mipeCommandReceipts,[])
+})
+
+test('F012: RECORD_INTERVENTION revalida que Finding siga abierto entre requested y commit',async()=>{
+ let current={...state(),findings:[openFinding()]},events=[]
+ const deps={
+  publishEvent:async event=>{events.push(event);if(event.name===DomainEvents.CORE_OPERATION_REQUESTED)current={...current,findings:current.findings.map(item=>item.id==='finding-a'?{...item,status:'Resuelto'}:item)};return event},
+  commit:recipe=>{current=recipe(current)}
+ }
+ const command={operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:'finding-a',type:'Seguimiento',outcome:'Sin signos activos',performedAt:'2026-08-17T20:00:00.000Z'},commandId:'cmd-intervention-toctou',occurredAt:'2026-08-17T20:00:00.000Z'}
+ await assert.rejects(()=>executeMipeCommand(current,command,deps),/cerrado|no admite nuevas intervenciones/i)
+ assert.equal(events.length,1)
+ assert.deepEqual(current.mipeInterventions,[])
+ assert.deepEqual(current.mipeCommandReceipts,[])
+})
+
+test('F012: helper directo no programa Treatment ni seguimiento sobre Planta eliminada',()=>{
+ const closed={...openFinding(),status:'Planta eliminada',followUpDate:'2026-08-16'}
+ const product={id:'product-a',organizationId:'org-a',siteId:'site-a',name:'Bio',category:'MIPE',unit:'mL',doseUnit:'mL/L',doseMin:1,doseMax:5}
+ assert.throws(()=>scheduleTreatment({findings:[closed],products:[product],treatments:[]},{id:'treatment-a',findingId:'finding-a',productId:'product-a',dose:2,doseUnit:'mL/L',mixVolume:10,createdAt:'2026-08-17T20:00:00.000Z'}),/hallazgo cerrado/i)
+ assert.equal(isFollowUpDue(closed),false)
 })
