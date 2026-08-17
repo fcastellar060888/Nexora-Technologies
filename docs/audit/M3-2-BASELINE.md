@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 2/12 Verified**  
+Estado: **AUDIT IN PROGRESS — 3/12 Verified**  
 Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
 Bloque de arquitectura: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -25,33 +25,32 @@ M3.2 audita MIPE como autoridad operativa completa, no como conjunto de pantalla
 
 ## Evidencia reproducible de apertura
 
-- `src/domain/mipe.js` resuelve cama/nave/sede/planta, hallazgo, producto, lote y tratamiento mediante `.find(x => x.id === ...)` global. `scheduleTreatment()` y `executeTreatment()` crean registros sin `organizationId`.
-- `executeTreatment()` descuenta inventario, cambia tratamiento/hallazgo y agrega costo dentro de una transformación local, pero no dispone de command ID, permiso de dominio ni transacción remota multi-dispositivo.
-- `src/pages/FindingsPage.jsx` consumía `state.findings`, `state.incidents` y `state.houses` globales; editar, cerrar y borrar usaban `useStore().update()` y comparaban exclusivamente por `id`.
-- `FindingsPage` permite seleccionar directamente cualquier `findingStatuses`, modificar la fecha original y eliminar físicamente un hallazgo; no existe historial append-only de transición/corrección en esa frontera.
-- `src/pages/TreatmentsPage.jsx` consumía hallazgos/productos/lotes globales y llama todavía a `scheduleTreatment()` / `executeTreatment()` mediante una mutación directa; F002 ya recorta esa mutación al tenant y F003 reemplazará el boundary.
-- `src/domain/materialPlantMipe.js` contiene reglas valiosas para bloqueo, intervención y resolución, pero `findings` y `mipeInterventions` se resuelven por `id` simple y los registros creados no fijan ownership por sí mismos.
+- `src/domain/mipe.js` resuelve cama/nave/sede/planta, hallazgo, producto, lote y tratamiento mediante `.find(x => x.id === ...)` global. F001/F002/F003 envuelven ya las rutas operativas con autoridad, tenancy y commands; la carrera remota de ejecución permanece aislada en F004.
+- `executeTreatment()` descuenta inventario, cambia tratamiento/hallazgo y agrega costo dentro de una transformación local. F003 le da command ID, permiso, tenancy y replay seguro local; F004 conserva la transacción remota multi-dispositivo.
+- `FindingsPage`, `TreatmentsPage`, `IncidentsPage` y `MipeDashboardPage` ya no escriben mediante el Store global. F003 reemplazó sus mutaciones MIPE por operaciones explícitas del command boundary.
+- `HouseMapPage` registra hallazgos mediante command y mantiene la edición no-MIPE de genética protegida por ownership compuesto.
+- `MaterialPlantMipePanel` ya no publica eventos manualmente ni llama mutadores MIPE de dominio; alta, intervención y resolución pasan por el command boundary. La autoridad especializada de seguimiento/material vegetal continúa en F006/F009.
 - `mipeInterventions` no forma parte aún de la autoridad de persistencia/sync certificada; F008 mantiene ese alcance.
-- Los permisos `manage_mipe` y `execute_treatments` existen en el sistema, pero las mutaciones legacy todavía no pasan por un command boundary MIPE; F003 mantiene ese alcance.
+- `manage_mipe` y `execute_treatments` se revalidan ahora en el command boundary antes del evento de intención. La persistencia/sync de recibos se mantiene en F008.
 - La caché segmentada histórica acepta registros sin ownership en la partición activa; F002 introduce resolución/backfill fail-closed, mientras F008 integrará schema/cache/bootstrap/sync.
-- `tests/mipe.test.mjs` cubría matemática de dosis, ejecución local, consumo, costo, reentrada/carencia e inventario insuficiente. F001/F002 agregan autoridad y tenancy adversarial; retry/concurrencia/Graph permanecen separados.
+- `tests/mipe.test.mjs` cubría matemática de dosis, ejecución local, consumo, costo, reentrada/carencia e inventario insuficiente. F001–F003 agregan autoridad, tenancy, permisos, replay, cambio de tenant y contratos UI; concurrencia remota/Graph permanecen separados.
 
 ## Hallazgos iniciales
 
 | ID | Sev. | Estado | Área | Hallazgo |
 |---|---:|---|---|---|
 | M32-F001 | P0 | **Verified** | Domain authority | `mipeAuthority.js` establece Incident/Finding/Treatment/Intervention tenant-owned, profundamente inmutables, con composición y snapshots fail-closed. Quality #1926. |
-| M32-F002 | P0 | **Verified** | Tenancy | `mipeTenancy.js` y `useMipeStore()` aíslan IDs homónimos, ownership causal, scope/merge/backfill y las cuatro superficies MIPE principales. Quality #1945. |
-| M32-F003 | P0 | **Open** | Commands/permissions/events | Las mutaciones MIPE usan todavía boundary directo de Store aunque ya scoped. `manage_mipe` / `execute_treatments` no se revalidan en un command boundary; no hay idempotencia, causalidad ni completion events canónicos. |
+| M32-F002 | P0 | **Verified** | Tenancy | `mipeTenancy.js` y la vista MIPE tenant-scoped aíslan IDs homónimos, ownership causal, scope/merge/backfill y las superficies principales. Quality #1945. |
+| M32-F003 | P0 | **Verified** | Commands/permissions/events | Once operaciones explícitas pasan por boundary permission-aware e idempotente; seis superficies MIPE sin mutación directa ni publicación manual; eventos requested/completion deterministas. Quality #1983. |
 | M32-F004 | P0 | **Open** | Treatment/inventory transaction | Ejecutar un tratamiento consume lote, crea movimiento/costo y cambia estados localmente, sin precondición/transacción remota multi-dispositivo. Dos dispositivos pueden competir sobre el mismo stock. |
 | M32-F005 | P1 | **Open** | Workflow/audit history | Un hallazgo puede editar fecha/estado arbitrariamente, cerrarse sin workflow y borrarse físicamente. No existe transición canónica ni historial append-only suficiente para auditoría agronómica. |
-| M32-F006 | P1 | **Open** | Follow-up/interventions | Seguimientos/intervenciones de material vegetal usan `mipeInterventions` sin identidad/ownership remoto certificado; la causalidad intervención → hallazgo → resolución no está unificada con MIPE productivo. |
+| M32-F006 | P1 | **Open** | Follow-up/interventions | Seguimientos/intervenciones de material vegetal requieren unificación causal y persistencia certificada con MIPE productivo. |
 | M32-F007 | P1 | **Open** | Incident/product authority | Incidencias y productos MIPE requieren catálogo técnico, restricciones, vigencia y snapshots ejecutables más allá del aislamiento tenant ya certificado. |
-| M32-F008 | P1 | **Open** | Persistence/sync | `findings/incidents/treatments` legacy y `mipeInterventions` no forman aún una colección canónica completa con schema, migration, cache, bootstrap, sync y tombstones por `(organizationId,id)`. |
+| M32-F008 | P1 | **Open** | Persistence/sync | `findings/incidents/treatments/mipeInterventions` y recibos MIPE no forman aún una autoridad completa de schema, migration, cache, bootstrap, sync y tombstones por `(organizationId,id)`. |
 | M32-F009 | P1 | **Open** | Operational restrictions | Reentrada, carencia y bloqueo/liberación de material vegetal existen como reglas parciales, pero no como restricciones tenant-aware proyectables y verificables desde una autoridad común. |
-| M32-F010 | P1 | **Open** | Dashboard/croquis/context | El dashboard ya está tenant-scoped por F002, pero falta cerrar el contexto operativo jerárquico Empresa → Sede → Nave → Cama → Planta y su integración con croquis/acciones. |
+| M32-F010 | P1 | **Open** | Dashboard/croquis/context | El dashboard está tenant-scoped y sus acciones pasan por commands, pero falta cerrar el contexto jerárquico Empresa → Sede → Nave → Cama → Planta y su integración con croquis. |
 | M32-F011 | P1 | **Open** | Passport/Knowledge Graph | Passport/Graph muestran MIPE legacy de forma parcial, pero no explican de extremo a extremo Finding → Incident → Intervention/Treatment → Product/Lot → Restriction/Resolution con tenancy canónica. |
-| M32-F012 | P1 | **Open** | Adversarial verification | Falta la reauditoría transversal de retry, doble ejecución, carrera de stock, hard-delete, persistencia/sync y proyección Graph sin fuga. |
+| M32-F012 | P1 | **Open** | Adversarial verification | Falta la reauditoría transversal de doble ejecución, carrera de stock, hard-delete, persistencia/sync y proyección Graph sin fuga. |
 
 ## M32-F001 — cierre verificado
 
@@ -94,17 +93,17 @@ M3.2 audita MIPE como autoridad operativa completa, no como conjunto de pantalla
 - `src/domain/mipeTenancy.js` resuelve ownership de Findings por sede/Position/material vegetal; Treatment por Finding/Product/Lot; Intervention por Finding/Treatment; nunca adjudica un registro multiempresa ambiguo por el tenant activo.
 - Un ID puede repetirse entre organizaciones. `findMipeRecord()` exige una identidad única dentro del tenant y falla cerrado ante homónimo extranjero, ownership ambiguo o duplicado same-tenant.
 - `scopeMipeState()` crea una vista tenant-only de empresa, sede, nave, cama, Position, material vegetal, productos, lotes, costos, Incidents, Findings, Treatments e Interventions.
-- `mergeMipeState()` solo recompone la partición MIPE activa y preserva homónimos extranjeros. El adaptador `useMipeStore()` compone además `mergeIrrigationMirfeState()` para preservar la misma identidad compuesta en lote/movimiento/costo mientras sobreviven las operaciones legacy.
+- `mergeMipeState()` solo recompone la partición MIPE activa y preserva homónimos extranjeros. El adaptador de estado compone además `mergeIrrigationMirfeState()` para preservar identidad compuesta en lote/movimiento/costo.
 - `ownMipeRecord()` valida referencias antes de estampar `organizationId`; un Incident/Product/Lot extranjero no puede convertirse en local por una mutación de UI.
 - `backfillMipeOwnership()` sigue causalidad y no contexto activo. Si un Incident legacy global es usado por Findings de dos organizaciones, genera una copia tenant-owned por organización con el mismo ID en vez de asignarlo arbitrariamente.
 - Hallazgos ambiguos sobre un Position homónimo permanecen sin ownership y fuera de la vista operativa.
-- `FindingsPage`, `TreatmentsPage`, `IncidentsPage` y `MipeDashboardPage` dejaron de leer el Store global y consumen `useMipeStore()`.
-- F002 no prohíbe todavía hard-delete del registro propio ni reemplaza el `update()` directo; esas garantías pertenecen respectivamente a F005 y F003. Tampoco eleva schema/sync: F008 conserva ese alcance.
+- Las cuatro superficies MIPE principales dejaron de leer el Store global y consumen una vista tenant-scoped; F003 evolucionó esa vista a `useMipeCommandStore()` sin perder el aislamiento.
+- F002 no prohíbe todavía hard-delete del registro propio ni eleva schema/sync: F005 y F008 conservan esos alcances.
 
 ### Pruebas adversariales
 
 - `tests/m3-2-mipe-tenancy.test.mjs`: 11 casos para IDs homónimos, Position ambiguo, inferencia causal, clone de Incident compartido, Treatment/Intervention causal, ownership contradictorio, scope, merge, referencias extranjeras, preservación del homónimo y duplicados same-tenant.
-- `tests/m3-2-mipe-tenancy-ui.test.mjs`: contrato que obliga a las cuatro superficies MIPE principales a usar `useMipeStore()` y evita la reintroducción de `useStore()` global; también fija la composición de ownership MIPE + inventario.
+- `tests/m3-2-mipe-tenancy-ui.test.mjs`: contrato tenant-scoped evolucionado para admitir el command store sin reintroducir `useStore()` global; también fija la composición de ownership MIPE + inventario.
 - Quality #1931 validó la autoridad pura con **992/992** antes de conectar la UI tenant-scoped.
 - Quality #1945 validó el HEAD completo de F002 con **994/994** pruebas.
 
@@ -112,15 +111,64 @@ M3.2 audita MIPE como autoridad operativa completa, no como conjunto de pantalla
 
 - Autoridad tenancy: `b2e9166638c1d3c8c31a3d76846a1b097387e1fb`.
 - Fixtures adversariales corregidos: `03c6db6f22a498edde720add9c13855b834aa2e6`.
-- Adapter/UI y contrato final culminan en `fb876a7faecb9be4972be1a7d0be11e6a9148752`.
+- Adapter/UI y contrato final F002 culminaron en `fb876a7faecb9be4972be1a7d0be11e6a9148752`.
 - Quality #1945: **verde**, **994/994** pruebas; todos los gates completos verdes.
-- Reauditoría: los cálculos y selectores legacy reciben únicamente la partición activa; el merge preserva extranjeros y falla ante identidad ambigua. Las mutaciones directas siguen explícitamente abiertas en F003 y la persistencia remota completa en F008.
+- Reauditoría: cálculos/selectores legacy reciben únicamente la partición activa; el merge preserva extranjeros y falla ante identidad ambigua. F003 reemplazó luego las mutaciones directas y F008 conserva persistencia remota.
+
+## M32-F003 — cierre verificado
+
+### Solución
+
+- `src/services/mipeCommand.js` define **11 operaciones explícitas**; no acepta recipes arbitrarios que puedan recrear un `update()` genérico disfrazado.
+- `manage_mipe` se exige para catálogo, hallazgos, seguimiento y programación; `execute_treatments` se exige separadamente para la ejecución. El permiso se revalida antes de publicar `core.operation.requested`.
+- Cada comando usa firma canónica estable por operación/agregado/input y un recibo acotado por organización + `commandId`. Replay idéntico no repite el efecto; reutilizar el ID con otro contenido falla antes de publicar.
+- El commit revalida que la empresa activa no haya cambiado entre intención y confirmación. Un cambio de tenant deja como máximo la intención y no publica completion ni aplica la mutación.
+- `executeCoreOperationCommand()` impone `requested → commit → completion`, con `eventId`, `correlationId` y `causationId` deterministas.
+- `src/services/mipeCommandStore.js` colapsa duplicados simultáneos en vuelo y conserva `commandId`/`occurredAt` para un retry tras error.
+- La mutación tenant-aware se separó en `src/services/mipeTenantState.js`, módulo puro sin dependencia de React; `mipeTenantStore.js` queda como hook delgado.
+- Seis superficies escritoras —Incidents, Findings, Treatments, Dashboard, HouseMap y MaterialPlantMipePanel— pasan por `useMipeCommandStore()` y `MIPE_OPERATIONS`.
+- `TreatmentsPage` ya no invoca directamente `scheduleTreatment()`/`executeTreatment()`. `MaterialPlantMipePanel` ya no publica eventos manuales ni llama `appendMaterialPlantFindings`, `appendMipeIntervention` o `resolveMaterialPlantFinding` desde UI.
+- El seguimiento rápido del Dashboard declara explícitamente `type:'Seguimiento'`; se elimina la dependencia del default legacy `Tratamiento`, que podía clasificar incorrectamente una inspección.
+- `HouseMap` mantiene una edición no-MIPE de genética fuera del command MIPE, pero esa escritura valida la organización de cada Position mediante identidad compuesta.
+- `RECORD_INTERVENTION` invoca el helper legacy sobre `scopeMipeState()` y estampa una identidad determinista/tenant-owned antes del merge.
+- F003 **no** atribuye la carrera remota de stock (F004), el hard-delete/workflow (F005), la autoridad especializada material (F006/F009) ni persistencia/sync de recibos (F008).
+
+### Pruebas adversariales
+
+`tests/m3-2-mipe-command.test.mjs` cubre:
+
+- secuencia requested/completion y causalidad determinista;
+- replay efecto-único y colisión de `commandId`;
+- permiso denegado antes de evento/commit;
+- separación `manage_mipe` vs `execute_treatments`;
+- referencia cross-tenant antes de intención;
+- cambio de empresa entre intención y commit;
+- ejecución local únicamente sobre lote activo y replay sin doble consumo;
+- intervención resuelta contra el Finding del tenant activo.
+
+`tests/m3-2-mipe-command-ui.test.mjs` fija:
+
+- seis superficies sobre command store;
+- ausencia del mutador tenant legacy en páginas principales;
+- ausencia de mutadores de tratamiento directos;
+- ausencia de publicación manual y helpers de material vegetal en UI;
+- Dashboard con Follow-up explícito y reasignación por command;
+- HouseMap con alta MIPE por command y edición genética tenant-guarded;
+- split de permisos, core operation causality, `applyOnce` y `commandId` en el servicio.
+
+### Quality y reauditoría
+
+- F003 acumuló el boundary/event catalog, seis conversiones UI, separación pura de tenancy y suites adversariales; el HEAD funcional final es `ecee772d33e6ae364d062d5be3940ead53ea7f40`.
+- Quality #1980 fue **rojo útil: 1007/1009**. Las únicas dos fallas eran contratos UI históricos que exigían literalmente `appendMaterialPlantFindings` y `appendMipeIntervention`, precisamente las llamadas directas eliminadas por F003.
+- Esos contratos se actualizaron para exigir command boundary y prohibir los mutadores antiguos, sin introducir código muerto.
+- Quality #1983: **verde, 1009/1009 pruebas**. Static audit, dependency audit, environment contract, authentication/session audit, coverage gate, production build y production artifact audit: verdes.
+- Reauditoría: el delta F003 queda limitado a command/event boundary, seis superficies y sus contratos. No se añadió RPC ni precondición remota de inventario, por lo que F004 permanece como único P0 abierto.
 
 ## Orden de cierre
 
 1. **F001 Domain authority — Verified.**
 2. **F002 Tenancy — Verified.**
-3. **F003 Commands/permissions/events** — mover escrituras a boundary idempotente.
+3. **F003 Commands/permissions/events — Verified.**
 4. **F004 Treatment/inventory transaction** — cerrar concurrencia y efectos atómicos.
 5. **F005 Workflow/history** — transición canónica, falso positivo, resolución y auditoría append-only.
 6. **F006 Follow-up/interventions** — unificar seguimiento de planta productiva/material vegetal.
@@ -155,7 +203,7 @@ M3.2 audita MIPE como autoridad operativa completa, no como conjunto de pantalla
 
 ## Estado actual
 
-- Verified: **2**
-- Open: **10**
-- P0 abiertos: **2**
+- Verified: **3**
+- Open: **9**
+- P0 abiertos: **1**
 - P1 abiertos: **8**
