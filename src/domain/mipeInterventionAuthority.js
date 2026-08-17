@@ -58,11 +58,10 @@ export function createCanonicalMipeIntervention({finding,treatment=null,input={}
 
 export function reassignCanonicalMipeIntervention(intervention,{responsible,commandId,actor={},occurredAt}={}){
  if(!intervention?.id)throw new Error('La reasignación requiere una intervención MIPE válida.')
- const nextResponsible=required(responsible,'responsible'),id=required(commandId,'commandId'),when=iso(occurredAt||new Date().toISOString(),'occurredAt'),history=list(intervention.assignmentHistory)
- const last=history.at(-1),lastTime=Date.parse(last?.occurredAt||intervention.createdAt||'')
- if(Number.isFinite(lastTime)&&Date.parse(when)<lastTime)throw new Error('La reasignación MIPE no puede retroceder el tiempo del historial.')
- const eventId=`${id}:assignment:reassigned`
+ const nextResponsible=required(responsible,'responsible'),id=required(commandId,'commandId'),history=list(intervention.assignmentHistory),eventId=`${id}:assignment:reassigned`
  if(history.some(item=>item.id===eventId))return deepFreeze(clone(intervention))
+ const when=iso(occurredAt||new Date().toISOString(),'occurredAt'),last=history.at(-1),lastTime=Date.parse(last?.occurredAt||intervention.createdAt||'')
+ if(Number.isFinite(lastTime)&&Date.parse(when)<lastTime)throw new Error('La reasignación MIPE no puede retroceder el tiempo del historial.')
  if(text(intervention.responsible)===nextResponsible)throw new Error('La reasignación MIPE debe cambiar el responsable.')
  const event=assignmentEvent({id:eventId,responsible:nextResponsible,previousResponsible:intervention.responsible,actor,occurredAt:when,kind:'REASSIGNED'})
  return deepFreeze({...clone(intervention),responsible:nextResponsible,updatedAt:when,assignmentHistory:[...history,event]})
