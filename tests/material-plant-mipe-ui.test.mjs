@@ -29,3 +29,13 @@ test('el explorador conecta MIPE individual y masivo a la selección existente',
  assert.match(source,/onComplete=\{\(\)=>setSelection\(current=>clearSelection\(current\)\)\}/)
  assert.match(source,/MIPE abiertos/)
 })
+
+test('F012: material vegetal expone Planta eliminada como cierre terminal sin rehabilitación',async()=>{
+ const source=await readFile(new URL('../src/components/MaterialPlantMipePanel.jsx',import.meta.url),'utf8')
+ assert.match(source,/<option>Planta eliminada<\/option>/)
+ assert.match(source,/removingPlant=resolution\.status==='Planta eliminada'/)
+ assert.match(source,/releaseAvailability:removingPlant\?false:resolution\.releaseAvailability/)
+ assert.match(source,/la vida vegetal quedará Retirada y No disponible/)
+ assert.match(source,/removingPlant\?'Cerrar hallazgo y retirar planta':'Cerrar hallazgo y evaluar rehabilitación'/)
+ assert.match(source,/interventionsForFinding\(state,selectedFinding\.id,\{organizationId:selectedFinding\.organizationId\}\)/)
+})
