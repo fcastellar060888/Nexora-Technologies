@@ -1,16 +1,9 @@
 import{useCallback,useMemo}from'react'
-import{activeOrganizationId}from'../domain/organizationOwnership.js'
-import{mergeIrrigationMirfeState}from'../domain/irrigationMirfeTenancy.js'
-import{mergeMipeState,scopeMipeState}from'../domain/mipeTenancy.js'
+import{scopeMipeState}from'../domain/mipeTenancy.js'
+import{mutateMipeTenantState}from'./mipeTenantState.js'
 import{useStore}from'./store.jsx'
 
-export function mutateMipeTenantState(current,recipe){
- const organizationId=activeOrganizationId(current)
- const tenantBase=scopeMipeState(current,organizationId)
- const tenantCandidate=typeof recipe==='function'?recipe(tenantBase):recipe
- const withMipe=mergeMipeState(current,tenantBase,tenantCandidate,organizationId)
- return mergeIrrigationMirfeState(withMipe,tenantBase,tenantCandidate,organizationId)
-}
+export{mutateMipeTenantState}from'./mipeTenantState.js'
 
 export function useMipeStore(){
  const store=useStore()
