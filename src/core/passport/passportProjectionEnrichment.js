@@ -14,7 +14,7 @@ function hasIrrigationMirfeEvidence(projection){
 function enrichCultivationPlant(input,source){
  const object=input?.object,state=input?.state
  if(object?.objectType!=='cultivation.plant'||!state)return source
- const organizationId=text(object.organizationId),plant={id:text(object.objectId),trayId:text(object?.identity?.trayId)},location=cultivationLocation(source,object)
+ const organizationId=text(object.organizationId),plant={id:text(object.objectId),trayId:text(object?.identity?.trayId),createdAt:object.createdAt||null},location=cultivationLocation(source,object)
  const irrigationMirfe=projectPlantIrrigationMirfe(state,{plant,location,organizationId})
  if(!hasIrrigationMirfeEvidence(irrigationMirfe))return source
  return{...source,relationships:[...list(source?.relationships),...projectIrrigationMirfeRelationships(irrigationMirfe,organizationId)],indicators:[...list(source?.indicators),...projectIrrigationMirfeIndicators(irrigationMirfe)],timeline:[...list(source?.timeline),...projectIrrigationMirfeTimeline(irrigationMirfe)]}
