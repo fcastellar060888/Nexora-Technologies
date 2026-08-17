@@ -9,6 +9,7 @@ export const SYNCABLE_COLLECTIONS=[
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
 
+const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -16,6 +17,27 @@ const text=value=>String(value??'').trim()
 const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
 const recordId=record=>text(record?.id||record?.commandId)
 const recordKey=record=>JSON.stringify([recordOrganizationId(record),recordId(record)])
+
+function assertCommandReceiptPayload(payload,recordIdValue,tenant){
+ if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('El receipt MIPE remoto requiere payload válido')
+ const commandId=text(payload.commandId||payload.id),owner=recordOrganizationId(payload),signature=text(payload.signature)
+ if(!commandId||commandId!==text(recordIdValue))throw new Error('El receipt MIPE no coincide con su commandId sincronizable')
+ if(owner&&owner!==tenant)throw new Error('El receipt MIPE pertenece a otra empresa')
+ if(!signature)throw new Error('El receipt MIPE requiere firma durable')
+ return{commandId,signature}
+}
+function assertRemoteReceiptIntegrity(state,records,tenant){
+ const seen=new Map()
+ for(const row of list(records).filter(item=>item?.collection==='mipeCommandReceipts')){
+  if(row.deletedAt)throw new Error('Los receipts MIPE son append-only y no admiten tombstones remotos')
+  const identity=text(row.recordId),validated=assertCommandReceiptPayload(row.payload,identity,tenant),key=`${tenant}|${identity}`
+  if(seen.has(key)&&seen.get(key)!==validated.signature)throw new Error('La respuesta remota contiene receipts MIPE contradictorios')
+  seen.set(key,validated.signature)
+  const existing=list(state?.mipeCommandReceipts).filter(item=>recordOrganizationId(item)===tenant&&text(item.commandId||item.id)===identity)
+  if(existing.length>1)throw new Error('El estado local contiene receipts MIPE duplicados antes de hidratar sync')
+  if(existing.length===1&&text(existing[0].signature)!==validated.signature)throw new Error('El receipt MIPE remoto contradice la firma durable local')
+ }
+}
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
  const changes=[]
@@ -36,6 +58,8 @@ export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
 export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  if(!companyId||changes.length===0)return state
  const tenant=text(companyId)
+ const forbiddenDelete=list(changes).find(change=>APPEND_ONLY_SYNC_COLLECTIONS.has(change.collection)&&change.operation==='delete')
+ if(forbiddenDelete)throw new Error(`${forbiddenDelete.collection} es append-only y no admite delete de sync`)
  const queued=changes.map(change=>{
   const declaredOwner=text(change.organizationId)
   if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
@@ -45,6 +69,7 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
    if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
    const owner=recordOrganizationId(payload)
    if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
+   if(change.collection==='mipeCommandReceipts')assertCommandReceiptPayload(payload,change.recordId,tenant)
    payload={...payload,id:recordId(payload),_organizationId:tenant}
   }
   return{
@@ -82,6 +107,7 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
  const foreignPayload=list(records).find(row=>{const owner=recordOrganizationId(row.payload);return owner&&owner!==tenant})
  if(foreignPayload)throw new Error('No se puede hidratar un payload perteneciente a otra empresa')
+ assertRemoteReceiptIntegrity(state,records,tenant)
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
@@ -89,7 +115,8 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
   if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
   const isTenantRecord=item=>recordId(item)===remoteId&&(!recordOrganizationId(item)||recordOrganizationId(item)===tenant)
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
-  const record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  let record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  if(row.collection==='mipeCommandReceipts')record={...record,commandId:row.recordId,organizationId:tenant}
   const index=items.findIndex(isTenantRecord)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
  }
