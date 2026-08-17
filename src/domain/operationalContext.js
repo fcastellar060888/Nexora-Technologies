@@ -108,7 +108,24 @@ export function operationalContextForPlant(state,plantId,{companyId=state?.curre
   return normalizeOperationalContext(state,{...base,siteId:site.id,houseId:lineage.houseId,bedId:lineage.bedId,plantId:lineage.plantId})
 }
 
-function directRecordBelongs(state,record,organizationId,allowedSiteIds){const owner=explicitOrganizationId(record);if(owner&&owner!==organizationId)return false;const siteId=text(record?.siteId);if(siteId)return allowedSiteIds.has(siteId);if(owner)return true;return list(state?.companies).length<=1}
+function legacySiteOwner(state,siteId){
+ const owners=[...new Set(list(state?.sites).filter(site=>same(site?.id,siteId)).map(explicitOrganizationId).filter(Boolean))]
+ return owners.length===1?owners[0]:''
+}
+function directRecordBelongs(state,record,organizationId,allowedSiteIds){
+ const owner=explicitOrganizationId(record)
+ if(owner&&owner!==organizationId)return false
+ const siteId=text(record?.siteId)
+ if(siteId){
+  if(!allowedSiteIds.has(siteId))return false
+  if(owner)return true
+  const inferredOwner=legacySiteOwner(state,siteId)
+  if(inferredOwner)return inferredOwner===organizationId
+  return list(state?.companies).length<=1
+ }
+ if(owner)return true
+ return list(state?.companies).length<=1
+}
 function scopeDirect(state,key,organizationId,allowedSiteIds){return list(state?.[key]).filter(record=>directRecordBelongs(state,record,organizationId,allowedSiteIds))}
 function hierarchyReference(state,collection,id,organizationId,label){return uniqueById(recordsForOrganization(state,collection,organizationId),id,label)}
 function assertUniqueRecordIds(records,label){const seen=new Set();for(const record of list(records)){const id=text(record?.id);if(!id)continue;if(seen.has(id))throw new Error(`${label} contiene identidad duplicada dentro de la empresa activa.`);seen.add(id)}return records}
