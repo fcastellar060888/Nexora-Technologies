@@ -5,13 +5,13 @@ import PageHeader from'../components/PageHeader'
 import StateMessage from'../components/StateMessage'
 import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
 import{executeTreatment,scheduleTreatment}from'../domain/mipe'
-import{useStore}from'../services/store'
+import{useMipeStore}from'../services/mipeTenantStore.js'
 
 const today=()=>new Date().toISOString().slice(0,10)
 const initialForm=state=>({findingId:state.findings.find(x=>!['Resuelto','Falso positivo'].includes(x.status))?.id||'',productId:state.products.find(x=>x.category==='MIPE'||x.category==='Biológico'||x.category==='Adyuvante')?.id||'',dose:0,doseUnit:'mL/L',mixVolume:0,date:today(),responsible:'',notes:''})
 
 export default function TreatmentsPage(){
- const{state,update}=useStore();const[f,setF]=useState(()=>initialForm(state));const[execution,setExecution]=useState({});const[msg,setMsg]=useState('')
+ const{state,update}=useMipeStore();const[f,setF]=useState(()=>initialForm(state));const[execution,setExecution]=useState({});const[msg,setMsg]=useState('')
  const openFindings=state.findings.filter(x=>!['Resuelto','Falso positivo'].includes(x.status))
  const products=state.products.filter(p=>p.category==='MIPE'||p.category==='Biológico'||p.category==='Adyuvante')
  const selectedProduct=state.products.find(p=>p.id===f.productId)
