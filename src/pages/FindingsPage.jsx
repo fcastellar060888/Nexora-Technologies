@@ -6,11 +6,12 @@ import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
 import StateMessage from'../components/StateMessage'
 import {FormActions,ValidationMessage} from'../components/forms/FormKit.jsx'
-import {useMipeStore} from'../services/mipeTenantStore.js'
+import {MIPE_OPERATIONS} from'../services/mipeCommand.js'
+import {useMipeCommandStore} from'../services/mipeCommandStore.js'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
 
 export default function FindingsPage(){
- const {state,update}=useMipeStore()
+ const {state,execute}=useMipeCommandStore()
  const [filters,setFilters]=useState({status:'Todos',incidentId:'Todos',houseId:'Todos',followUp:'Todos'})
  const [editing,setEditing]=useState(null)
 
@@ -25,13 +26,12 @@ export default function FindingsPage(){
  const hasFindings=state.findings.length>0
  const overdueCount=rows.filter(isFollowUpDue).length
 
- function save(e){
+ async function save(e){
    e.preventDefault()
-   update(s=>({...s,findings:s.findings.map(f=>f.id===editing.id?{...editing,updatedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Editar hallazgo',detail:editing.id})
-   setEditing(null)
+   try{await execute({operation:MIPE_OPERATIONS.UPDATE_FINDING,entityId:editing.id,input:{incidentId:editing.incidentId,severity:editing.severity,status:editing.status,responsible:editing.responsible,followUpDate:editing.followUpDate,action:editing.action,notes:editing.notes,createdAt:editing.createdAt}});setEditing(null)}catch(error){alert(error.message)}
  }
- function remove(id){if(confirm('¿Eliminar definitivamente este hallazgo?'))update(s=>({...s,findings:s.findings.filter(f=>f.id!==id)}),{module:'MIPE',action:'Eliminar hallazgo',detail:id})}
- function close(id){update(s=>({...s,findings:s.findings.map(f=>f.id===id?{...f,status:'Resuelto',closedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Cerrar hallazgo',detail:id})}
+ async function remove(id){if(!confirm('¿Eliminar definitivamente este hallazgo?'))return;try{await execute({operation:MIPE_OPERATIONS.DELETE_FINDING,entityId:id})}catch(error){alert(error.message)}}
+ async function close(id){try{await execute({operation:MIPE_OPERATIONS.RESOLVE_FINDING,entityId:id,input:{status:'Resuelto'}})}catch(error){alert(error.message)}}
 
  return <>
   <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución de cada caso."/>
