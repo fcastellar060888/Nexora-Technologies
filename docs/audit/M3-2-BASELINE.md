@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 7/12 Verified**  
+Estado: **AUDIT IN PROGRESS — 8/12 Verified**  
 Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
 Bloque: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -20,8 +20,8 @@ MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severida
 | M32-F004 | P0 | **Verified** | Treatment/inventory transaction | Ejecución remota atómica de lote+movimiento+Treatment+Finding+costo, con locks/version preflight/idempotencia. Quality #2000; cierre documental #2002. |
 | M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones con before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
 | M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076; documental #2078. |
-| M32-F007 | P1 | **Verified** | Incident/product authority | Incident no destructivo y vigente; Product técnico ejecutable congelado en Treatment; costo/reentrada/carencia no dependen del catálogo mutable. Quality #2118. |
-| M32-F008 | P1 | **Open** | Persistence/sync | Falta autoridad completa de schema/migration/cache/bootstrap/sync/tombstones/receipts MIPE. |
+| M32-F007 | P1 | **Verified** | Incident/product authority | Incident no destructivo y vigente; Product técnico ejecutable congelado en Treatment; costo/reentrada/carencia no dependen del catálogo mutable. Quality #2118; documental #2120. |
+| M32-F008 | P1 | **Verified** | Persistence/sync | Migración MIPE dedicada, caché/bootstrap/sync/tombstones y receipts tenant-aware con identidad estable. Quality #2135. |
 | M32-F009 | P1 | **Open** | Operational restrictions | Falta consolidar reentrada, carencia y bloqueos/liberaciones como restricciones proyectables. |
 | M32-F010 | P1 | **Open** | Dashboard/croquis/context | Falta cerrar contexto jerárquico persistente Empresa→Sede→Nave→Cama→Planta y croquis. |
 | M32-F011 | P1 | **Open** | Passport/Knowledge Graph | Falta traza canónica Finding→Incident→Intervention/Treatment→Product/Lot→Restriction/Resolution. |
@@ -208,6 +208,41 @@ La identidad Product existía en Inventario, pero el flujo productivo MIPE no co
 - HEAD funcional final: `9cc5239de5ebcea606020ad9dab40918ceda7a13`.
 - Quality #2118: **verde, 1072/1072 pruebas**, cero fallos.
 - Reauditoría: no queda hard-delete productivo de Incident; `DELETE_INCIDENT` es alias no destructivo; nuevos Findings requieren Incident usable; nuevas programaciones nacen con snapshot; costo/reentrada/carencia se calculan desde `profile=snapshot||product`; Treatment textual sin Treatment canónico falla antes de evento/commit.
+- Cierre documental `1e016f168c8e7370584e8fe1f179c4e82586b714`; Quality #2120 verde.
+
+## M32-F008 — cierre verificado
+
+### Problema reproducido
+
+El backend genérico `erp_records` ya aceptaba cualquier colección, pero el cliente no materializaba ni sincronizaba por completo la evidencia F006/F003. `mipeInterventions` y `mipeCommandReceipts` faltaban del allowlist de sync y de la normalización persistente. Además, los receipts usaban `commandId` como identidad contractual pero no tenían necesariamente `id`, mientras el motor genérico esperaba `record.id`; habilitarlos sin corregir esa diferencia habría creado identidades vacías/colisiones y pérdida de idempotencia entre dispositivos. El backfill causal F002 existía en dominio, pero tampoco formaba parte del pipeline de persistencia/bootstrap.
+
+### Solución
+
+- `src/services/mipePersistenceMigration.js` introduce una migración MIPE dedicada (`MIPE_PERSISTENCE_VERSION=1`) sin reabrir el schema global M3.1: materializa `mipeInterventions` y `mipeCommandReceipts`, aplica `backfillMipeOwnership()` y normaliza cada receipt a `id = commandId`.
+- Identidad durable de receipt: `(organizationId, commandId)`. Duplicados idénticos convergen; dos signatures contradictorias para la misma identidad fallan cerrado durante migración.
+- `safeStorage.js` ejecuta la migración MIPE en load/save, después de la migración general/material y antes de persistir la caché segmentada.
+- `remoteBootstrap.js` ejecuta la misma migración tras hidratación autoritativa; sus helpers de identidad aceptan `id || commandId`, por lo que un dispositivo nuevo no depende de haber cargado una caché legacy antes.
+- `SYNCABLE_COLLECTIONS` incorpora `mipeInterventions` y `mipeCommandReceipts`.
+- `syncEngine.js` define identidad sincronizable como `id || commandId`; un registro realmente sin identidad falla cerrado. Los upserts estampan `id=recordId` y `_organizationId`, y los tombstones solo afectan la identidad del tenant activo.
+- Interventions conservan `assignmentHistory`, snapshots y ownership durante cache/sync/bootstrap; los homónimos de otra empresa permanecen intactos.
+- Mutaciones offline pendientes del tenant activo se superponen al snapshot remoto en bootstrap, sin destruir el homónimo extranjero.
+- Un receipt hidratado desde PostgreSQL permite que el mismo command vuelva a ejecutarse como replay efecto-único después de recarga/dispositivo nuevo.
+- No se crean tablas MIPE nuevas ni RPCs redundantes: `003_sync_transport.sql`/`007_remote_bootstrap.sql` ya proveen almacenamiento genérico por `(organization_id, collection, record_id)`.
+- F004 no se expande: el receipt genérico MIPE no forma parte de `MIPE_TREATMENT_TRANSACTION_COLLECTIONS`; la RPC de Treatment mantiene exactamente lote + movimiento + Treatment + Finding + costo y `sync:false` para consecuencias ya confirmadas remotamente.
+
+### Pruebas adversariales
+
+- `tests/m3-2-mipe-persistence-sync.test.mjs`: migración dedicada, backfill causal, receipt `id=commandId`, contradicción fail-closed, caché tenant-aware, cola sync, bootstrap, tombstone, pending offline overlay, homónimos cross-tenant y replay tras hidratar receipt.
+- `tests/m3-2-mipe-persistence-receipt-reaudit.test.mjs`: receipts idénticos convergen y un tombstone de A conserva el homónimo de B.
+- La suite verifica explícitamente que `MIPE_TREATMENT_TRANSACTION_COLLECTIONS` sigue siendo `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries` y que `mipeTreatmentTransaction.js` no incorpora `mipeCommandReceipts`.
+
+### Quality y reauditoría
+
+- Quality #2132: **1080/1081**. El único rojo era una aserción estática de la prueba que buscaba el nombre interno antiguo `CANONICAL_COLLECTIONS`; producción exponía correctamente `MIPE_TREATMENT_TRANSACTION_COLLECTIONS` con las mismas cinco consecuencias.
+- Se corrigió exclusivamente esa aserción y se añadió reauditoría de convergencia/tombstone de receipts.
+- HEAD funcional final: `1faa98c...` (commit que contiene la reauditoría final de receipts).
+- Quality #2135: **verde, 1083/1083 pruebas**, cero fallos; workflow `Quality` concluido `success`.
+- Reauditoría final: backend genérico intacto; no hay nueva autoridad SQL paralela; cache/bootstrap/sync comparten la misma identidad tenant-aware; receipts contradictorios fallan y los idénticos convergen; F004 conserva su atomicidad de cinco colecciones.
 
 ## Orden de cierre
 
@@ -218,7 +253,7 @@ La identidad Product existía en Inventario, pero el flujo productivo MIPE no co
 5. **F005 Workflow/history — Verified.**
 6. **F006 Follow-up/interventions — Verified.**
 7. **F007 Incident/product authority — Verified.**
-8. **F008 Persistence/sync** — schema/cache/bootstrap/sync/tombstones/receipts.
+8. **F008 Persistence/sync — Verified.**
 9. **F009 Operational restrictions** — reentrada, carencia y disponibilidad como autoridad proyectable.
 10. **F010 Dashboard/croquis/context** — contexto jerárquico persistente y acciones desde croquis.
 11. **F011 Passport/Knowledge Graph** — trazabilidad explicable end-to-end.
@@ -248,7 +283,7 @@ La identidad Product existía en Inventario, pero el flujo productivo MIPE no co
 
 ## Estado actual
 
-- Verified: **7**
-- Open: **5**
+- Verified: **8**
+- Open: **4**
 - P0 abiertos: **0**
-- P1 abiertos: **5**
+- P1 abiertos: **4**
