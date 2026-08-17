@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 5/12 Verified**  
+Estado: **AUDIT IN PROGRESS — 6/12 Verified**  
 Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
 Bloque: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -19,7 +19,7 @@ MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severida
 | M32-F003 | P0 | **Verified** | Commands/permissions/events | Operaciones explícitas, permisos, replay, tenant guard y requested→commit→completion; superficies MIPE sin mutación directa. Quality #1983; cierre documental #1986. |
 | M32-F004 | P0 | **Verified** | Treatment/inventory transaction | Ejecución remota atómica de lote+movimiento+Treatment+Finding+costo, con locks/version preflight/idempotencia. Quality #2000; cierre documental #2002. |
 | M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones con before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
-| M32-F006 | P1 | **Open** | Follow-up/interventions | Falta unificar causalidad y autoridad de seguimiento entre planta productiva y material vegetal. |
+| M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076. |
 | M32-F007 | P1 | **Open** | Incident/product authority | Falta catálogo técnico, vigencia, restricciones y snapshots ejecutables completos. |
 | M32-F008 | P1 | **Open** | Persistence/sync | Falta autoridad completa de schema/migration/cache/bootstrap/sync/tombstones/receipts MIPE. |
 | M32-F009 | P1 | **Open** | Operational restrictions | Falta consolidar reentrada, carencia y bloqueos/liberaciones como restricciones proyectables. |
@@ -139,6 +139,38 @@ Aunque F003 ya obligaba a escribir mediante commands, un Finding todavía podía
 - Quality #2034: **verde, 1035/1035 pruebas**, cero fallos; static audit, dependency audit, environment contract, authentication/session audit, coverage gate, production build y production artifact audit verdes.
 - Reauditoría desde cierre F004: el delta F005 queda en catálogo, workflow, command boundary, Findings/HouseMap y pruebas. `src/domain/mipeInterventionAuthority.js` proviene del commit preparatorio F006 `8d50e711c45f1998efd1ea4a504dd7740fa66223`, permanece sin imports productivos y **no se atribuye a F005**.
 
+## M32-F006 — cierre verificado
+
+### Problema reproducido
+
+El seguimiento MIPE todavía tenía dos autoridades paralelas: el helper legacy de material vegetal creaba intervenciones con UUID y permitía reescribir responsable, mientras `mipeInterventionAuthority.js` existía aislado. La proyección de revisiones además confundía el vencimiento con la causalidad: podía no reconocer una inspección hecha a tiempo o permitir que intervenciones simultáneas se cerraran entre sí. La reauditoría encontró también riesgos de homónimos cross-tenant, `treatmentId` no verificado, un `plantEvent` impropio para target `POSITION` y una vía directa de reasignación fuera del command boundary.
+
+### Solución
+
+- `src/domain/mipeInterventionAuthority.js` queda como autoridad canónica de Intervention y se conecta a `RECORD_INTERVENTION` / `REASSIGN_INTERVENTION` en `src/services/mipeCommand.js`.
+- Cada Intervention congela `organizationId`, sede, Finding, target `POSITION` o `MATERIAL_PLANT`, actor, evidencia temporal y, cuando aplica, snapshot de Treatment. Un `treatmentId` recibido del cliente solo se conserva si el Treatment fue resuelto y verificado contra la misma empresa, sede y Finding.
+- La identidad de la intervención deriva del command; replay y colisiones se someten al receipt tenant-aware del command boundary.
+- `assignmentHistory` es append-only: una reasignación agrega evento con responsable anterior/nuevo, actor y fecha. El mismo command de reasignación es idempotente por `eventId` y no vuelve a modificar historia.
+- `src/domain/mipeReviewTasks.js` queda como proyección de solo lectura: se eliminó `reassignMipeReviewTask`, por lo que ya no existe un mutador directo que reescriba responsable.
+- Una obligación de revisión solo queda `Completada` por un `Seguimiento` posterior a la intervención origen. Puede ocurrir antes o exactamente en la fecha límite; una intervención simultánea no satisface causalidad y un Treatment posterior tampoco sustituye la evidencia de seguimiento.
+- La resolución de tareas usa identidad compuesta tenant+Finding, filtra por organización antes de proyectar y falla cerrado ante Finding duplicado same-tenant, ownership ambiguo o evidencia legacy sin ownership que pretenda completar una tarea tenant-owned.
+- Target `POSITION` no genera un falso `plantEvent` material. Para `MATERIAL_PLANT`, el target se toma del snapshot canónico y el evento auxiliar usa identidad tenant-compuesta `${organizationId}:${interventionId}:plant-event`, evitando colisión si dos empresas reutilizan el mismo commandId.
+
+### Pruebas adversariales
+
+- `tests/m3-2-mipe-intervention-authority.test.mjs`: target/actor/Treatment snapshots, fechas, Finding cerrado, homónimos cross-tenant, revisión anticipada/puntual, simultaneidad, POSITION vs MATERIAL_PLANT, reasignación append-only y replay.
+- `tests/m3-2-mipe-intervention-bypass-reaudit.test.mjs`: prohíbe reintroducir el mutador de reasignación legacy y exige routing productivo por la autoridad canónica.
+- La reauditoría adicional cubre Treatment posterior que no satisface follow-up, intervención legacy sin ownership, Finding tenant-owned vs unowned, duplicado same-tenant, filtro por organización, `treatmentId` no verificado y commandId homónimo entre empresas con conservación de ambos eventos materiales.
+
+### Quality y reauditoría
+
+- Quality #2048: **1041/1043**. Las ocho adversariales F006 iniciales pasaron; los dos rojos estaban en el contrato histórico de tareas y revelaron que dos intervenciones con el mismo timestamp no deben completar mutuamente una obligación.
+- Se corrigió la causalidad a `performedAt > source.performedAt`, manteniendo que una revisión anticipada o exacta al vencimiento sí es válida.
+- Quality #2074 sobre `fe5e6c27682bead1a33afc39b3032186841e9749`: **1051/1052**. El único rojo era una expectativa del fixture: una tarea a 23 horas del vencimiento es correctamente `Próxima`, no `Pendiente`; no hubo defecto productivo.
+- Corrección exclusiva del test: `ba4f42943b9d5e7cbc04fd8809091e250d00790a`.
+- Quality #2076 sobre `ba4f42943b9d5e7cbc04fd8809091e250d00790a`: **verde, 1052/1052 pruebas**, cero fallos; el workflow `Quality` concluyó `success`.
+- Reauditoría final: no queda import productivo de `appendMipeIntervention` ni `reassignMipeReviewTask`; creación y reasignación pasan por la autoridad canónica, la proyección es tenant-aware y los eventos materiales están namespaced por organización.
+
 ## Orden de cierre
 
 1. **F001 Domain authority — Verified.**
@@ -146,7 +178,7 @@ Aunque F003 ya obligaba a escribir mediante commands, un Finding todavía podía
 3. **F003 Commands/permissions/events — Verified.**
 4. **F004 Treatment/inventory transaction — Verified.**
 5. **F005 Workflow/history — Verified.**
-6. **F006 Follow-up/interventions** — unificar seguimiento productivo/material vegetal.
+6. **F006 Follow-up/interventions — Verified.**
 7. **F007 Incident/product authority** — catálogos/referencias/snapshots ejecutables.
 8. **F008 Persistence/sync** — schema/cache/bootstrap/sync/tombstones/receipts.
 9. **F009 Operational restrictions** — reentrada, carencia y disponibilidad como autoridad proyectable.
@@ -178,7 +210,7 @@ Aunque F003 ya obligaba a escribir mediante commands, un Finding todavía podía
 
 ## Estado actual
 
-- Verified: **5**
-- Open: **7**
+- Verified: **6**
+- Open: **6**
 - P0 abiertos: **0**
-- P1 abiertos: **7**
+- P1 abiertos: **6**
