@@ -1,4 +1,4 @@
-import{mipeFindingHistory}from'../../domain/mipeFindingWorkflow.js'
+import{mipeFindingHistory,verifyMipeFindingHistory}from'../../domain/mipeFindingWorkflow.js'
 import{mipeRecordOrganizationId,mipeRecordsForOrganization}from'../../domain/mipeTenancy.js'
 import{irrigationMirfeRecordOrganizationId}from'../../domain/irrigationMirfeTenancy.js'
 import{passportIndicator,passportRelationship}from'./passportDomainSources.js'
@@ -42,7 +42,11 @@ function findingTargets(state,{organizationId,targetType,targetId}){
  const findings=mipeForOrganization(state,'findings',organizationId).filter(item=>{const target=targetOf(item);return target.targetType===targetType&&target.targetId===targetId})
  return uniqueById(findings,'Finding')
 }
-function resolutionEvents(finding){return mipeFindingHistory(finding).filter(event=>TERMINAL.has(text(event?.to)))}
+function historyFor(finding){
+ if(list(finding?.mipeHistory).length){const verification=verifyMipeFindingHistory(finding);if(!verification.valid)throw new Error(`El historial MIPE de Finding ${text(finding?.id)} no es íntegro: ${verification.errors.join(' ')}`)}
+ return mipeFindingHistory(finding)
+}
+function resolutionEvents(finding){return historyFor(finding).filter(event=>TERMINAL.has(text(event?.to)))}
 function currentProductLabel(state,treatment,organizationId){
  const product=sharedById(state,'products',treatment?.productId,organizationId,'Product')
  return text(treatment?.productSnapshot?.name)||text(product?.name)||text(treatment?.productId)||'Producto MIPE'
@@ -82,10 +86,11 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
   relationships.push(relation('has_mipe_finding','mipe.finding',findingId,text(finding.type||finding.pest)||`Finding ${findingId}`,owner,{status:text(finding.status),severity:finding.severity??null,siteId:text(finding.siteId),reportedAt}))
   const incidentId=text(finding.incidentId)
   if(incidentId){
-   const incident=mipeById(state,'incidents',incidentId,owner,'Incident')
-   if(incident){const current=incidentUses.get(incidentId)||{incident,findingIds:[]};current.findingIds.push(findingId);incidentUses.set(incidentId,current)}
+   const incident=mipeById(state,'incidents',incidentId,owner,'Incident'),current=incidentUses.get(incidentId)||{incident:null,findingIds:[],fallbackLabels:[]}
+   if(incident)current.incident=incident
+   current.findingIds.push(findingId);current.fallbackLabels.push(text(finding.type||finding.pest));incidentUses.set(incidentId,current)
   }
-  for(const event of mipeFindingHistory(finding)){
+  for(const event of historyFor(finding)){
    const occurredAt=iso(event?.occurredAt);if(!occurredAt)continue
    timeline.push({id:`mipekg:workflow:${event.id}`,sourceId:findingId,occurredAt,category:'MIPE workflow',type:text(event.type),title:event.type==='CORRECTION'?'Corrección auditable':event.type==='TRANSITION'?`MIPE: ${text(event.from)} → ${text(event.to)}`:'Hallazgo MIPE registrado',summary:text(event.notes||event.reason),status:text(event.to||finding.status),findingId,transition:text(event.transition),actor:event.actor||null})
    if(TERMINAL.has(text(event.to)))resolutions.push({id:text(event.id),findingId,status:text(event.to),occurredAt,transition:text(event.transition),notes:text(event.notes||event.reason),actor:event.actor||null,legacyImported:event.type==='IMPORTED'})
@@ -93,7 +98,7 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
   const treatments=allTreatments.filter(item=>text(item.findingId)===findingId)
   restrictions.push(...restrictionRecords(finding,treatments))
  }
- for(const[incidentId,{incident,findingIds:ids}]of incidentUses)relationships.push(relation('classified_by_mipe_incident','mipe.incident',incidentId,text(incident.name)||incidentId,owner,{findingIds:sorted(ids),active:incident.active!==false}))
+ for(const[incidentId,use]of incidentUses){const label=text(use.incident?.name)||use.fallbackLabels.find(Boolean)||incidentId;relationships.push(relation('classified_by_mipe_incident','mipe.incident',incidentId,label,owner,{findingIds:sorted(use.findingIds),active:use.incident?use.incident.active!==false:null,catalogPresent:Boolean(use.incident)}))}
  for(const intervention of allInterventions){
   const interventionId=text(intervention.id),findingId=text(intervention.findingId)
   relationships.push(relation('has_mipe_intervention','mipe.intervention',interventionId,text(intervention.type)||`Intervention ${interventionId}`,owner,{findingId,treatmentId:text(intervention.treatmentId),performedAt:iso(intervention.performedAt),outcome:text(intervention.outcome),responsible:text(intervention.responsible||intervention.responsibleId)}))
