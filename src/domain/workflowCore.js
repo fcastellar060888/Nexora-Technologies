@@ -25,9 +25,9 @@ export function defineWorkflow({id,initialState,states,transitions,terminalState
  return Object.freeze({id,initialState,states:Object.freeze([...states]),transitions:transitionMap,terminalStates:new Set([...DEFAULT_TERMINAL_STATES,...terminalStates])})
 }
 
-export function createWorkflowInstance(definition,{entityType,entityId,companyId='',metadata={},actor={},occurredAt=new Date().toISOString()}={}){
+export function createWorkflowInstance(definition,{entityType,entityId,companyId='',metadata={},actor={},occurredAt=new Date().toISOString(),eventId=crypto.randomUUID()}={}){
  required(definition?.id,'La definición del workflow');required(entityType,'El tipo de entidad');required(entityId,'El identificador de la entidad')
- const event={id:crypto.randomUUID(),workflowId:definition.id,entityType,entityId,companyId,type:'workflow.created',transition:'create',from:null,to:definition.initialState,occurredAt,actor:clone(actor),metadata:clone(metadata)}
+ const event={id:eventId,workflowId:definition.id,entityType,entityId,companyId,type:'workflow.created',transition:'create',from:null,to:definition.initialState,occurredAt,actor:clone(actor),metadata:clone(metadata)}
  return Object.freeze({workflowId:definition.id,entityType,entityId,companyId,state:definition.initialState,version:1,createdAt:occurredAt,updatedAt:occurredAt,metadata:clone(metadata),history:Object.freeze([Object.freeze(event)])})
 }
 

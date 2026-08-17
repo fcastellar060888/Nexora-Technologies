@@ -23,8 +23,12 @@ test('date and time normalization loads after other global styles', async () => 
 
 test('infrastructure environmental reading uses the Safari-safe split date and time control', async () => {
   const page = await read('src/pages/InfrastructureOperationsPage.jsx')
-  assert.match(page, /import DateTimeFields/)
-  assert.match(page, /label="Fecha y hora"/)
-  assert.match(page, /<DateTimeFields value=\{reading\.recordedAt\}/)
-  assert.match(page, /onChange=\{recordedAt=>setReading\(\{\.\.\.reading,recordedAt\}\)\}/)
+  const panel = await read('src/components/EnvironmentMeasurementsPanel.jsx')
+  assert.match(page, /import EnvironmentMeasurementsPanel/)
+  assert.match(page, /<EnvironmentMeasurementsPanel/)
+  assert.match(panel, /import DateTimeFields/)
+  assert.match(panel, /label="Fecha y hora"/)
+  assert.match(panel, /<DateTimeFields value=\{reading\.recordedAt\}/)
+  assert.match(panel, /onChange=\{recordedAt=>setReading\(\{\.\.\.reading,recordedAt\}\)\}/)
 })
+

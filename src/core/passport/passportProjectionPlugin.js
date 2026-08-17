@@ -1,3 +1,5 @@
+import{enrichPassportProjection}from'./passportProjectionEnrichment.js'
+
 const SECTION_KEYS=Object.freeze(['relationships','documents','indicators','risks','actions','timeline'])
 const list=value=>Array.isArray(value)?value:[]
 
@@ -8,8 +10,10 @@ export function createProjectionPlugin({id,select=({context})=>context?.projecti
  return Object.freeze({
   id:pluginId,
   project(input){
-   const source=select(input)||{}
-   if(typeof source!=='object'||Array.isArray(source))throw new Error(`El plugin ${pluginId} recibió una proyección inválida`)
+   const selected=select(input)||{}
+   if(typeof selected!=='object'||Array.isArray(selected))throw new Error(`El plugin ${pluginId} recibió una proyección inválida`)
+   const source=enrichPassportProjection(pluginId,input,selected)
+   if(typeof source!=='object'||Array.isArray(source))throw new Error(`El plugin ${pluginId} recibió una proyección enriquecida inválida`)
    const projection={}
    for(const key of SECTION_KEYS)projection[key]=list(source[key])
    if(source.decisionContext!==undefined){

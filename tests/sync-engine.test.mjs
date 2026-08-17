@@ -7,6 +7,9 @@ test('detecta altas, cambios y eliminaciones por colección',()=>{
  const next={products:[{id:'a',name:'A2'},{id:'c',name:'C'}]}
  const changes=collectionChanges(prev,next,['products'])
  assert.deepEqual(changes.map(x=>[x.recordId,x.operation]).sort(),[['a','upsert'],['b','delete'],['c','upsert']])
+ assert.deepEqual(changes.find(x=>x.recordId==='a').previousPayload,{id:'a',name:'A'})
+ assert.deepEqual(changes.find(x=>x.recordId==='b').previousPayload,{id:'b',name:'B'})
+ assert.equal(changes.find(x=>x.recordId==='c').previousPayload,null)
 })
 
 test('compacta múltiples mutaciones conservando la última',()=>{
