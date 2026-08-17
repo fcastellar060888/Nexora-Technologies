@@ -1,9 +1,9 @@
-import{useMemo,useState}from'react';import{Link}from'react-router-dom';import Card from'../components/Card';import PageHeader from'../components/PageHeader';import{useMipeStore}from'../services/mipeTenantStore.js';import{findingLocation}from'../domain/mipe';import{appendMipeIntervention,MIPE_INTERVENTION_TYPES}from'../domain/materialPlantMipe.js';import{MIPE_REVIEW_TASK_STATUS,projectMipeReviewTasks,reassignMipeReviewTask,summarizeMipeReviewTasks}from'../domain/mipeReviewTasks.js';
+import{useMemo,useState}from'react';import{Link}from'react-router-dom';import Card from'../components/Card';import PageHeader from'../components/PageHeader';import{findingLocation}from'../domain/mipe';import{MIPE_REVIEW_TASK_STATUS,projectMipeReviewTasks,summarizeMipeReviewTasks}from'../domain/mipeReviewTasks.js';import{MIPE_OPERATIONS}from'../services/mipeCommand.js';import{useMipeCommandStore}from'../services/mipeCommandStore.js';
 const severityValue=value=>{const numeric=Number(value);if(Number.isFinite(numeric))return numeric;return{Baja:1,Media:2,Alta:3,Crítica:4}[value]||0};
 const formatDate=value=>value?new Intl.DateTimeFormat('es-CO',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
 const emptyAction={taskId:'',outcome:'',notes:'',responsible:'',nextReviewAt:''};
 export default function MipeDashboardPage(){
- const{state,update}=useMipeStore();
+ const{state,execute}=useMipeCommandStore();
  const[filters,setFilters]=useState({siteId:'',status:'',responsible:''}),[action,setAction]=useState(emptyAction);
  const open=state.findings.filter(x=>!['Resuelto','Falso positivo'].includes(x.status));
  const critical=open.filter(x=>severityValue(x.severity)>=4);
@@ -15,15 +15,15 @@ export default function MipeDashboardPage(){
  const recurrent=open.filter((x,i,a)=>a.filter(y=>y.plantPositionId===x.plantPositionId&&y.incidentId===x.incidentId).length>1);
  const byInc=state.incidents.map(i=>[i.name,open.filter(f=>f.incidentId===i.id).length]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]);
  function selectTask(task){setAction({taskId:task.id,outcome:'',notes:'',responsible:task.responsible==='Sin asignar'?'':task.responsible,nextReviewAt:''})}
- function registerFollowUp(){
+ async function registerFollowUp(){
   if(!selectedTask)return alert('Selecciona una tarea MIPE.')
   if(!action.outcome.trim())return alert('Registra el resultado del seguimiento.')
-  try{update(current=>appendMipeIntervention(current,{findingId:selectedTask.findingId,type:MIPE_INTERVENTION_TYPES.FOLLOW_UP,responsible:action.responsible||selectedTask.responsible,outcome:action.outcome,notes:action.notes,nextReviewAt:action.nextReviewAt}),{module:'MIPE',action:'Seguimiento rápido registrado',detail:`${selectedTask.findingType} · ${selectedTask.plantCode}`})}catch(error){return alert(error.message)}
+  try{await execute({operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:selectedTask.findingId,type:'Seguimiento',responsible:action.responsible||selectedTask.responsible,outcome:action.outcome,notes:action.notes,nextReviewAt:action.nextReviewAt}})}catch(error){return alert(error.message)}
   setAction(emptyAction)
  }
- function reassign(){
+ async function reassign(){
   if(!selectedTask)return alert('Selecciona una tarea MIPE.')
-  try{update(current=>reassignMipeReviewTask(current,{interventionId:selectedTask.interventionId,responsible:action.responsible}),{module:'MIPE',action:'Revisión reasignada',detail:`${selectedTask.findingType} · ${action.responsible}`})}catch(error){return alert(error.message)}
+  try{await execute({operation:MIPE_OPERATIONS.REASSIGN_INTERVENTION,entityId:selectedTask.interventionId,input:{responsible:action.responsible}})}catch(error){return alert(error.message)}
   setAction(current=>({...current,taskId:''}))
  }
  const passportRoute=selectedTask?.materialPlantId?`/material-plant/${encodeURIComponent(selectedTask.materialPlantId)}`:'';
