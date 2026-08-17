@@ -55,6 +55,6 @@ export async function executePlantPhaseTransitionCommand(state,input={},deps={})
  if(prepared.retry)return Object.freeze({ok:true,retry:true,commandId,transition:prepared.transition})
  const publishEvent=deps.publishEvent||((event)=>publishDomainEvent(state,event)),commit=deps.commit
  if(typeof commit!=='function')throw new TypeError('commit es obligatorio para cambiar la fase de una planta.')
- await executeCoreOperationCommand({commandId,organizationId:prepared.organizationId,siteId:prepared.transition.siteId,aggregateType:'cultivation.plant',aggregateId:prepared.plant.id,completedEventName:DomainEvents.CROP_PHASE_CHANGED,occurredAt,payload:{plantId:prepared.plant.id,fromPhase:prepared.transition.fromPhase,toPhase:prepared.transition.toPhase,date:prepared.transition.date},metadata:{module:'cultivation',restrictionGuard:'mipe'} ,apply:current=>applyPrepared(current,prepared)},{publishEvent,commit})
+ await executeCoreOperationCommand({commandId,organizationId:prepared.organizationId,siteId:prepared.transition.siteId,aggregateType:'cultivation.plant',aggregateId:prepared.plant.id,completedEventName:DomainEvents.PLANT_PHASE_CHANGED,occurredAt,payload:{plantId:prepared.plant.id,fromPhase:prepared.transition.fromPhase,toPhase:prepared.transition.toPhase,date:prepared.transition.date},metadata:{module:'cultivation',restrictionGuard:'mipe'},apply:current=>applyPrepared(current,prepared)},{publishEvent,commit})
  return Object.freeze({ok:true,retry:false,commandId,transition:prepared.transition})
 }
