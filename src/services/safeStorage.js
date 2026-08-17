@@ -5,13 +5,15 @@ import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'.
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
+import{normalizeOperationalContext}from'../domain/operationalContext.js'
 import{cleanupLegacySeed}from'./legacySeedCleanup.js'
 import{quarantineLegacyInlineDocuments}from'./legacyInlineDocumentMigration.js'
 
 let lastObservedAuditId=''
 let persistenceRuntime=createPersistenceRuntime()
 const persistenceListeners=new Set()
-const normalizeState=value=>cleanupLegacySeed(migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState(value))))
+const migratePersistedState=value=>cleanupLegacySeed(migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState(value))))
+const normalizeState=value=>{const migrated=migratePersistedState(value);return{...migrated,currentContext:normalizeOperationalContext(migrated,migrated.currentContext)}}
 const preparePersistedState=value=>normalizeState(quarantineLegacyInlineDocuments(value))
 
 function cloneInitialState(){
