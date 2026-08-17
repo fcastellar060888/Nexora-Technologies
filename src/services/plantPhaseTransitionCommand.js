@@ -19,12 +19,27 @@ function existingTransition(state,organizationId,commandId){
  if(matches.length>1)throw new Error('El cambio de fase tiene identidad duplicada dentro de la empresa activa.')
  return matches[0]||null
 }
+function assertReplayMatches(existing,input){
+ const comparisons=[
+  ['plantId',text(input.plantId),text(existing.plantId||existing.entityId)],
+  ['fromPhase',text(input.fromPhase),text(existing.fromPhase)],
+  ['toPhase',text(input.toPhase),text(existing.toPhase)],
+  ['date',text(input.date),text(existing.date)],
+  ['siteId',text(input.siteId),text(existing.siteId)],
+  ['houseId',text(input.houseId),text(existing.houseId)],
+  ['bedId',text(input.bedId),text(existing.bedId)],
+  ['responsible',text(input.responsible),text(existing.responsible)],
+  ['notes',text(input.notes),text(existing.notes)]
+ ]
+ for(const[label,requested,recorded]of comparisons)if(requested&&requested!==recorded)throw new Error(`El commandId del cambio de fase ya fue usado con ${label} diferente.`)
+ return existing
+}
 
 export function preparePlantPhaseTransition(state,input={}, {commandId=text(input.commandId),occurredAt=input.occurredAt||new Date().toISOString()}={}){
  const organizationId=activeOrganizationId(state),id=text(commandId)
  if(!id)throw new Error('commandId es obligatorio para cambiar la fase de una planta.')
  const retry=existingTransition(state,organizationId,id)
- if(retry)return Object.freeze({organizationId,transition:retry,retry:true})
+ if(retry)return Object.freeze({organizationId,transition:assertReplayMatches(retry,input),retry:true})
  const plantId=text(input.plantId),plant=findMipeRecord(state,'plantPositions',plantId,{label:'planta/Position',organizationId})
  const fromPhase=text(input.fromPhase||plant.currentPhase),toPhase=text(input.toPhase),when=iso(occurredAt),date=dateOnly(input.date||when.slice(0,10))
  if(!cultivationPhases.includes(fromPhase)||!cultivationPhases.includes(toPhase))throw new Error('La fase de cultivo solicitada no es válida.')
@@ -39,7 +54,7 @@ export function preparePlantPhaseTransition(state,input={}, {commandId=text(inpu
 
 function applyPrepared(current,prepared){
  const{organizationId,transition,plant}=prepared,existing=existingTransition(current,organizationId,transition.id)
- if(existing)return current
+ if(existing){assertReplayMatches(existing,transition);return current}
  const candidates=(current.plantPositions||[]).filter(item=>text(item.id)===plant.id&&mipeRecordOrganizationId(current,'plantPositions',item)===organizationId)
  if(candidates.length!==1)throw new Error(candidates.length?'La planta tiene identidad duplicada dentro de la empresa activa.':'La planta ya no pertenece a la empresa activa.')
  return{
