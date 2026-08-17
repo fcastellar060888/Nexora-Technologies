@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 6/12 Verified**  
+Estado: **AUDIT IN PROGRESS — 7/12 Verified**  
 Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
 Bloque: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -19,8 +19,8 @@ MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severida
 | M32-F003 | P0 | **Verified** | Commands/permissions/events | Operaciones explícitas, permisos, replay, tenant guard y requested→commit→completion; superficies MIPE sin mutación directa. Quality #1983; cierre documental #1986. |
 | M32-F004 | P0 | **Verified** | Treatment/inventory transaction | Ejecución remota atómica de lote+movimiento+Treatment+Finding+costo, con locks/version preflight/idempotencia. Quality #2000; cierre documental #2002. |
 | M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones con before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
-| M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076. |
-| M32-F007 | P1 | **Open** | Incident/product authority | Falta catálogo técnico, vigencia, restricciones y snapshots ejecutables completos. |
+| M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076; documental #2078. |
+| M32-F007 | P1 | **Verified** | Incident/product authority | Incident no destructivo y vigente; Product técnico ejecutable congelado en Treatment; costo/reentrada/carencia no dependen del catálogo mutable. Quality #2118. |
 | M32-F008 | P1 | **Open** | Persistence/sync | Falta autoridad completa de schema/migration/cache/bootstrap/sync/tombstones/receipts MIPE. |
 | M32-F009 | P1 | **Open** | Operational restrictions | Falta consolidar reentrada, carencia y bloqueos/liberaciones como restricciones proyectables. |
 | M32-F010 | P1 | **Open** | Dashboard/croquis/context | Falta cerrar contexto jerárquico persistente Empresa→Sede→Nave→Cama→Planta y croquis. |
@@ -170,6 +170,44 @@ El seguimiento MIPE todavía tenía dos autoridades paralelas: el helper legacy 
 - Corrección exclusiva del test: `ba4f42943b9d5e7cbc04fd8809091e250d00790a`.
 - Quality #2076 sobre `ba4f42943b9d5e7cbc04fd8809091e250d00790a`: **verde, 1052/1052 pruebas**, cero fallos; el workflow `Quality` concluyó `success`.
 - Reauditoría final: no queda import productivo de `appendMipeIntervention` ni `reassignMipeReviewTask`; creación y reasignación pasan por la autoridad canónica, la proyección es tenant-aware y los eventos materiales están namespaced por organización.
+- Cierre documental `7819e9736e43cd937879f741c3dc4597f030f044`; Quality #2078 verde.
+
+## M32-F007 — cierre verificado
+
+### Problema reproducido
+
+La identidad Product existía en Inventario, pero el flujo productivo MIPE no congelaba su perfil técnico al programar. `executeTreatment()` volvía a leer `cost`, `reentryHours` y `withdrawalDays` del Product mutable, de modo que editar el catálogo después de aprobar un Treatment podía reescribir retroactivamente su costo, reentrada y carencia. Además, Incidents podían eliminarse físicamente, material vegetal aceptaba tipos libres y existía una vía de Intervention `Tratamiento` con producto/dosis textual sin Treatment canónico.
+
+### Solución
+
+- `src/domain/mipeCatalogAuthority.js` define la autoridad sanitaria de catálogo sin duplicar Inventario: Incident tiene categoría/riesgo/vigencia/lifecycle y Product compartido produce un snapshot técnico ejecutable MIPE.
+- Incident nuevo conserva identidad, ownership, nombre científico, descripción y vigencia. `ARCHIVE_INCIDENT` agrega lifecycle append-only; `DELETE_INCIDENT` queda únicamente como alias de compatibilidad que **archiva**, nunca elimina.
+- Nuevos Findings de Position y material vegetal deben resolver un Incident activo, no archivado y vigente del tenant activo. Material vegetal persiste `incidentId` canónico y deriva el nombre desde el catálogo, no desde texto libre.
+- `SCHEDULE_TREATMENT` construye `productSnapshot` tenant/site-aware con nombre, categoría, ingrediente activo, fabricante, registro técnico, unidad, rango/unidad de dosis, costo, reentrada, carencia, vigencia y `technicalRevision`.
+- La unidad de dosis solicitada debe coincidir con el perfil técnico, y la unidad física ejecutable debe corresponder: `mL/* → mL`, `g/* → g`.
+- `executeTreatment()` valida el snapshot a la fecha de ejecución y calcula costo/reentrada/carencia desde la evidencia congelada. Editar o desactivar el Product vivo después de aprobar no modifica el Treatment ya programado.
+- Treatments legacy sin snapshot conservan fallback explícito al Product vivo para compatibilidad histórica; toda nueva programación por `mipeCommand` nace con snapshot.
+- La transacción F004 continúa con **exactamente cinco colecciones**: el snapshot vive anidado dentro de Treatment, no crea una sexta consecuencia.
+- Una Intervention de tipo `Tratamiento` exige un Treatment canónico verificado del mismo Finding/tenant/sede. El panel material deja únicamente Seguimiento rápido; los tratamientos reales pasan por Treatments MIPE con Product/Lot/costo/restricciones.
+- `InventoryPage` captura fabricante, registro técnico/ICA, vigencia y revisión técnica sobre la misma colección `products`, estampa `organizationId` y rechaza desde UI combinaciones incoherentes entre unidad de dosis y unidad de inventario.
+- `TreatmentsPage` bloquea la unidad de dosis al perfil seleccionado, muestra registro/vigencia/reentrada/carencia y usa `productSnapshot` para historia visible.
+
+### Pruebas adversariales
+
+- `tests/m3-2-mipe-catalog-authority.test.mjs`: snapshot técnico completo/inmutable, tenant/sede/categoría/vigencia, unidad y rango de dosis, archivado/replay de Incident.
+- `tests/m3-2-mipe-incident-product-command.test.mjs`: archivado no destructivo, alias DELETE→archive, Incident archivado/futuro, Product homónimo cross-tenant, snapshot programado, mutación posterior del Product vivo, expiración al ejecutar, unidad incompatible y Treatment textual prohibido.
+- La reproducción financiera/agronómica programa con costo/reentrada/carencia A, muta el Product vivo a valores B y exige que la ejecución siga usando A; también exige no descontar inventario si el snapshot ya expiró.
+- `tests/m3-2-mipe-incident-product-ui.test.mjs`: no hard-delete en catálogo, Incidents activos en croquis/material, Seguimiento-only rápido, doseUnit bloqueada, metadatos técnicos de Inventario y coherencia `doseUnit ↔ unit`.
+- Suites F006 se adaptaron al contrato endurecido sin debilitar sus invariantes: Treatment posterior usa Treatment canónico; homónimos cross-tenant y eventos materiales siguen cubiertos.
+
+### Quality y reauditoría
+
+- Quality #2108 sobre `7142b049c22655a3fe62b76fd923646719696783`: **1068/1072**. Los cuatro rojos eran contratos históricos: tres fixtures F006 todavía fabricaban Treatment textual y UX-F008 esperaba el copy anterior. La autoridad F007 no falló.
+- Se migraron únicamente esos contratos. Quality #2114 quedó verde sobre `cee46f3f26dc9d91b16e16b2e532c2d3bbaf74f7`.
+- Reauditoría final añadió validación de coherencia de unidad en la captura de Inventario y su prueba estática; no modificó dominio ni la transacción F004.
+- HEAD funcional final: `9cc5239de5ebcea606020ad9dab40918ceda7a13`.
+- Quality #2118: **verde, 1072/1072 pruebas**, cero fallos.
+- Reauditoría: no queda hard-delete productivo de Incident; `DELETE_INCIDENT` es alias no destructivo; nuevos Findings requieren Incident usable; nuevas programaciones nacen con snapshot; costo/reentrada/carencia se calculan desde `profile=snapshot||product`; Treatment textual sin Treatment canónico falla antes de evento/commit.
 
 ## Orden de cierre
 
@@ -179,7 +217,7 @@ El seguimiento MIPE todavía tenía dos autoridades paralelas: el helper legacy 
 4. **F004 Treatment/inventory transaction — Verified.**
 5. **F005 Workflow/history — Verified.**
 6. **F006 Follow-up/interventions — Verified.**
-7. **F007 Incident/product authority** — catálogos/referencias/snapshots ejecutables.
+7. **F007 Incident/product authority — Verified.**
 8. **F008 Persistence/sync** — schema/cache/bootstrap/sync/tombstones/receipts.
 9. **F009 Operational restrictions** — reentrada, carencia y disponibilidad como autoridad proyectable.
 10. **F010 Dashboard/croquis/context** — contexto jerárquico persistente y acciones desde croquis.
@@ -210,7 +248,7 @@ El seguimiento MIPE todavía tenía dos autoridades paralelas: el helper legacy 
 
 ## Estado actual
 
-- Verified: **6**
-- Open: **6**
+- Verified: **7**
+- Open: **5**
 - P0 abiertos: **0**
-- P1 abiertos: **6**
+- P1 abiertos: **5**
