@@ -70,6 +70,16 @@ test('F010: cambio global de sede limpia drawer, selección y draft del croquis'
  assert.doesNotMatch(source,/setSelectedPlant\(null\);selection\.resetForSite\(nextSiteId\)/)
 })
 
+test('F010: mapa de áreas vivo hereda sede autorizada del contexto y no usa selector geográfico paralelo',async()=>{
+ const source=await readFile('src/pages/InfrastructureMapPage.jsx','utf8'),context=await readFile('src/components/ContextBar.jsx','utf8')
+ assert.match(source,/operationalContextOptions,scopeOperationalState,transitionOperationalContext/)
+ assert.match(source,/explicitOrganizationId/)
+ assert.doesNotMatch(source,/useState/)
+ assert.match(source,/currentContext:transitionOperationalContext\(current,\{siteId:nextSiteId\}\)/)
+ assert.match(source,/filter\(area=>area\.id===node\.areaId\)\.length===1/)
+ assert.match(context,/infrastructure\(\?:-map\|\\\/operations\|\$\)/)
+})
+
 test('F010: selección masiva del croquis no escribe plantEvents directamente',async()=>{
  const source=await readFile('src/services/useUnifiedMapSelection.js','utf8')
  assert.match(source,/executePlantEvent/)
