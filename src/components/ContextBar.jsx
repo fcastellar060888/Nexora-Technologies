@@ -12,6 +12,7 @@ const rules=[
  [/^\/production/,['company','site','house','bed','plant','genetic','stage']],
  [/^\/propagation\/mothers/,['company','site','genetic']],
  [/^\/propagation/,['company','site','house','bed','plant','genetic','stage']],
+ [/^\/material-plant\//,['company','site','genetic']],
  [/^\/mipe\/incidents/,['company']],
  [/^\/mipe/,['company','site','house','bed','plant','stage','week']],
  [/^\/mirfe/,['company','site','house','bed','plant','genetic','stage','week']],
