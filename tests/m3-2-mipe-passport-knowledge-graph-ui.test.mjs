@@ -34,3 +34,8 @@ test('F011: Passport trata Planta eliminada como terminal y valida historial ant
  assert.match(sources[1],/historial MIPE de Finding.*no es íntegro/)
  assert.match(sources[1],/catalogPresent/)
 })
+
+test('F011: projector MIPE forma parte del API público de Passport',async()=>{
+ const source=await readFile('src/core/passport/index.js','utf8')
+ assert.match(source,/export\{projectMipePassportTrace\}from'\.\/mipePassportProjection\.js'/)
+})
