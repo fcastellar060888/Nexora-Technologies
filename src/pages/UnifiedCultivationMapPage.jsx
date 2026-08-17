@@ -24,7 +24,8 @@ export default function UnifiedCultivationMapPage(){
  const executeMapPlantEvent=input=>executePlantEventCommand(state,input,{publishEvent:spec=>publishDomainEvent(state,spec),commit:(recipe,meta)=>update(recipe,meta)})
  const selection=useUnifiedMapSelection({state:mapState,siteId,executePlantEvent:executeMapPlantEvent})
  useEffect(()=>{if(!state.currentContext?.siteId&&siteId)update(current=>({...current,currentContext:transitionOperationalContext(current,{siteId})}),{audit:false,sync:false})},[siteId,state.currentContext?.siteId,update])
- const changeSite=nextSiteId=>{update(current=>({...current,currentContext:transitionOperationalContext(current,{siteId:nextSiteId})}),{audit:false,sync:false});setSelectedPlant(null);selection.resetForSite(nextSiteId)}
+ useEffect(()=>{setSelectedPlant(null);selection.resetForSite(siteId)},[siteId])
+ const changeSite=nextSiteId=>{update(current=>({...current,currentContext:transitionOperationalContext(current,{siteId:nextSiteId})}),{audit:false,sync:false})}
  const openSelection=payload=>{if(payload?.kind==='plant')update(current=>({...current,currentContext:operationalContextForPlant(current,payload.plant.id)}),{audit:false,sync:false});setSelectedPlant(payload)}
  const choosePlant=payload=>selection.choosePlant(payload,openSelection)
  return <>
