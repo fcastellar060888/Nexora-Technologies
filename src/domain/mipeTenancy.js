@@ -3,6 +3,7 @@ import{irrigationMirfeRecordOrganizationId}from'./irrigationMirfeTenancy.js'
 
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
+const TREATMENT_INTERVENTION_TYPES=new Set(['Tratamiento','TREATMENT'])
 
 export const MIPE_OWNERSHIP_COLLECTIONS=Object.freeze(['incidents','findings','treatments','mipeInterventions'])
 export const MIPE_SCOPED_COLLECTIONS=Object.freeze([
@@ -113,12 +114,20 @@ function recordSiteCausallyValid(state,collection,record,organizationId){
   return sitesCompatible(record?.siteId,references)
  }
  if(collection==='treatments'){
-  const finding=ownedReference(state,'findings',record?.findingId,owner),product=ownedReference(state,'products',record?.productId,owner),lot=ownedReference(state,'inventoryLots',record?.lotId||record?.inventoryLotId,owner)
-  return sitesCompatible(record?.siteId,[finding?.siteId,product?.siteId,lot?.siteId])
+  const findingId=text(record?.findingId),finding=ownedReference(state,'findings',findingId,owner)
+  if(!findingId||!finding)return false
+  const product=ownedReference(state,'products',record?.productId,owner),lot=ownedReference(state,'inventoryLots',record?.lotId||record?.inventoryLotId,owner)
+  if(product&&lot&&text(lot.productId)&&text(product.id)!==text(lot.productId))return false
+  return sitesCompatible(record?.siteId,[finding.siteId,product?.siteId,lot?.siteId])
  }
  if(collection==='mipeInterventions'){
-  const finding=ownedReference(state,'findings',record?.findingId,owner),treatment=ownedReference(state,'treatments',record?.treatmentId,owner)
-  return sitesCompatible(record?.siteId,[finding?.siteId,treatment?.siteId])
+  const findingId=text(record?.findingId),finding=ownedReference(state,'findings',findingId,owner)
+  if(!findingId||!finding)return false
+  const treatmentId=text(record?.treatmentId),treatment=ownedReference(state,'treatments',treatmentId,owner)
+  if(treatmentId&&!treatment)return false
+  if(TREATMENT_INTERVENTION_TYPES.has(text(record?.type))&&!treatmentId)return false
+  if(treatment&&text(treatment.findingId)!==findingId)return false
+  return sitesCompatible(record?.siteId,[finding.siteId,treatment?.siteId])
  }
  return true
 }
