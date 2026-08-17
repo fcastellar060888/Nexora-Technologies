@@ -1,38 +1,34 @@
 import{useMemo,useState}from'react'
-import{publishDomainEvent}from'../core/events/publishDomainEvent.js'
-import{MIPE_INTERVENTION_TYPES,appendMaterialPlantFindings,appendMipeIntervention,interventionsForFinding,isOpenMipeFinding,materialPlantFindingDetail,resolveMaterialPlantFinding,shouldSuggestMipeBlock}from'../domain/materialPlantMipe.js'
+import{MIPE_INTERVENTION_TYPES,interventionsForFinding,isOpenMipeFinding,shouldSuggestMipeBlock}from'../domain/materialPlantMipe.js'
+import{MIPE_OPERATIONS}from'../services/mipeCommand.js'
+import{useMipeCommandStore}from'../services/mipeCommandStore.js'
 
 const emptyDraft={type:'',severity:'Media',notes:'',restrictAvailability:false,confirmed:false}
 const emptyResolution={findingId:'',status:'Resuelto',notes:'',releaseAvailability:true}
 const emptyIntervention={type:MIPE_INTERVENTION_TYPES.TREATMENT,product:'',dose:'',responsible:'',outcome:'',notes:'',performedAt:'',nextReviewAt:''}
 
-export default function MaterialPlantMipePanel({state,update,plants,onComplete}){
+export default function MaterialPlantMipePanel({plants,onComplete}){
+ const{state,execute}=useMipeCommandStore()
  const[draft,setDraft]=useState(emptyDraft),[resolution,setResolution]=useState(emptyResolution),[intervention,setIntervention]=useState(emptyIntervention)
  const count=plants.length,plantIds=useMemo(()=>new Set(plants.map(item=>item.id)),[plants])
  const openFindings=useMemo(()=>(state.findings||[]).filter(item=>plantIds.has(item.materialPlantId)&&isOpenMipeFinding(item)),[state.findings,plantIds])
  const selectedFinding=openFindings.find(item=>item.id===resolution.findingId)||null
  const selectedInterventions=useMemo(()=>selectedFinding?interventionsForFinding(state,selectedFinding.id):[],[state,selectedFinding])
  function changeSeverity(severity){setDraft(current=>({...current,severity,restrictAvailability:shouldSuggestMipeBlock(severity)}))}
- function submit(){
+ async function submit(){
   if(!draft.type.trim())return alert('Escribe el tipo de hallazgo MIPE.')
   if(count>1&&!draft.confirmed)return alert('Confirma el registro MIPE masivo antes de continuar.')
-  update(current=>appendMaterialPlantFindings(current,plants,draft),{module:'MIPE',action:count>1?'Hallazgo masivo registrado':'Hallazgo registrado',detail:materialPlantFindingDetail(plants,draft)})
-  for(const plant of plants){const site=state.sites.find(item=>item.id===plant.siteId);publishDomainEvent(state,{name:'mipe.finding.recorded',aggregateType:'material.plant',aggregateId:plant.id,organizationId:site?.companyId||state.currentContext?.companyId||'local-installation',siteId:plant.siteId||null,payload:{plantType:plant.plantType,lotId:plant.lotId,code:plant.code,type:draft.type.trim(),severity:draft.severity,notes:draft.notes.trim(),restrictAvailability:draft.restrictAvailability,bulk:count>1,targetCount:count}})}
+  try{await execute({operation:MIPE_OPERATIONS.CREATE_MATERIAL_FINDINGS,input:{plantIds:plants.map(item=>item.id),type:draft.type,severity:draft.severity,notes:draft.notes,restrictAvailability:draft.restrictAvailability}})}catch(error){return alert(error.message)}
   setDraft(emptyDraft);onComplete?.()
  }
- function registerIntervention(){
+ async function registerIntervention(){
   if(!selectedFinding)return alert('Selecciona primero un hallazgo abierto.')
-  try{update(current=>appendMipeIntervention(current,{findingId:selectedFinding.id,...intervention,performedAt:intervention.performedAt||new Date().toISOString()}),{module:'MIPE',action:intervention.type==='Tratamiento'?'Tratamiento registrado':'Seguimiento registrado',detail:`${selectedFinding.type} · ${intervention.product||intervention.outcome}`})}catch(error){return alert(error.message)}
-  const site=state.sites.find(item=>item.id===selectedFinding.siteId)
-  publishDomainEvent(state,{name:'mipe.intervention.recorded',aggregateType:'material.plant',aggregateId:selectedFinding.materialPlantId,organizationId:site?.companyId||state.currentContext?.companyId||'local-installation',siteId:selectedFinding.siteId||null,payload:{findingId:selectedFinding.id,interventionType:intervention.type,product:intervention.product.trim(),dose:intervention.dose.trim(),responsible:intervention.responsible.trim(),outcome:intervention.outcome.trim(),nextReviewAt:intervention.nextReviewAt||null}})
+  try{await execute({operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:selectedFinding.id,...intervention,performedAt:intervention.performedAt||new Date().toISOString()}})}catch(error){return alert(error.message)}
   setIntervention(emptyIntervention)
  }
- function resolveFinding(){
+ async function resolveFinding(){
   if(!selectedFinding)return alert('Selecciona un hallazgo abierto.')
-  let outcome
-  try{update(current=>{const result=resolveMaterialPlantFinding(current,{findingId:selectedFinding.id,status:resolution.status,resolutionNotes:resolution.notes,releaseAvailability:resolution.releaseAvailability});outcome=result;return result.state},{module:'MIPE',action:'Hallazgo resuelto',detail:`${selectedFinding.type} · ${resolution.status}`})}catch(error){return alert(error.message)}
-  const plant=plants.find(item=>item.id===selectedFinding.materialPlantId),site=state.sites.find(item=>item.id===selectedFinding.siteId)
-  publishDomainEvent(state,{name:'mipe.finding.resolved',aggregateType:'material.plant',aggregateId:selectedFinding.materialPlantId,organizationId:site?.companyId||state.currentContext?.companyId||'local-installation',siteId:selectedFinding.siteId||null,payload:{findingId:selectedFinding.id,type:selectedFinding.type,status:resolution.status,resolutionNotes:resolution.notes.trim(),interventionCount:outcome?.interventionCount??0,released:Boolean(outcome?.released),remainingBlockingFindings:outcome?.remainingBlockingFindings??0,plantType:plant?.plantType||selectedFinding.plantType,lotId:plant?.lotId||selectedFinding.lotId}})
+  try{await execute({operation:MIPE_OPERATIONS.RESOLVE_FINDING,entityId:selectedFinding.id,input:{status:resolution.status,resolutionNotes:resolution.notes,releaseAvailability:resolution.releaseAvailability}})}catch(error){return alert(error.message)}
   setResolution(emptyResolution);setIntervention(emptyIntervention)
  }
  if(!count)return null
