@@ -1,4 +1,5 @@
 import{projectPlantIrrigationMirfe,projectIrrigationMirfeRelationships,projectIrrigationMirfeIndicators,projectIrrigationMirfeTimeline}from'./irrigationMirfePassportProjection.js'
+import{projectMipePassportTrace}from'./mipePassportProjection.js'
 
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
@@ -11,13 +12,21 @@ function hasIrrigationMirfeEvidence(projection){
  const summary=projection?.summary||{}
  return['assignmentIds','pulseIds','measurementIds','drainageMeasurementIds','applicationIds','preparationIds','formulaIds','inventoryLotIds'].some(key=>list(summary[key]).length>0)
 }
+function addMipeTrace(state,object,source,{targetType,includeTreatmentTimeline=false}={}){
+ const trace=projectMipePassportTrace(state,{organizationId:text(object.organizationId),targetType,targetId:text(object.objectId),includeTreatmentTimeline})
+ return{...source,relationships:[...list(source?.relationships),...trace.relationships],indicators:[...list(source?.indicators),...trace.indicators],timeline:[...list(source?.timeline),...trace.timeline]}
+}
 function enrichCultivationPlant(input,source){
  const object=input?.object,state=input?.state
  if(object?.objectType!=='cultivation.plant'||!state)return source
- const organizationId=text(object.organizationId),plant={id:text(object.objectId),trayId:text(object?.identity?.trayId),createdAt:object.createdAt||null},location=cultivationLocation(source,object)
- const irrigationMirfe=projectPlantIrrigationMirfe(state,{plant,location,organizationId})
- if(!hasIrrigationMirfeEvidence(irrigationMirfe))return source
- return{...source,relationships:[...list(source?.relationships),...projectIrrigationMirfeRelationships(irrigationMirfe,organizationId)],indicators:[...list(source?.indicators),...projectIrrigationMirfeIndicators(irrigationMirfe)],timeline:[...list(source?.timeline),...projectIrrigationMirfeTimeline(irrigationMirfe)]}
+ const organizationId=text(object.organizationId),plant={id:text(object.objectId),trayId:text(object?.identity?.trayId),createdAt:object.createdAt||null},location=cultivationLocation(source,object),irrigationMirfe=projectPlantIrrigationMirfe(state,{plant,location,organizationId})
+ const enriched=hasIrrigationMirfeEvidence(irrigationMirfe)?{...source,relationships:[...list(source?.relationships),...projectIrrigationMirfeRelationships(irrigationMirfe,organizationId)],indicators:[...list(source?.indicators),...projectIrrigationMirfeIndicators(irrigationMirfe)],timeline:[...list(source?.timeline),...projectIrrigationMirfeTimeline(irrigationMirfe)]}:source
+ return addMipeTrace(state,object,enriched,{targetType:'POSITION'})
 }
-const ENRICHERS=Object.freeze({'cultivation.plant.projection':enrichCultivationPlant})
+function enrichMaterialPlant(input,source){
+ const object=input?.object,state=input?.state
+ if(object?.objectType!=='cultivation.materialplant'||!state)return source
+ return addMipeTrace(state,object,source,{targetType:'MATERIAL_PLANT',includeTreatmentTimeline:true})
+}
+const ENRICHERS=Object.freeze({'cultivation.plant.projection':enrichCultivationPlant,'cultivation.materialplant.projection':enrichMaterialPlant})
 export function enrichPassportProjection(pluginId,input,source){const enrich=ENRICHERS[text(pluginId)];return enrich?enrich(input,source):source}
