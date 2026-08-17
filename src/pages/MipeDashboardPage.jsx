@@ -1,9 +1,9 @@
-import{useMemo,useState}from'react';import{Link}from'react-router-dom';import Card from'../components/Card';import PageHeader from'../components/PageHeader';import{useStore}from'../services/store';import{findingLocation}from'../domain/mipe';import{appendMipeIntervention,MIPE_INTERVENTION_TYPES}from'../domain/materialPlantMipe.js';import{MIPE_REVIEW_TASK_STATUS,projectMipeReviewTasks,reassignMipeReviewTask,summarizeMipeReviewTasks}from'../domain/mipeReviewTasks.js';
+import{useMemo,useState}from'react';import{Link}from'react-router-dom';import Card from'../components/Card';import PageHeader from'../components/PageHeader';import{useMipeStore}from'../services/mipeTenantStore.js';import{findingLocation}from'../domain/mipe';import{appendMipeIntervention,MIPE_INTERVENTION_TYPES}from'../domain/materialPlantMipe.js';import{MIPE_REVIEW_TASK_STATUS,projectMipeReviewTasks,reassignMipeReviewTask,summarizeMipeReviewTasks}from'../domain/mipeReviewTasks.js';
 const severityValue=value=>{const numeric=Number(value);if(Number.isFinite(numeric))return numeric;return{Baja:1,Media:2,Alta:3,Crítica:4}[value]||0};
 const formatDate=value=>value?new Intl.DateTimeFormat('es-CO',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
 const emptyAction={taskId:'',outcome:'',notes:'',responsible:'',nextReviewAt:''};
 export default function MipeDashboardPage(){
- const{state,update}=useStore();
+ const{state,update}=useMipeStore();
  const[filters,setFilters]=useState({siteId:'',status:'',responsible:''}),[action,setAction]=useState(emptyAction);
  const open=state.findings.filter(x=>!['Resuelto','Falso positivo'].includes(x.status));
  const critical=open.filter(x=>severityValue(x.severity)>=4);
