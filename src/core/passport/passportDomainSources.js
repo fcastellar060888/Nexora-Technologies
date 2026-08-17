@@ -1,7 +1,7 @@
 import{passportSourceValue}from'./passportSources.js'
 
 const{list,iso}=passportSourceValue
-const CLOSED_FINDING_STATUSES=new Set(['Resuelto','Falso positivo'])
+const CLOSED_FINDING_STATUSES=new Set(['Resuelto','Falso positivo','Planta eliminada'])
 
 export const isOpenPassportFinding=item=>!CLOSED_FINDING_STATUSES.has(item?.status)
 
