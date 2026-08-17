@@ -1,3 +1,4 @@
+import{projectMaterialPlantUnits}from'./materialPlantIdentity.js'
 import{activeOrganizationId,explicitOrganizationId}from'./organizationOwnership.js'
 import{irrigationMirfeRecordOrganizationId}from'./irrigationMirfeTenancy.js'
 
@@ -50,9 +51,18 @@ function plantPositionSiteId(state,record,organizationId){
  return text(bed?.siteId)||directSiteId
 }
 
+function projectedMaterialMatches(state,id){
+ const targetId=text(id)
+ if(!targetId)return{valid:true,items:[]}
+ try{return{valid:true,items:projectMaterialPlantUnits(state).filter(item=>text(item?.id)===targetId)}}catch{return{valid:false,items:[]}}
+}
+
 function materialPlantOwners(state,id){
- const targetId=text(id),owners=[]
- if(!targetId)return owners
+ const targetId=text(id),projection=projectedMaterialMatches(state,targetId)
+ if(!targetId)return[]
+ if(!projection.valid)return['__ambiguous_material_plant__']
+ if(projection.items.length)return[...new Set(projection.items.map(item=>text(item?.organizationId)).filter(Boolean))]
+ const owners=[]
  for(const collection of['grandmotherPlants','motherPlants'])for(const item of list(state?.[collection]).filter(record=>text(record?.id)===targetId)){
   const explicit=explicitOrganizationId(item)
   if(explicit){owners.push(explicit);continue}
@@ -96,6 +106,16 @@ function ownedReference(state,collection,id,organizationId){
  return matches.length===1?matches[0]:null
 }
 
+function materialReference(state,id,organizationId){
+ const targetId=text(id),owner=text(organizationId),projection=projectedMaterialMatches(state,targetId)
+ if(!targetId||!owner)return{valid:false,found:false,item:null}
+ if(!projection.valid)return{valid:false,found:false,item:null}
+ if(projection.items.length){const matches=projection.items.filter(item=>text(item?.organizationId)===owner);return{valid:matches.length===1,found:matches.length===1,item:matches[0]||null}}
+ const legacy=[]
+ for(const collection of['grandmotherPlants','motherPlants'])for(const item of list(state?.[collection]).filter(record=>text(record?.id)===targetId&&sharedRecordOrganizationId(state,collection,record)===owner))legacy.push(item)
+ return{valid:legacy.length<=1,found:legacy.length===1,item:legacy[0]||null}
+}
+
 function sitesCompatible(declaredSiteId,referenceSiteIds){
  const declared=text(declaredSiteId),references=[...new Set(referenceSiteIds.map(text).filter(Boolean))]
  if(references.length>1)return false
@@ -110,7 +130,7 @@ function recordSiteCausallyValid(state,collection,record,organizationId){
   const positionId=text(record?.plantPositionId)||(text(record?.targetType)==='POSITION'?text(record?.targetId):'')
   if(positionId){const position=ownedReference(state,'plantPositions',positionId,owner);if(position)references.push(plantPositionSiteId(state,position,owner))}
   const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
-  if(materialId){for(const source of['grandmotherPlants','motherPlants']){const material=ownedReference(state,source,materialId,owner);if(material)references.push(text(material.siteId))}}
+  if(materialId){const material=materialReference(state,materialId,owner);if(!material.valid)return false;if(material.found)references.push(text(material.item?.siteId))}
   return sitesCompatible(record?.siteId,references)
  }
  if(collection==='treatments'){
@@ -223,11 +243,9 @@ function assertFindingReferences(state,record,owner){
  const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
  if(positionId)assertReference(state,'plantPositions',positionId,owner,'planta/Position')
  else if(materialId){
-  const matches=[...list(state?.grandmotherPlants),...list(state?.motherPlants)].filter(item=>text(item?.id)===materialId)
-  if(!matches.length)throw new Error('No se encontró planta material en la empresa activa.')
-  const owners=matches.map(item=>sharedRecordOrganizationId(state,list(state?.grandmotherPlants).includes(item)?'grandmotherPlants':'motherPlants',item))
-  if(!owners.includes(owner))throw new Error('planta material pertenece a otra empresa o no tiene ownership inequívoco.')
-  if(owners.filter(value=>value===owner).length>1)throw new Error('planta material tiene identidad duplicada dentro de la empresa activa.')
+  const material=materialReference(state,materialId,owner)
+  if(!material.valid)throw new Error('planta material tiene identidad duplicada o ambigua dentro de la empresa activa.')
+  if(!material.found){const owners=materialPlantOwners(state,materialId);if(owners.length)throw new Error('planta material pertenece a otra empresa o no tiene ownership inequívoco.');throw new Error('No se encontró planta material en la empresa activa.')}
  }
  assertReference(state,'incidents',record?.incidentId,owner,'incidencia')
 }
