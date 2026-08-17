@@ -102,7 +102,10 @@ test('F010: Hallazgos y Tratamientos heredan la jerarquía compartida y limpian 
  }
  assert.match(findings,/setEditing\(null\);setTransitioning\(null\)/)
  assert.match(treatments,/setF\(initialForm\(state\)\);setExecution\(\{\}\);setMsg\(''\)/)
- assert.match(treatments,/state\.inventoryLots\.filter/)
+ assert.match(treatments,/openFindings\.some\(item=>item\.id===f\.findingId\)/)
+ assert.match(treatments,/products\.some\(item=>item\.id===f\.productId\)/)
+ assert.match(treatments,/treatmentSiteId=t\.siteId\|\|h\?\.siteId\|\|''/)
+ assert.match(treatments,/!treatmentSiteId\|\|l\.siteId===treatmentSiteId/)
 })
 
 test('F010: catálogo sanitario conserva semántica tenant-global y no finge granularidad geográfica',async()=>{
