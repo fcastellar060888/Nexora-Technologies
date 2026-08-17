@@ -14,7 +14,7 @@ function base(){return{
 test('M32-F006: same commandId in two organizations preserves both material intervention plant events',async()=>{
  let state=base();const events=[]
  const deps={publishEvent:async spec=>events.push(structuredClone(spec)),commit:recipe=>{state=recipe(state)}}
- const request={operation:MIPE_OPERATIONS.RECORD_INTERVENTION,entityId:'shared-command',input:{findingId:'finding-shared',type:'Tratamiento',product:'Producto',responsible:'Agrónomo'},commandId:'shared-command',occurredAt:'2026-08-17T10:00:00.000Z'}
+ const request={operation:MIPE_OPERATIONS.RECORD_INTERVENTION,entityId:'shared-command',input:{findingId:'finding-shared',type:'Seguimiento',outcome:'Control estable',responsible:'Agrónomo'},commandId:'shared-command',occurredAt:'2026-08-17T10:00:00.000Z'}
  await executeMipeCommand(state,request,deps)
  state={...state,currentContext:{companyId:'org-b',siteId:'site-b'}}
  await executeMipeCommand(state,request,deps)
