@@ -34,6 +34,20 @@ test('M32-F012: receipt remoto no puede reescribir una firma durable local',()=>
  assert.equal(state.mipeCommandReceipts[0].signature,'signature-a')
 })
 
+test('M32-F012: receipt legacy sin tenant no puede ser adoptado por sync en estado multi-tenant',()=>{
+ const legacy={id:'cmd-legacy',commandId:'cmd-legacy',signature:'legacy-signature',operation:'CREATE_INCIDENT',aggregateId:'cmd-legacy'}
+ const state={companies:[{id:'org-a'},{id:'org-b'}],mipeCommandReceipts:[legacy]}
+ const row={companyId:'org-a',collection:'mipeCommandReceipts',recordId:'cmd-legacy',payload:{commandId:'cmd-legacy',organizationId:'org-a',signature:'legacy-signature',operation:'CREATE_INCIDENT',aggregateId:'cmd-legacy'},version:1,updatedAt:'2026-08-18T10:00:00.000Z'}
+ assert.throws(()=>applyRemoteRecords(state,[row],{companyId:'org-a'}),/receipt.*tenant|legacy.*tenant|ambig/i)
+ assert.deepEqual(state.mipeCommandReceipts,[legacy])
+})
+
+test('M32-F012: receipt saliente requiere tenant explícito y no puede reclamarse desde companyId',()=>{
+ const legacy={id:'cmd-legacy',commandId:'cmd-legacy',signature:'legacy-signature',operation:'CREATE_INCIDENT',aggregateId:'cmd-legacy'}
+ const changes=[{collection:'mipeCommandReceipts',recordId:'cmd-legacy',organizationId:'',operation:'upsert',payload:legacy}]
+ assert.throws(()=>enqueueChanges({syncQueue:[]},changes,{companyId:'org-a'}),/receipt.*tenant|organizationId/i)
+})
+
 test('M32-F012: receipt remoto legítimo conserva identidad canónica para replay cross-device',()=>{
  const state={mipeCommandReceipts:[]}
  const row={companyId:'org-a',collection:'mipeCommandReceipts',recordId:'cmd-remote',payload:{commandId:'cmd-remote',organizationId:'org-a',signature:'signature-remote',operation:'CREATE_INCIDENT',aggregateId:'cmd-remote'},version:1,updatedAt:'2026-08-18T10:00:00.000Z'}
