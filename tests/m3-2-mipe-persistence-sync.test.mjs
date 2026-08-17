@@ -8,6 +8,7 @@ import{compactCompanyState,readLightweightCache,writeLightweightCache}from'../sr
 import{SYNCABLE_COLLECTIONS,applyRemoteRecords,collectionChanges,enqueueChanges}from'../src/services/syncEngine.js'
 import{hydrateAuthoritativeState}from'../src/services/remoteBootstrap.js'
 import{executeMipeCommand,mipeCommandSignature,MIPE_OPERATIONS}from'../src/services/mipeCommand.js'
+import{MIPE_TREATMENT_TRANSACTION_COLLECTIONS}from'../src/services/mipeTreatmentTransaction.js'
 
 const receipt=(organizationId,commandId,extra={})=>({id:commandId,commandId,organizationId,signature:'sig',operation:'CREATE_INCIDENT',aggregateId:commandId,occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'u',name:'U'},...extra})
 const intervention=(organizationId,id,extra={})=>({id,organizationId,siteId:organizationId==='org-a'?'site-a':'site-b',findingId:'finding-shared',type:'Seguimiento',responsible:'A',outcome:'Estable',performedAt:'2026-08-17T10:00:00.000Z',nextReviewAt:null,findingSnapshot:{id:'finding-shared',targetType:'POSITION',targetId:'plant-shared',plantPositionId:'plant-shared'},assignmentHistory:[{id:`${id}:assignment:created`,kind:'ASSIGNED',responsible:'A',actor:{id:'u',name:'U'},occurredAt:'2026-08-17T10:00:00.000Z'}],createdAt:'2026-08-17T10:00:00.000Z',updatedAt:'2026-08-17T10:00:00.000Z',...extra})
@@ -114,7 +115,7 @@ test('M32-F008: hydrated command receipt preserves replay idempotency after devi
 
 test('M32-F008: generic receipt sync does not expand the five-consequence F004 transaction',async()=>{
  const source=await readFile('src/services/mipeTreatmentTransaction.js','utf8'),command=await readFile('src/services/mipeCommand.js','utf8')
- assert.match(source,/CANONICAL_COLLECTIONS=Object\.freeze\(\['inventoryLots','inventoryMovements','treatments','findings','costEntries'\]\)/)
+ assert.deepEqual([...MIPE_TREATMENT_TRANSACTION_COLLECTIONS],['inventoryLots','inventoryMovements','treatments','findings','costEntries'])
  assert.doesNotMatch(source,/mipeCommandReceipts/)
  assert.match(command,/remoteTreatment\?\{sync:false\}/)
 })
