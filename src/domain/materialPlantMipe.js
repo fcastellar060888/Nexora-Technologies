@@ -1,4 +1,5 @@
 import{applyMaterialPlantUnitPatch}from'./materialPlantActions.js'
+import{assertMipeIncidentUsable}from'./mipeCatalogAuthority.js'
 
 const list=value=>Array.isArray(value)?value:[]
 const required=value=>String(value||'').trim()
@@ -27,6 +28,17 @@ function idPart(value){const normalized=required(value);return`${normalized.leng
 function sameTenantIdentity(record,candidate){const owner=organizationOf(record),candidateOwner=organizationOf(candidate);return record?.id===candidate?.id&&owner===candidateOwner}
 function creationEvidence(record){return JSON.stringify({organizationId:organizationOf(record),materialPlantId:required(record?.materialPlantId),targetType:required(record?.targetType),targetId:required(record?.targetId),incidentId:required(record?.incidentId),type:required(record?.type),severity:required(record?.severity),notes:required(record?.notes),reportedAt:required(record?.reportedAt),siteId:required(record?.siteId),plantType:required(record?.plantType),lotId:required(record?.lotId),unitIndex:Number(record?.unitIndex??0),restrictsPropagation:record?.restrictsPropagation===true})}
 function assertReplayCompatible(existing,record){if(creationEvidence(existing)!==creationEvidence(record))throw new Error(`El Finding ${record.id} colisiona con evidencia MIPE diferente dentro de la empresa.`)}
+function assertMaterialIncidentAuthority(state,targets,draft){
+ const incidentId=required(draft?.incidentId)
+ if(!incidentId||!Array.isArray(state?.incidents))return
+ const owners=[...new Set(list(targets).map(organizationOf).filter(Boolean))]
+ if(owners.length>1)throw new Error('El batch MIPE material mezcla plantas de organizaciones distintas.')
+ const targetOwner=owners[0]||'',matches=list(state.incidents).filter(item=>item?.id===incidentId&&(!targetOwner||organizationOf(item)===targetOwner))
+ if(matches.length!==1)throw new Error(matches.length?'La incidencia del batch material tiene identidad duplicada dentro de la empresa activa.':'No se encontró la incidencia del batch material dentro de la empresa activa.')
+ const organizationId=targetOwner||organizationOf(matches[0])
+ if(!organizationId)throw new Error('No se pudo resolver la organización de la incidencia del batch material.')
+ assertMipeIncidentUsable(matches[0],{organizationId,at:draft?.reportedAt||new Date().toISOString()})
+}
 
 export function shouldSuggestMipeBlock(severity){return MIPE_BLOCKING_SEVERITIES.includes(required(severity))}
 export function isOpenMipeFinding(finding){return Boolean(finding)&&!closedStatuses.has(finding.status)}
@@ -49,7 +61,9 @@ export function createMaterialPlantFindingRecords(plants,{incidentId='',type,sev
 }
 
 export function appendMaterialPlantFindings(state,plants,draft={}){
- const targets=list(plants).filter(Boolean),records=createMaterialPlantFindingRecords(targets,draft),existing=list(state?.findings),replays=[]
+ const targets=list(plants).filter(Boolean)
+ assertMaterialIncidentAuthority(state,targets,draft)
+ const records=createMaterialPlantFindingRecords(targets,draft),existing=list(state?.findings),replays=[]
  for(const record of records){
   const sameOwner=existing.filter(item=>sameTenantIdentity(record,item)),unownedHomonyms=existing.filter(item=>item?.id===record.id&&!organizationOf(item)&&organizationOf(record))
   if(sameOwner.length>1||unownedHomonyms.length)throw new Error(`El Finding ${record.id} tiene identidad duplicada o ambigua dentro de la empresa.`)
