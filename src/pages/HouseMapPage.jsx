@@ -3,11 +3,15 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
-import{useStore}from'../services/store'
 import{findingStatuses,severityLabels,plantCode}from'../domain/mipe'
+import{activeOrganizationId}from'../domain/organizationOwnership.js'
+import{mipeRecordOrganizationId}from'../domain/mipeTenancy.js'
+import{MIPE_OPERATIONS}from'../services/mipeCommand.js'
+import{useMipeCommandStore}from'../services/mipeCommandStore.js'
+import{useStore}from'../services/store'
 
 export default function HouseMapPage(){
- const{state,update}=useStore()
+ const{state,execute}=useMipeCommandStore(),{update:rawUpdate}=useStore()
  const initialSite=state.currentContext.siteId||state.sites[0]?.id||''
  const[siteId,setSiteId]=useState(initialSite)
  const availableHouses=state.houses.filter(x=>x.siteId===siteId)
@@ -16,8 +20,8 @@ export default function HouseMapPage(){
  const[f,setF]=useState({incidentId:state.incidents[0]?.id||'',severity:1,status:'Detectado',notes:'',action:'',responsible:'',followUpDate:''})
  const house=state.houses.find(x=>x.id===houseId)
  const beds=useMemo(()=>state.beds.filter(x=>x.houseId===houseId).sort((a,b)=>(a.order||0)-(b.order||0)),[state.beds,houseId])
- function save(e){e.preventDefault();update(s=>({...s,findings:[...s.findings,{id:crypto.randomUUID(),plantPositionId:plant.id,createdAt:new Date().toISOString(),...f}]}));setOpen(false)}
- function genetic(id){update(s=>({...s,plantPositions:s.plantPositions.map(p=>p.id===plant.id?{...p,geneticId:id}:p)}));setPlant({...plant,geneticId:id})}
+ async function save(e){e.preventDefault();try{await execute({operation:MIPE_OPERATIONS.CREATE_FINDING,input:{plantPositionId:plant.id,...f}});setOpen(false)}catch(error){alert(error.message)}}
+ function genetic(id){rawUpdate(current=>{const organizationId=activeOrganizationId(current);return{...current,plantPositions:current.plantPositions.map(position=>position.id===plant.id&&mipeRecordOrganizationId(current,'plantPositions',position)===organizationId?{...position,geneticId:id}:position)}},{module:'Cultivo',action:'Genética de planta actualizada',detail:plant.id});setPlant({...plant,geneticId:id})}
  return <><PageHeader title="Mapa de plantas" subtitle="Muestra la cantidad completa y la posición exacta de cada planta dentro de cada cama."/>
  <Card><div className="form-grid map-filters">
   <Field label="Sede"><select value={siteId} onChange={e=>{const newSite=e.target.value,next=state.houses.find(h=>h.siteId===newSite)?.id||'';setSiteId(newSite);setHouseId(next);setPlant(null)}}>{state.sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
