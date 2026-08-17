@@ -46,3 +46,12 @@ test('M32-F005: treatment lifecycle appends finding transitions without expandin
  assert.match(command,/START_FOLLOW_UP/)
  assert.match(transaction,/\['inventoryLots','inventoryMovements','treatments','findings','costEntries'\]/)
 })
+
+test('M32-F012: Treatments UI treats Planta eliminada as terminal for scheduling and execution',async()=>{
+ const source=await read('src/pages/TreatmentsPage.jsx')
+ assert.match(source,/TERMINAL_FINDING_STATUSES=new Set\(\['Resuelto','Falso positivo','Planta eliminada'\]\)/)
+ assert.match(source,/isTerminalFinding/)
+ assert.match(source,/findingClosed=isTerminalFinding\(h\)/)
+ assert.match(source,/Hallazgo cerrado/)
+ assert.match(source,/ya no puede ejecutarse/)
+})
