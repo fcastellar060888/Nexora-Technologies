@@ -7,6 +7,7 @@ const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 const TERMINAL=new Set(['Resuelto','Falso positivo','Planta eliminada'])
 const EXECUTED=new Set(['Ejecutado','EXECUTED'])
+const TREATMENT_INTERVENTION_TYPES=new Set(['Tratamiento','TREATMENT'])
 
 function targetOf(finding){
  const materialId=text(finding?.materialPlantId)||(text(finding?.targetType)==='MATERIAL_PLANT'?text(finding?.targetId):'')
@@ -42,9 +43,16 @@ function assertTreatmentSnapshot(intervention,treatment){
  if(!text(intervention?.treatmentId))throw new Error(`Intervention ${text(intervention?.id)} contiene treatmentSnapshot sin treatmentId.`)
  for(const field of['id','productId','lotId'])if(text(snapshot?.[field])&&text(snapshot[field])!==text(treatment?.[field]))throw new Error(`Intervention ${text(intervention?.id)} contiene treatmentSnapshot contradictorio en ${field}.`)
 }
+function assertPositiveRestrictionWindow(startsAt,endsAt,label,treatmentId){if(Date.parse(endsAt)<=Date.parse(startsAt))throw new Error(`La ${label} MIPE de Treatment ${text(treatmentId)} contiene una ventana de restricción imposible.`)}
 function restrictionRecords(finding,treatments){
  const rows=[]
- for(const treatment of treatments){if(!EXECUTED.has(text(treatment?.status)))continue;const startsAt=iso(treatment?.executedAt||treatment?.updatedAt||treatment?.createdAt),reentryUntil=iso(treatment?.reentryUntil||finding?.reentryUntil);if(startsAt&&reentryUntil)rows.push({id:`${treatment.id}:reentry`,type:'REENTRY',findingId:finding.id,treatmentId:treatment.id,startsAt,endsAt:reentryUntil,label:`Reentrada hasta ${reentryUntil}`});const withdrawalUntil=iso(treatment?.harvestRestrictedUntil||finding?.harvestRestrictedUntil);if(startsAt&&withdrawalUntil)rows.push({id:`${treatment.id}:withdrawal`,type:'HARVEST_WITHDRAWAL',findingId:finding.id,treatmentId:treatment.id,startsAt,endsAt:withdrawalUntil,label:`Carencia hasta ${withdrawalUntil}`})}
+ for(const treatment of treatments){
+  if(!EXECUTED.has(text(treatment?.status)))continue
+  const startsAt=iso(treatment?.executedAt||treatment?.updatedAt||treatment?.createdAt),reentryUntil=iso(treatment?.reentryUntil||finding?.reentryUntil)
+  if(startsAt&&reentryUntil){assertPositiveRestrictionWindow(startsAt,reentryUntil,'reentrada',treatment.id);rows.push({id:`${treatment.id}:reentry`,type:'REENTRY',findingId:finding.id,treatmentId:treatment.id,startsAt,endsAt:reentryUntil,label:`Reentrada hasta ${reentryUntil}`})}
+  const withdrawalUntil=iso(treatment?.harvestRestrictedUntil||finding?.harvestRestrictedUntil)
+  if(startsAt&&withdrawalUntil){assertPositiveRestrictionWindow(startsAt,withdrawalUntil,'carencia',treatment.id);rows.push({id:`${treatment.id}:withdrawal`,type:'HARVEST_WITHDRAWAL',findingId:finding.id,treatmentId:treatment.id,startsAt,endsAt:withdrawalUntil,label:`Carencia hasta ${withdrawalUntil}`})}
+ }
  if(finding?.restrictsPropagation===true){const startsAt=iso(finding?.reportedAt||finding?.createdAt),resolution=resolutionEvents(finding).at(-1),endsAt=iso(resolution?.occurredAt);if(startsAt)rows.push({id:`${finding.id}:propagation-block`,type:'PROPAGATION_BLOCK',findingId:finding.id,treatmentId:'',startsAt,endsAt,label:endsAt?`Bloqueo de propagación hasta ${endsAt}`:'Bloqueo de propagación MIPE'})}
  return rows
 }
@@ -72,7 +80,10 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
   if(text(intervention.siteId)&&text(finding.siteId)&&text(intervention.siteId)!==text(finding.siteId))throw new Error(`Intervention ${interventionId} pertenece a otra sede que su Finding.`)
   assertFindingSnapshot(intervention,finding)
   const treatmentId=text(intervention.treatmentId)
-  if(treatmentId){const treatment=treatmentsById.get(treatmentId);if(!treatment)throw new Error(`Intervention ${interventionId} referencia un Treatment ajeno a su cadena causal.`);if(text(treatment.findingId)!==findingId)throw new Error(`Intervention ${interventionId} referencia un Treatment de otro Finding.`);assertTreatmentSnapshot(intervention,treatment)}else if(intervention.treatmentSnapshot)throw new Error(`Intervention ${interventionId} contiene treatmentSnapshot sin treatmentId.`)
+  if(treatmentId){const treatment=treatmentsById.get(treatmentId);if(!treatment)throw new Error(`Intervention ${interventionId} referencia un Treatment ajeno a su cadena causal.`);if(text(treatment.findingId)!==findingId)throw new Error(`Intervention ${interventionId} referencia un Treatment de otro Finding.`);assertTreatmentSnapshot(intervention,treatment)}else{
+   if(intervention.treatmentSnapshot)throw new Error(`Intervention ${interventionId} contiene treatmentSnapshot sin treatmentId.`)
+   if(TREATMENT_INTERVENTION_TYPES.has(text(intervention.type)))throw new Error(`Intervention ${interventionId} de tipo Tratamiento requiere un Treatment canónico.`)
+  }
   relationships.push(relation('has_mipe_intervention','mipe.intervention',interventionId,text(intervention.type)||`Intervention ${interventionId}`,owner,{findingId,treatmentId,performedAt:iso(intervention.performedAt),outcome:text(intervention.outcome),responsible:text(intervention.responsible||intervention.responsibleId)}))
   const occurredAt=iso(intervention.performedAt||intervention.createdAt);if(occurredAt)timeline.push({id:`mipekg:intervention:${interventionId}`,sourceId:interventionId,occurredAt,category:'MIPE intervention',type:text(intervention.type),title:text(intervention.type)||'Intervención MIPE',summary:text(intervention.outcome||intervention.notes),status:text(intervention.outcome),findingId,treatmentId})
  }
