@@ -1,5 +1,6 @@
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'./materialPlantIdentity.js'
 import{MIPE_RESTRICTED_OPERATIONS,blockersForMipeOperation}from'./mipeOperationalRestrictions.js'
+import{mipeRecordsForOrganization}from'./mipeTenancy.js'
 import{activeOrganizationId,assertActiveOrganization,explicitOrganizationId}from'./organizationOwnership.js'
 
 export const PROPAGATION_PURPOSES=Object.freeze({
@@ -34,11 +35,22 @@ export function propagationSourceEligibility(unit){
  return Object.freeze({eligible:true,reason:'Disponible para corte.'})
 }
 
+function historicalPropagationBlock(state,unit,organizationId){
+ return mipeRecordsForOrganization(state,'findings',organizationId).some(finding=>{
+  const targetId=String(finding?.materialPlantId||(finding?.targetType==='MATERIAL_PLANT'?finding?.targetId:'')||'')
+  return targetId===String(unit.id)&&finding?.restrictsPropagation===true
+ })
+}
+
 function projectedSource(state,unit,organizationId,at){
  try{
   const result=blockersForMipeOperation(state,{operation:MIPE_RESTRICTED_OPERATIONS.PROPAGATION_CUT,targetType:'MATERIAL_PLANT',targetId:unit.id,organizationId,at})
   if(result.blockers.length)return null
-  return unit.operationalAvailability===legacyMipeBlockedAvailability?{...unit,operationalAvailability:PROPAGATION_SOURCE_AVAILABILITY}:unit
+  if(unit.operationalAvailability===legacyMipeBlockedAvailability){
+   if(!historicalPropagationBlock(state,unit,organizationId))return null
+   return{...unit,operationalAvailability:PROPAGATION_SOURCE_AVAILABILITY}
+  }
+  return unit
  }catch{return null}
 }
 
