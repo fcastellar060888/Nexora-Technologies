@@ -2,6 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{MIPE_OPERATIONS,executeMipeCommand}from'../src/services/mipeCommand.js'
 import{mipeRecordOrganizationId,scopeMipeState}from'../src/domain/mipeTenancy.js'
+import{interventionsForFinding,openBlockingMipeFindings,resolveMaterialPlantFinding}from'../src/domain/materialPlantMipe.js'
 import{applyRemoteRecords}from'../src/services/syncEngine.js'
 
 function spoofedState(){return{
@@ -105,4 +106,36 @@ test('F012: CREATE_MATERIAL_FINDINGS no puede parchear la planta homónima de ot
  assert.ok(local,'Debe materializarse la identidad de org-a sin reutilizar la de org-b')
  assert.equal(local.operationalAvailability,'Bloqueada por MIPE')
  assert.equal(state.findings.filter(item=>item.organizationId==='org-a'&&item.materialPlantId===fixture.materialId).length,1)
+})
+
+test('F012: helpers exportados de material vegetal fallan ante homónimos si no se especifica tenant',()=>{
+ const plantId='material-shared',findingId='finding-shared',state={
+  findings:[
+   {id:findingId,organizationId:'org-a',materialPlantId:plantId,restrictsPropagation:true,status:'Detectado'},
+   {id:findingId,organizationId:'org-b',materialPlantId:plantId,restrictsPropagation:true,status:'Detectado'}
+  ],
+  mipeInterventions:[
+   {id:'intervention-a',organizationId:'org-a',findingId,performedAt:'2026-08-17T12:00:00.000Z'},
+   {id:'intervention-b',organizationId:'org-b',findingId,performedAt:'2026-08-17T13:00:00.000Z'}
+  ]
+ }
+ assert.throws(()=>openBlockingMipeFindings(state,plantId),/ambiguo entre organizaciones/i)
+ assert.throws(()=>interventionsForFinding(state,findingId),/ambiguo entre organizaciones/i)
+ assert.deepEqual(openBlockingMipeFindings(state,plantId,{organizationId:'org-a'}).map(item=>item.organizationId),['org-a'])
+ assert.deepEqual(interventionsForFinding(state,findingId,{organizationId:'org-b'}).map(item=>item.organizationId),['org-b'])
+})
+
+test('F012: resolución material directa exige tenant ante Finding homónimo y no reescribe el extranjero',()=>{
+ const plantId='material-shared',findingId='finding-shared',baseFinding={id:findingId,materialPlantId:plantId,incidentId:'incident',type:'Botritis',severity:'Alta',status:'Detectado',reportedAt:'2026-08-17T10:00:00.000Z',siteId:'site',lotId:'lot',plantType:'GRANDMOTHER',unitIndex:0,plantCode:'P-1',restrictsPropagation:false},state={
+  findings:[{...baseFinding,organizationId:'org-a'},{...baseFinding,organizationId:'org-b',notes:'foreign'}],
+  mipeInterventions:[],materialPlantUnits:[
+   {id:plantId,organizationId:'org-a',lotId:'lot',plantType:'GRANDMOTHER',unitIndex:0,siteId:'site',status:'Activa',operationalAvailability:'Disponible para corte'},
+   {id:plantId,organizationId:'org-b',lotId:'lot',plantType:'GRANDMOTHER',unitIndex:0,siteId:'site',status:'Activa',operationalAvailability:'Disponible para corte'}
+  ],plantEvents:[]
+ }
+ assert.throws(()=>resolveMaterialPlantFinding(state,{findingId,status:'Falso positivo',resolutionNotes:'Prueba'}),/identidad duplicada|ambigua entre organizaciones/i)
+ const outcome=resolveMaterialPlantFinding(state,{findingId,organizationId:'org-a',status:'Falso positivo',resolutionNotes:'Descartado',resolvedAt:'2026-08-17T14:00:00.000Z'})
+ assert.equal(outcome.state.findings.find(item=>item.organizationId==='org-a').status,'Falso positivo')
+ assert.equal(outcome.state.findings.find(item=>item.organizationId==='org-b').status,'Detectado')
+ assert.equal(outcome.state.findings.find(item=>item.organizationId==='org-b').notes,'foreign')
 })
