@@ -51,7 +51,7 @@ test('M32-F003: identical replay is effect-idempotent and command collision fail
 
 test('M32-F003: permission denial occurs before requested event or state mutation',async()=>{
  const h=harness(baseState('Gerente')),before=structuredClone(h.state)
- await assert.rejects(()=>executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.UPDATE_FINDING,entityId:'finding-shared',input:{notes:'Cambio'},commandId:'cmd-denied'},h.deps),/permiso manage_mipe/)
+ await assert.rejects(()=>executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.UPDATE_FINDING,entityId:'finding-shared',input:{notes:'Cambio',correctionReason:'Prueba de permiso'},commandId:'cmd-denied'},h.deps),/permiso manage_mipe/)
  assert.deepEqual(h.state,before)
  assert.deepEqual(h.events,[])
 })
@@ -76,7 +76,7 @@ test('M32-F003: cross-tenant reference is rejected before requested event',async
 test('M32-F003: tenant change between intent and commit fails closed and emits no completion',async()=>{
  let state=baseState(),events=[]
  const deps={publishEvent:async spec=>{events.push(spec)},commit:recipe=>{state={...state,currentContext:{...state.currentContext,companyId:'org-b',siteId:'site-b'}};state=recipe(state)}}
- await assert.rejects(()=>executeMipeCommand(state,{operation:MIPE_OPERATIONS.UPDATE_FINDING,entityId:'finding-shared',input:{notes:'No debe confirmar'},commandId:'cmd-switch'},deps),/empresa activa cambió/)
+ await assert.rejects(()=>executeMipeCommand(state,{operation:MIPE_OPERATIONS.UPDATE_FINDING,entityId:'finding-shared',input:{notes:'No debe confirmar',correctionReason:'Prueba de cambio de tenant'},commandId:'cmd-switch'},deps),/empresa activa cambió/)
  assert.equal(events.length,1)
  assert.equal(events[0].name,DomainEvents.CORE_OPERATION_REQUESTED)
  assert.equal(state.findings.find(item=>item.organizationId==='org-a').notes,undefined)
