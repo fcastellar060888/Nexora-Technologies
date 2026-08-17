@@ -23,6 +23,7 @@ function tenantFiltered(records,organizationId,label){
  return records
 }
 function stableFactory(candidate,fallback,label){const factory=typeof candidate==='function'?candidate:fallback;return(...args)=>{const id=required(factory(...args));if(!id)throw new Error(`${label} requiere una identidad estable.`);return id}}
+function idPart(value){const normalized=required(value);return`${normalized.length}-${normalized}`}
 function sameTenantIdentity(record,candidate){const owner=organizationOf(record),candidateOwner=organizationOf(candidate);return record?.id===candidate?.id&&owner===candidateOwner}
 function assertReplayCompatible(existing,record){
  if(organizationOf(existing)!==organizationOf(record)||required(existing?.materialPlantId)!==required(record?.materialPlantId)||required(existing?.incidentId)!==required(record?.incidentId))throw new Error(`El Finding ${record.id} colisiona con evidencia MIPE diferente dentro de la empresa.`)
@@ -40,12 +41,12 @@ export function interventionsForFinding(state,findingId,{organizationId=''}={}){
 }
 
 export function createMaterialPlantFindingRecords(plants,{incidentId='',type,severity='Media',notes='',reportedAt=new Date().toISOString(),restrictAvailability=false,idFactory=null}={}){
- const targets=list(plants).filter(Boolean),findingType=required(type),canonicalIncidentId=required(incidentId),makeId=stableFactory(idFactory,()=>crypto.randomUUID(),'El Finding material')
+ const targets=list(plants).filter(Boolean),findingType=required(type),canonicalIncidentId=required(incidentId)
  if(!targets.length)throw new Error('Selecciona al menos una planta para registrar MIPE')
  if(!findingType)throw new Error('El tipo de hallazgo MIPE es obligatorio')
  if(Number.isNaN(Date.parse(reportedAt)))throw new Error('La fecha del hallazgo MIPE no es válida')
- const normalizedSeverity=required(severity)||'Media',normalizedNotes=required(notes)
- return targets.map((plant,index)=>({id:makeId(plant,index),...(organizationOf(plant)?{organizationId:organizationOf(plant)}:{}),incidentId:canonicalIncidentId||null,targetType:'MATERIAL_PLANT',targetId:plant.id,materialPlantId:plant.id,entityType:'materialPlant',entityId:plant.id,plantId:plant.id,type:findingType,severity:normalizedSeverity,status:'Detectado',notes:normalizedNotes,reportedAt:new Date(reportedAt).toISOString(),reportDate:new Date(reportedAt).toISOString(),source:'material-plant-action',plantType:plant.plantType,lotId:plant.lotId,siteId:plant.siteId||null,unitIndex:plant.unitIndex,plantCode:plant.code||plant.id,restrictsPropagation:Boolean(restrictAvailability),operationalAction:restrictAvailability?MIPE_RESTRICTED_AVAILABILITY:''}))
+ const when=new Date(reportedAt).toISOString(),makeId=stableFactory(idFactory,(plant,index)=>`mipe-material-finding:${idPart(organizationOf(plant)||'legacy')}:${idPart(plant?.id)}:${idPart(canonicalIncidentId||findingType)}:${idPart(when)}:${index}`,'El Finding material'),normalizedSeverity=required(severity)||'Media',normalizedNotes=required(notes)
+ return targets.map((plant,index)=>({id:makeId(plant,index),...(organizationOf(plant)?{organizationId:organizationOf(plant)}:{}),incidentId:canonicalIncidentId||null,targetType:'MATERIAL_PLANT',targetId:plant.id,materialPlantId:plant.id,entityType:'materialPlant',entityId:plant.id,plantId:plant.id,type:findingType,severity:normalizedSeverity,status:'Detectado',notes:normalizedNotes,reportedAt:when,reportDate:when,source:'material-plant-action',plantType:plant.plantType,lotId:plant.lotId,siteId:plant.siteId||null,unitIndex:plant.unitIndex,plantCode:plant.code||plant.id,restrictsPropagation:Boolean(restrictAvailability),operationalAction:restrictAvailability?MIPE_RESTRICTED_AVAILABILITY:''}))
 }
 
 export function appendMaterialPlantFindings(state,plants,draft={}){
@@ -59,7 +60,7 @@ export function appendMaterialPlantFindings(state,plants,draft={}){
  let next={...state,findings:[...existing,...records]}
  if(!draft?.restrictAvailability)return next
  next=applyMaterialPlantUnitPatch(next,targets,{operationalAvailability:MIPE_RESTRICTED_AVAILABILITY})
- const createdAt=new Date(draft.reportedAt||new Date().toISOString()).toISOString(),makeEventId=stableFactory(draft.availabilityEventIdFactory,()=>crypto.randomUUID(),'El evento de bloqueo MIPE'),events=targets.map((plant,index)=>({id:makeEventId(plant,index),...(organizationOf(plant)?{organizationId:organizationOf(plant)}:{}),siteId:plant.siteId||null,plantId:plant.id,entityId:plant.id,type:'Disponibilidad operativa',title:'Planta bloqueada por MIPE',detail:`Hallazgo ${required(draft.type)} · Severidad ${required(draft.severity)||'Media'}`,date:createdAt,createdAt,source:'mipe-operational-rule'}))
+ const createdAt=new Date(draft.reportedAt||new Date().toISOString()).toISOString(),makeEventId=stableFactory(draft.availabilityEventIdFactory,(plant,index)=>`mipe-material-block:${idPart(organizationOf(plant)||'legacy')}:${idPart(plant?.id)}:${idPart(required(draft.incidentId)||required(draft.type)||'mipe')}:${idPart(createdAt)}:${index}`,'El evento de bloqueo MIPE'),events=targets.map((plant,index)=>({id:makeEventId(plant,index),...(organizationOf(plant)?{organizationId:organizationOf(plant)}:{}),siteId:plant.siteId||null,plantId:plant.id,entityId:plant.id,type:'Disponibilidad operativa',title:'Planta bloqueada por MIPE',detail:`Hallazgo ${required(draft.type)} · Severidad ${required(draft.severity)||'Media'}`,date:createdAt,createdAt,source:'mipe-operational-rule'}))
  for(const event of events){const owner=organizationOf(event),matches=list(next.plantEvents).filter(item=>item?.id===event.id&&organizationOf(item)===owner),ambiguous=list(next.plantEvents).filter(item=>item?.id===event.id&&!organizationOf(item)&&owner);if(matches.length||ambiguous.length)throw new Error(`El evento ${event.id} colisiona con evidencia operacional existente.`)}
  return{...next,plantEvents:[...list(next.plantEvents),...events]}
 }
@@ -100,4 +101,4 @@ export function resolveMaterialPlantFinding(state,{findingId,organizationId='',s
  return{state:{...next,plantEvents},released,interventionCount:interventions.length,remainingBlockingFindings:openBlockingMipeFindings(next,finding.materialPlantId,{excludeFindingId:findingId,organizationId:owner}).length}
 }
 
-export function materialPlantFindingDetail(plants,{type,severity='Media',restrictAvailability=false}={}){const count=list(plants).length;return`${count} planta${count===1?'':'s'} · ${required(type)||'Hallazgo MIPE'} · Severidad ${required(severity)||'Media'}${restrictAvailability?' · Bloqueo para corte':''}`}
+export function materialPlantFindingDetail(plants,{type,severity='Media',restrictAvailability=false}={}){const count=list(plants).length;return`${count} planta${count===1?'':'s'} · ${fields.join(' · ')||'actualización individual'}`}
