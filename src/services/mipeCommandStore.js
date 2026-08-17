@@ -2,6 +2,8 @@ import{useCallback,useMemo,useRef}from'react'
 import{publishDomainEvent}from'../core/events/publishDomainEvent.js'
 import{scopeMipeState}from'../domain/mipeTenancy.js'
 import{executeMipeCommand,mipeCommandRequestKey}from'./mipeCommand.js'
+import{commitMipeTreatmentTransaction}from'./mipeTreatmentTransaction.js'
+import{supabaseEnabled}from'./supabase.js'
 import{useStore}from'./store.jsx'
 
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`mipe-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -15,7 +17,7 @@ export function useMipeCommandStore(){
   const pending=retry.current.get(requestKey),resolvedCommandId=commandId||pending?.commandId||uuid(),resolvedOccurredAt=occurredAt||pending?.occurredAt||new Date().toISOString()
   retry.current.set(requestKey,{commandId:resolvedCommandId,occurredAt:resolvedOccurredAt})
   const snapshot=store.state
-  const promise=executeMipeCommand(snapshot,{operation,entityId,input,commandId:resolvedCommandId,occurredAt:resolvedOccurredAt},{publishEvent:spec=>publishDomainEvent(snapshot,spec),commit:(recipe,meta)=>store.update(recipe,meta)})
+  const promise=executeMipeCommand(snapshot,{operation,entityId,input,commandId:resolvedCommandId,occurredAt:resolvedOccurredAt},{publishEvent:spec=>publishDomainEvent(snapshot,spec),commit:(recipe,meta)=>store.update(recipe,meta),...(supabaseEnabled?{commitTreatmentTransaction:commitMipeTreatmentTransaction}:{})})
    .then(result=>{retry.current.delete(requestKey);return result})
    .finally(()=>inFlight.current.delete(requestKey))
   inFlight.current.set(requestKey,promise)
