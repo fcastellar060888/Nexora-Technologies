@@ -43,15 +43,16 @@ test('F012: batch material permanece efecto-único aunque el receipt local desap
  assert.equal(h.state.mipeCommandReceipts.filter(item=>item.organizationId==='org-a'&&item.commandId==='cmd-material-create').length,1)
 })
 
-test('F012: sin receipt, reutilizar commandId con evidencia distinta falla cerrado en la segunda barrera',async()=>{
+test('F012: sin receipt, reutilizar commandId con evidencia distinta falla cerrado antes de requested',async()=>{
  const h=harness(),request=createRequest()
  await executeMipeCommand(h.state,request,h.deps)
- const before=structuredClone(h.state.findings.find(item=>item.organizationId==='org-a'&&item.materialPlantId===materialId))
+ const before=structuredClone(h.state.findings.find(item=>item.organizationId==='org-a'&&item.materialPlantId===materialId)),eventCount=h.events.length
  h.dropReceipts()
  await assert.rejects(()=>executeMipeCommand(h.state,createRequest({input:{severity:'Alta',notes:'Intento contradictorio'}}),h.deps),/colisiona con evidencia MIPE diferente/i)
  assert.deepEqual(h.state.findings.find(item=>item.organizationId==='org-a'&&item.id===before.id),before)
  assert.equal(h.state.findings.filter(item=>item.organizationId==='org-a'&&item.materialPlantId===materialId).length,1)
  assert.equal(h.state.mipeCommandReceipts.length,0)
+ assert.equal(h.events.length,eventCount,'La colisión debe fallar durante planificación, antes de core.operation.requested')
 })
 
 test('F012: commandId homónimo en otro tenant no impide workflow ni identidad de org-a',async()=>{
