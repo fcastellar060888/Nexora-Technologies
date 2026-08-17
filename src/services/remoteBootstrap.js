@@ -2,6 +2,7 @@ import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
 import{migrateState}from'./stateMigration.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
+import{normalizeOperationalContext}from'../domain/operationalContext.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
  'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
@@ -14,6 +15,7 @@ const recordId=record=>String(record?.id||record?.commandId||'')
 const recordOrganizationId=record=>String(record?._organizationId||record?.companyId||record?.organizationId||'')
 const recordKey=(record,fallbackCompanyId='')=>`${recordOrganizationId(record)||fallbackCompanyId}:${recordId(record)}`
 const serialize=value=>{try{return JSON.stringify(value)}catch{return String(value)}}
+const finalizeHydratedState=value=>{const migrated=migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState(value)));return{...migrated,currentContext:normalizeOperationalContext(migrated,migrated.currentContext)}}
 
 export function operationalCollections(state={}){
  return Object.keys(state).filter(key=>Array.isArray(state[key])&&!LOCAL_ONLY_COLLECTIONS.has(key))
@@ -108,7 +110,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
  for(const collection of collections)authoritative[collection]=replaceCompanyPartition(localState[collection],grouped[collection],companyId)
  const concurrent=overlayConcurrentChanges(initialState,localState,authoritative,{companyId})
  const reconciled=overlayPendingMutations({...localState,currentContext:{...(localState.currentContext||{}),companyId}},concurrent)
- return migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState({
+ return finalizeHydratedState({
   ...reconciled,
   currentContext:{...(localState.currentContext||{}),companyId},
   syncQueue:list(localState.syncQueue).map(item=>item?.companyId?item:{...item,companyId}),
@@ -120,7 +122,7 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   operationalLedgerEntries:list(localState.operationalLedgerEntries),
   timelineEntries:list(localState.timelineEntries),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:companyId}
- })))
+ })
 }
 
 export async function loadAuthoritativeOrganization(companyId){
