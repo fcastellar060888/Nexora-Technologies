@@ -109,6 +109,7 @@ export function executeTreatment(state,input){
  if(!lot||String(lot.productId)!==String(treatment.productId))throw new Error('Selecciona un lote físico del producto indicado.')
  const finding=(state.findings||[]).find(x=>x.id===treatment.findingId)
  if(!finding)throw new Error('El hallazgo asociado ya no existe.')
+ if(['Resuelto','Falso positivo','Planta eliminada'].includes(finding.status))throw new Error(`El hallazgo asociado está cerrado en ${finding.status}; no admite ejecutar tratamientos.`)
  const executedAt=input.executedAt||new Date().toISOString(),profile=snapshot||product
  if(snapshot)assertExecutableMipeProductSnapshot(snapshot,{at:executedAt,dose:treatment.dose,doseUnit:treatment.doseUnit})
  const quantity=Number(treatment.totalQuantity)
