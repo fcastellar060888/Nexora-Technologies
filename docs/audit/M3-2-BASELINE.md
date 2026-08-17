@@ -18,7 +18,7 @@ MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severida
 | M32-F002 | P0 | **Verified** | Tenancy | Ownership causal, IDs homónimos aislados, scope/merge/backfill fail-closed y UI tenant-scoped. Quality #1945. |
 | M32-F003 | P0 | **Verified** | Commands/permissions/events | Operaciones explícitas, permisos, replay, tenant guard y requested→commit→completion; superficies MIPE sin mutación directa. Quality #1983; cierre documental #1986. |
 | M32-F004 | P0 | **Verified** | Treatment/inventory transaction | Ejecución remota atómica de lote+movimiento+Treatment+Finding+costo, con locks/version preflight/idempotencia. Quality #2000; cierre documental #2002. |
-| M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones con before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
+| M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones with before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
 | M32-F006 | P1 | **Open** | Follow-up/interventions | Falta unificar causalidad y autoridad de seguimiento entre planta productiva y material vegetal. |
 | M32-F007 | P1 | **Open** | Incident/product authority | Falta catálogo técnico, vigencia, restricciones y snapshots ejecutables completos. |
 | M32-F008 | P1 | **Open** | Persistence/sync | Falta autoridad completa de schema/migration/cache/bootstrap/sync/tombstones/receipts MIPE. |
