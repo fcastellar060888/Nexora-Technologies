@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.1 Irrigation & MIRFE
 
-Estado: **BASELINE — auditoría abierta**  
+Estado: **VERIFIED — M3.1 cerrado 12/12**  
 Base certificada: M2.2 Growing Medium Engine, head `d35a452612cada20cfd58a53599054a4dfe00b76`, Quality #1842 verde.  
 Bloque de arquitectura: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -35,7 +35,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 | M31-F009 | P1 | **Verified** | Environment/measurements | `EnvironmentDevice`, `CalibrationRecord`, setpoints versionados, lecturas con fuente/evidencia y alertas first-class reemplazan targets embebidos; tenancy, commands, migración v12 y sync quedan demostrados. Quality #1885. |
 | M31-F010 | P1 | **Verified** | Workflow/history | `mirfe-reinforcement-v1` impone transiciones canónicas, historial append-only y correcciones solo tras `Sin respuesta`; cinco commands tenant-aware publican eventos demostrados en Operational Ledger/Timeline. Quality #1891. |
 | M31-F011 | P1 | **Verified** | Persistence/sync | Las seis colecciones canónicas de topología, pulso, medición y drenaje forman parte del schema v14, ownership, caché, bootstrap y sync remoto tenant-aware; IDs repetidos y tombstones quedan aislados. Quality #1895. |
-| M31-F012 | P1 | Open | Passport/Graph/tests | Passport/Knowledge Graph no explican pulso, preparación, fórmula, lote consumido, aplicación, medición ni drenaje. La cobertura adversarial ya incluye dominio, tenant, replay, permisos, eventos y carrera multi-dispositivo; falta la proyección end-to-end. |
+| M31-F012 | P1 | **Verified** | Passport/Graph/tests | Passport/Knowledge Graph explican Assignment → Sector/Emitter → Pulse → Measurement/Drainage y Application → Preparation → Formula → Inventory Lot con tenancy y causalidad temporal fail-closed. Quality #1917. |
 
 ## M31-F001 — cierre verificado
 
@@ -88,7 +88,7 @@ MIPE conserva su funcionalidad histórica durante M3.1 y se auditará como subbl
 - preservación del homónimo extranjero durante update, consumo y aplicación;
 - rechazo de payload y referencias disponibles únicamente en otra empresa;
 - migración causal segura y conservación fail-closed de registros históricos ambiguos;
-- descuento exclusivo del lote activo y etiquetado de Movement/Cost/WorkOrder;
+- descuento exclusivo del lote activo y etiquetado de Movement/CostEntry/WorkOrder;
 - compatibilidad histórica para instalaciones locales sin catálogo multiempresa;
 - contrato estático que impide volver a conectar las siete superficies al Store global.
 
@@ -396,6 +396,37 @@ La regresión local disponible quedó 152/152. Quality ejecutó la suite complet
 - Reauditoría del HEAD remoto: 14/14 blobs inspeccionados y 50/50 controles semánticos pasaron para registro de colecciones, ownership, schema, caché, bootstrap, overlay concurrente, cola, pull, tombstones, transporte y garantías SQL.
 - F012 queda como único hallazgo abierto de M3.1: Passport/Knowledge Graph end-to-end.
 
+## M31-F012 — cierre verificado
+
+### Solución
+
+- `src/core/passport/irrigationMirfePassportProjection.js` proyecta por planta, empresa y ventana causal la cadena `Assignment → Sector/Emitter → Pulse → Measurement/Drainage` y `Application → Preparation → Formula → Inventory Lot`.
+- `src/core/passport/passportProjectionEnrichment.js` registra el enriquecimiento exclusivamente para `cultivation.plant.projection`; si una planta no tiene evidencia Irrigation/MIRFE, conserva el Passport anterior sin fabricar indicadores cero.
+- `passportProjectionPlugin.js` integra el enriquecimiento en el pipeline universal sin mover autoridad de dominio a React ni crear una vía paralela de Graph.
+- Cada relación fija `targetOrganizationId`; la proyección al Knowledge Graph conserva ese tenant y no crea nodos extranjeros.
+- IDs homónimos entre empresas se resuelven por ownership compuesto. Referencias extranjeras, ownership ambiguo y duplicados dentro del mismo tenant fallan cerrado en lugar de deduplicarse u ocultarse silenciosamente.
+- Pulsos, mediciones, drenajes y aplicaciones respetan tanto la vigencia de `IrrigationAssignment` como `createdAt` de la planta. Evidencia anterior a la planta o posterior a la ventana causal queda excluida.
+- Una aplicación resuelve `Preparation → Formula` y los lotes de inventario consumidos dentro del mismo tenant, conservando cantidad, unidad y costo por uso.
+- Passport incorpora relaciones, indicadores y Timeline para riego, fertirriego, EC/pH y drenaje; el Graph hereda la misma evidencia canónica.
+
+### Pruebas adversariales
+
+- `tests/m3-1-irrigation-mirfe-passport-graph.test.mjs` cubre IDs idénticos `org-a`/`org-b`, pulso fuera de vigencia, EC/pH, drenaje, fórmula versionada, lote y costo consumido, las diez relaciones canónicas del Graph, sector extranjero, lote extranjero y compatibilidad de una planta sin evidencia.
+- `tests/m3-1-irrigation-mirfe-passport-reaudit.test.mjs` fuerza identidad duplicada dentro del tenant y evidencia temporal anterior a la planta o fuera de la vigencia del Assignment.
+- Quality #1907 fue rojo útil: 968/969; reprodujo un `IrrigationAssignment` del tenant activo con referencia estructural extranjera que el resolver ocultaba como ausencia. No hubo fuga cross-tenant, pero sí fail-silent.
+- La corrección convirtió ese caso en fallo cerrado explícito. Quality #1911 quedó verde con 969/969.
+- La reauditoría endureció duplicados same-tenant y causalidad temporal. Quality #1917 quedó **verde con 971/971 pruebas**.
+
+### Quality y reauditoría
+
+- Commits principales de F012: `bba67495759d5112ec86b68d955dfee0f4b72518`, `04f11a1a3760f64d723b304eac95010ccd0b7b91`, `23498504aaeb2ad88d32cb2236b6477bd1ef2bb8`, `04e3032cdbd47965392f003d58918d41db9ca42e`.
+- Corrección fail-closed: `7b3dd58d017004e10e721b0b8c43a40e305b7a40`.
+- Reauditoría de identidad/tiempo: `be95656645eae6ae635394b8e5c2c78ce7fc1f73`, `87b823a252478ddfe8f1d138fef7ca1cf007dcd8`, `1b56f755f8c2bdd77063ba54a2090195a263cf43`.
+- Quality #1917: **verde**, 971/971 pruebas en 202 archivos; static audit, dependency audit, environment contract, authentication/session audit, coverage gate, production build y production artifact audit verdes.
+- Reauditoría independiente: no se encontró fuga cross-tenant ni pérdida de causalidad en la frontera proyectada; duplicados de identidad y referencias activas corruptas son fail-closed.
+- `cultivation.materialplant` (abuelas/madres) conserva su Passport de material vegetal; F012 proyecta la evidencia operativa sobre `cultivation.plant`, que es la entidad individual productiva conectada a Position/Bed y al Knowledge Graph operativo.
+- Con F012 no quedan hallazgos P0/P1 abiertos dentro de M3.1.
+
 ## Evidencia de baseline
 
 Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los cierres verificados anteriores documentan la evolución posterior.
@@ -447,7 +478,7 @@ Las siguientes subsecciones conservan el estado encontrado al abrir M3.1; los ci
 
 ## Estado actual
 
-- Verified: **11**
-- Open: **1**
+- Verified: **12**
+- Open: **0**
 - P0 abiertos: **0**
-- P1 abiertos: **1**
+- P1 abiertos: **0**
