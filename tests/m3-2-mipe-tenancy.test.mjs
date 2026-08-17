@@ -39,7 +39,7 @@ test('M32-F002: an unowned finding over an ambiguous repeated Position fails clo
 
 test('M32-F002: legacy findings infer ownership from an unequivocal Position or material plant',()=>{
  const s=state()
- s.plantPositions=[{id:'plant-a',organizationId:'org-a',siteId:'site-shared',bedId:'bed-a'}]
+ s.plantPositions=[{id:'plant-a',organizationId:'org-a',siteId:'site-a',bedId:'bed-a'}]
  s.beds=[{id:'bed-a',organizationId:'org-a',siteId:'site-a',houseId:'house-a'}]
  s.houses=[{id:'house-a',organizationId:'org-a',siteId:'site-a'}]
  s.sites=[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-b',companyId:'org-b'}]
@@ -52,8 +52,8 @@ test('M32-F002: backfill clones a legacy incident shared by findings of two tena
  const s=state()
  s.incidents=[{id:'incident-legacy',name:'Mosca blanca'}]
  s.findings=[
-  {id:'finding-a',organizationId:'org-a',siteId:'site-shared',plantPositionId:'plant-a',incidentId:'incident-legacy'},
-  {id:'finding-b',organizationId:'org-b',siteId:'site-shared',materialPlantId:'material-b',incidentId:'incident-legacy'}
+  {id:'finding-a',organizationId:'org-a',siteId:'site-shared',incidentId:'incident-legacy'},
+  {id:'finding-b',organizationId:'org-b',siteId:'site-shared',incidentId:'incident-legacy'}
  ]
  const migrated=backfillMipeOwnership(s),copies=migrated.incidents.filter(item=>item.id==='incident-legacy')
  assert.equal(copies.length,2)
@@ -100,10 +100,10 @@ test('M32-F002: merge mutates only active tenant and preserves foreign homonyms'
 
 test('M32-F002: ownMipeRecord rejects foreign references before stamping ownership',()=>{
  const s=state()
- assert.throws(()=>ownMipeRecord(s,'findings',{id:'new-f',siteId:'site-shared',plantPositionId:'plant-shared',incidentId:'incident-only-b'},'org-a'),/incidencia pertenece a otra empresa/)
  s.incidents.push({id:'incident-only-b',organizationId:'org-b',name:'Foreign'})
- assert.throws(()=>ownMipeRecord(s,'treatments',{id:'new-t',findingId:'finding-shared',productId:'product-only-b'},'org-a'),/producto pertenece a otra empresa/)
+ assert.throws(()=>ownMipeRecord(s,'findings',{id:'new-f',siteId:'site-shared',plantPositionId:'plant-shared',incidentId:'incident-only-b'},'org-a'),/incidencia pertenece a otra empresa/)
  s.products.push({id:'product-only-b',organizationId:'org-b',siteId:'site-shared'})
+ assert.throws(()=>ownMipeRecord(s,'treatments',{id:'new-t',findingId:'finding-shared',productId:'product-only-b'},'org-a'),/producto pertenece a otra empresa/)
 })
 
 test('M32-F002: mutateMipeState cannot delete or overwrite the foreign homonym',()=>{
@@ -116,6 +116,6 @@ test('M32-F002: duplicate identity inside one tenant fails closed',()=>{
  const s=state(),duplicate={...s.findings[0],notes:'duplicate'}
  s.findings.push(duplicate)
  assert.throws(()=>findMipeRecord(s,'findings','finding-shared'),/identidad duplicada/)
- const base=scopeMipeState(s,'org-a')
- assert.throws(()=>mergeMipeState(s,base,base,'org-a'),/identidad duplicada|duplicado/)
+ const base=scopeMipeState(s,'org-a'),candidate={...base,findings:base.findings.map((item,index)=>index===0?{...item,status:'Seguimiento'}:item)}
+ assert.throws(()=>mergeMipeState(s,base,candidate,'org-a'),/identidad duplicada|duplicado/)
 })
