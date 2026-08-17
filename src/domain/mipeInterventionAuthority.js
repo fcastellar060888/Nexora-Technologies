@@ -48,7 +48,7 @@ export function createCanonicalMipeIntervention({finding,treatment=null,input={}
  const outcome=text(input.outcome)
  if(type===MIPE_INTERVENTION_TYPES.FOLLOW_UP&&!outcome)throw new Error('El seguimiento MIPE requiere un resultado.')
  const product=text(input.product),dose=text(input.dose),treatmentId=text(linkedTreatment?.id)
- if(type===MIPE_INTERVENTION_TYPES.TREATMENT&&!treatmentId&&!product)throw new Error('La intervención de tratamiento requiere Treatment canónico o producto documentado.')
+ if(type===MIPE_INTERVENTION_TYPES.TREATMENT&&!treatmentId)throw new Error('La intervención de tratamiento requiere un Treatment canónico verificado.')
  const responsible=text(input.responsible)||text(actor?.name)||'Sistema',when=iso(occurredAt||performedAt,'occurredAt'),target=targetSnapshot(finding)
  const record={
   id,organizationId:owner,siteId,findingId:text(finding.id),treatmentId:treatmentId||null,type,responsible,product:product||null,dose:dose||null,outcome:outcome||null,notes:text(input.notes),performedAt,nextReviewAt:nextReviewAt||null,
@@ -80,6 +80,7 @@ export function verifyCanonicalMipeIntervention(intervention){
  const performed=Date.parse(intervention?.performedAt||'');if(Number.isNaN(performed))errors.push('performedAt inválido.')
  if(intervention?.nextReviewAt&&Date.parse(intervention.nextReviewAt)<performed)errors.push('nextReviewAt precede performedAt.')
  if(intervention?.type===MIPE_INTERVENTION_TYPES.FOLLOW_UP&&!text(intervention?.outcome))errors.push('Seguimiento sin resultado.')
+ if(intervention?.type===MIPE_INTERVENTION_TYPES.TREATMENT&&!text(intervention?.treatmentId))errors.push('Tratamiento sin Treatment canónico.')
  if(!history.length)errors.push('Falta assignmentHistory.')
  const ids=new Set();let previous=-Infinity
  for(const event of history){if(ids.has(event?.id))errors.push(`assignment event duplicado: ${event?.id}`);ids.add(event?.id);const time=Date.parse(event?.occurredAt||'');if(Number.isNaN(time)||time<previous)errors.push(`assignment history inválido: ${event?.id}`);previous=time}
