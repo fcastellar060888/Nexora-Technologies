@@ -48,6 +48,8 @@ export const DomainEvents=Object.freeze({
  PLANT_EVENT_RECORDED:'cultivation.plant.event_recorded',
  MIPE_FINDING_RECORDED:'mipe.finding.recorded',
  MIPE_FINDING_UPDATED:'mipe.finding.updated',
+ MIPE_FINDING_CORRECTED:'mipe.finding.corrected',
+ MIPE_FINDING_TRANSITIONED:'mipe.finding.transitioned',
  MIPE_FINDING_RESOLVED:'mipe.finding.resolved',
  MIPE_FINDING_DELETED:'mipe.finding.deleted',
  MIPE_INCIDENT_CREATED:'mipe.incident.created',
