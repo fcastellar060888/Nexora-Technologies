@@ -24,7 +24,7 @@ export function preparePropagationBatch(state,input={}, {commandId,occurredAt=ne
  if(!site||resolveOrganizationId(state,{record:site,label:'la sede'})!==organizationId)throw new Error('La sede no pertenece a la organización activa.')
  const bank=(state.propagationBanks||[]).find(item=>item.id===bankId&&item.active!==false&&item.siteId===siteId&&sameTenant(item,organizationId))
  if(!bank||resolveOrganizationId(state,{record:bank,siteId,label:'el banco'})!==organizationId)throw new Error('El banco no pertenece a la sede y organización activas.')
- const source=propagationSourceUnits(state,{organizationId,siteId}).find(item=>item.id===sourcePlantId)
+ const source=propagationSourceUnits(state,{organizationId,siteId,at:occurredAt}).find(item=>item.id===sourcePlantId)
  if(!source)throw new Error('La planta de origen no es elegible dentro de la organización y sede activas.')
  assertMipeOperationAllowed(state,{operation:MIPE_RESTRICTED_OPERATIONS.PROPAGATION_CUT,targetType:'MATERIAL_PLANT',targetId:source.id,organizationId,at:occurredAt})
  const resolvedGeneticId=geneticId||source.geneticId
