@@ -21,7 +21,7 @@ export function interventionCompletesReview(intervention,source){
  if(!intervention||!source||text(intervention.id)===text(source.id))return false
  if(text(intervention.findingId)!==text(source.findingId)||!sameTenant(intervention,source))return false
  const sourceAt=timestamp(source.performedAt||source.createdAt),performedAt=timestamp(intervention.performedAt)
- return sourceAt>0&&performedAt>=sourceAt
+ return sourceAt>0&&performedAt>sourceAt
 }
 
 function resolveFinding(findingsByIdentity,findingsById,source){
