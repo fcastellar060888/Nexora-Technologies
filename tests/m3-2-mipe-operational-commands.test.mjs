@@ -5,7 +5,7 @@ import{preparePlantPhaseTransition}from'../src/services/plantPhaseTransitionComm
 import{preparePropagationBatch}from'../src/services/propagationBatchCommand.js'
 
 function phaseState(){return{
- currentOrganizationId:'org-a',currentCompanyId:'org-a',currentUser:{id:'u1',name:'Admin',role:'Administrador'},
+ currentContext:{companyId:'org-a'},currentUser:{id:'u1',name:'Admin',role:'Administrador'},
  companies:[{id:'org-a',name:'A'},{id:'org-b',name:'B'}],sites:[{id:'site-a',companyId:'org-a'},{id:'site-b',companyId:'org-b'}],houses:[],beds:[],
  plantPositions:[
   {id:'plant-1',organizationId:'org-a',siteId:'site-a',currentPhase:'Floración'},
@@ -45,7 +45,7 @@ test('F009: commandId homónimo de otro tenant no se trata como replay del tenan
 })
 
 function propagationState({availability='Disponible para corte',findingStatus='Detectado',withFinding=true}={}){return{
- currentOrganizationId:'org-a',currentCompanyId:'org-a',
+ currentContext:{companyId:'org-a'},
  companies:[{id:'org-a',name:'A'}],sites:[{id:'site-a',name:'Site A',companyId:'org-a'}],
  geneticProfiles:[{id:'g-1',organizationId:'org-a',name:'G1',code:'G1',active:true}],
  propagationBanks:[{id:'bank-1',organizationId:'org-a',siteId:'site-a',name:'Banco 1',active:true,trays:[{id:'tray-1',quantity:1,cellsPerTray:30}]}],propagationUnits:[],propagationBatches:[],lotEvents:[],
