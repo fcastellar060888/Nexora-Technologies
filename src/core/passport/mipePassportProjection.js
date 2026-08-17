@@ -22,7 +22,7 @@ function uniqueById(records,label){
  for(const record of records){const id=text(record?.id);if(!id)throw new Error(`${label} sin id en la proyección MIPE.`);if(seen.has(id))throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);seen.add(id)}
  return records
 }
-function mipeForOrganization(state,collection,organizationId){return uniqueById(mipeRecordsForOrganization(state,collection,organizationId),collection)}
+function mipeForOrganization(state,collection,organizationId){return mipeRecordsForOrganization(state,collection,organizationId)}
 function sharedById(state,collection,id,organizationId,label){
  const key=text(id);if(!key)return null
  const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&irrigationMirfeRecordOrganizationId(state,collection,item)===organizationId)
@@ -74,8 +74,8 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
  if(!['POSITION','MATERIAL_PLANT'].includes(type))throw new Error('targetType no es válido para el Knowledge Graph MIPE.')
  if(!id)throw new Error('targetId es obligatorio para el Knowledge Graph MIPE.')
  const findings=findingTargets(state,{organizationId:owner,targetType:type,targetId:id}),findingIds=new Set(findings.map(item=>item.id))
- const allTreatments=mipeForOrganization(state,'treatments',owner).filter(item=>findingIds.has(text(item?.findingId)))
- const allInterventions=mipeForOrganization(state,'mipeInterventions',owner).filter(item=>findingIds.has(text(item?.findingId)))
+ const allTreatments=uniqueById(mipeForOrganization(state,'treatments',owner).filter(item=>findingIds.has(text(item?.findingId))),'Treatment')
+ const allInterventions=uniqueById(mipeForOrganization(state,'mipeInterventions',owner).filter(item=>findingIds.has(text(item?.findingId))),'Intervention')
  const relationships=[],timeline=[],incidentUses=new Map(),productUses=new Map(),lotUses=new Map(),restrictions=[],resolutions=[]
  for(const finding of findings){
   const findingId=text(finding.id),reportedAt=iso(finding.reportedAt||finding.createdAt||finding.updatedAt)
