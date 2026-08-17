@@ -15,6 +15,17 @@ function spoofedState(){return{
  incidents:[{id:'incident-a',organizationId:'org-a',name:'Botritis',active:true}],findings:[]
 }}
 
+function causalState(){return{
+ currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a'},{id:'org-b'}],
+ sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-a',companyId:'org-a'},{id:'site-x',organizationId:'org-b',companyId:'org-b'}],
+ houses:[{id:'house-b',organizationId:'org-a',siteId:'site-b'}],beds:[{id:'bed-b',organizationId:'org-a',siteId:'site-b',houseId:'house-b'}],plantPositions:[{id:'plant-b',organizationId:'org-a',siteId:'site-b',bedId:'bed-b'}],
+ grandmotherPlants:[],motherPlants:[],genetics:[],inventoryMovements:[],costEntries:[],
+ incidents:[{id:'incident-a',organizationId:'org-a',name:'Botritis A'},{id:'incident-x',organizationId:'org-b',name:'Foreign'}],
+ findings:[{id:'finding-b',organizationId:'org-a',siteId:'site-b',targetType:'POSITION',targetId:'plant-b',plantPositionId:'plant-b',incidentId:'incident-a',status:'Seguimiento'}],
+ products:[{id:'product-b',organizationId:'org-a',siteId:'site-b',unit:'mL'}],inventoryLots:[{id:'lot-b',organizationId:'org-a',siteId:'site-b',productId:'product-b',quantity:10}],
+ treatments:[{id:'treatment-b',organizationId:'org-a',siteId:'site-b',findingId:'finding-b',productId:'product-b',lotId:'lot-b',status:'Ejecutado'}],mipeInterventions:[]
+}}
+
 test('F012: Position no puede declarar Sede A si su Bed→House pertenece a Sede B',()=>{
  const state=spoofedState()
  assert.equal(mipeRecordOrganizationId(state,'plantPositions',state.plantPositions[0]),'')
@@ -27,4 +38,22 @@ test('F012: site spoofing de Position falla antes de requested y no evade membre
  assert.deepEqual(events,[])
  assert.deepEqual(state.findings,[])
  assert.deepEqual(state.mipeCommandReceipts,[])
+})
+
+test('F012: Finding remoto same-tenant no puede declarar una sede distinta a su Position causal',()=>{
+ const state=causalState(),record={id:'finding-spoof',organizationId:'org-a',siteId:'site-a',targetType:'POSITION',targetId:'plant-b',plantPositionId:'plant-b',incidentId:'incident-a'}
+ assert.equal(mipeRecordOrganizationId(state,'findings',record),'')
+})
+
+test('F012: Finding explícito no puede apuntar a Incident de otro tenant',()=>{
+ const state=causalState(),record={id:'finding-foreign-incident',organizationId:'org-a',siteId:'site-b',targetType:'POSITION',targetId:'plant-b',plantPositionId:'plant-b',incidentId:'incident-x'}
+ assert.equal(mipeRecordOrganizationId(state,'findings',record),'')
+})
+
+test('F012: Treatment e Intervention same-tenant deben conservar la misma sede de su cadena causal',()=>{
+ const state=causalState()
+ const treatment={id:'treatment-spoof',organizationId:'org-a',siteId:'site-a',findingId:'finding-b',productId:'product-b',lotId:'lot-b',status:'Ejecutado'}
+ assert.equal(mipeRecordOrganizationId(state,'treatments',treatment),'')
+ const intervention={id:'intervention-spoof',organizationId:'org-a',siteId:'site-a',findingId:'finding-b',treatmentId:'treatment-b',type:'Seguimiento'}
+ assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',intervention),'')
 })
