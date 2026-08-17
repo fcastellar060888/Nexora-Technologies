@@ -1,5 +1,7 @@
 import{transactInventory}from'./inventory.js'
 import{assertExecutableMipeProductSnapshot}from'./mipeCatalogAuthority.js'
+import{projectMipeOperationalRestrictions}from'./mipeOperationalRestrictions.js'
+import{activeOrganizationId}from'./organizationOwnership.js'
 
 export const findingStatuses=['Detectado','En evaluación','Tratamiento aprobado','En tratamiento','Seguimiento','Resuelto','Planta eliminada','Falso positivo']
 export const severityLabels={1:'Leve',2:'Moderada',3:'Grave',4:'Crítica'}
@@ -62,17 +64,13 @@ function addDays(value,days){
 }
 
 export function activePlantRestrictions(state,plantId,at=new Date().toISOString()){
- const now=new Date(at).getTime()
- const findingIds=new Set((state.findings||[]).filter(x=>x.plantPositionId===plantId).map(x=>x.id))
- const treatments=(state.treatments||[]).filter(x=>x.status==='Ejecutado'&&findingIds.has(x.findingId))
- const reentry=treatments.filter(x=>new Date(x.reentryUntil||0).getTime()>now)
- const harvest=treatments.filter(x=>new Date(x.harvestRestrictedUntil||0).getTime()>now)
+ const projection=projectMipeOperationalRestrictions(state,{targetType:'POSITION',targetId:plantId,organizationId:activeOrganizationId(state),at})
  return{
-  reentryBlocked:reentry.length>0,
-  harvestBlocked:harvest.length>0,
-  reentryUntil:reentry.map(x=>x.reentryUntil).sort().at(-1)||'',
-  harvestRestrictedUntil:harvest.map(x=>x.harvestRestrictedUntil).sort().at(-1)||'',
-  treatmentIds:[...new Set([...reentry,...harvest].map(x=>x.id))]
+  reentryBlocked:projection.reentryBlocked,
+  harvestBlocked:projection.harvestBlocked,
+  reentryUntil:projection.reentryUntil,
+  harvestRestrictedUntil:projection.harvestRestrictedUntil,
+  treatmentIds:projection.treatmentIds
  }
 }
 
