@@ -3,7 +3,7 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
-import{findingStatuses,severityLabels,plantCode}from'../domain/mipe'
+import{severityLabels,plantCode}from'../domain/mipe'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{mipeRecordOrganizationId}from'../domain/mipeTenancy.js'
 import{MIPE_OPERATIONS}from'../services/mipeCommand.js'
@@ -17,7 +17,7 @@ export default function HouseMapPage(){
  const availableHouses=state.houses.filter(x=>x.siteId===siteId)
  const[houseId,setHouseId]=useState(state.currentContext.houseId||availableHouses[0]?.id||'')
  const[plant,setPlant]=useState(null),[open,setOpen]=useState(false)
- const[f,setF]=useState({incidentId:state.incidents[0]?.id||'',severity:1,status:'Detectado',notes:'',action:'',responsible:'',followUpDate:''})
+ const[f,setF]=useState({incidentId:state.incidents[0]?.id||'',severity:1,notes:'',action:'',responsible:'',followUpDate:''})
  const house=state.houses.find(x=>x.id===houseId)
  const beds=useMemo(()=>state.beds.filter(x=>x.houseId===houseId).sort((a,b)=>(a.order||0)-(b.order||0)),[state.beds,houseId])
  async function save(e){e.preventDefault();try{await execute({operation:MIPE_OPERATIONS.CREATE_FINDING,input:{plantPositionId:plant.id,...f}});setOpen(false)}catch(error){alert(error.message)}}
@@ -38,5 +38,5 @@ export default function HouseMapPage(){
   </Card>
  })}</div>}
  {plant&&<Card title={plantCode(state,plant)}><div className="detail-grid"><div><span>Genética</span><select value={plant.geneticId||''} onChange={e=>genetic(e.target.value)}><option value="">Sin genética</option>{state.genetics.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div><div><span>Estado</span><b>{plant.status}</b></div><div><span>Hallazgos abiertos</span><b>{state.findings.filter(q=>q.plantPositionId===plant.id&&!['Resuelto','Falso positivo'].includes(q.status)).length}</b></div></div><button className="button primary" onClick={()=>setOpen(true)}>Registrar hallazgo</button></Card>}
- <Modal open={open} title="Nuevo hallazgo MIPE" onClose={()=>setOpen(false)}><form className="form-grid modal-form" onSubmit={save}><Field label="Incidencia"><select value={f.incidentId} onChange={e=>setF({...f,incidentId:e.target.value})}>{state.incidents.map(i=><option key={i.id} value={i.id}>{i.category} · {i.name}</option>)}</select></Field><Field label="Severidad"><select value={f.severity} onChange={e=>setF({...f,severity:+e.target.value})}>{Object.entries(severityLabels).map(([v,l])=><option key={v} value={v}>{v} · {l}</option>)}</select></Field><Field label="Estado"><select value={f.status} onChange={e=>setF({...f,status:e.target.value})}>{findingStatuses.map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Responsable"><input value={f.responsible} onChange={e=>setF({...f,responsible:e.target.value})}/></Field><Field label="Próxima revisión"><input type="date" value={f.followUpDate} onChange={e=>setF({...f,followUpDate:e.target.value})}/></Field><Field label="Acción inmediata"><input value={f.action} onChange={e=>setF({...f,action:e.target.value})}/></Field><Field label="Observación técnica"><textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})}/></Field><div className="form-actions"><button className="button primary">Guardar hallazgo</button></div></form></Modal></>
+ <Modal open={open} title="Nuevo hallazgo MIPE" onClose={()=>setOpen(false)}><form className="form-grid modal-form" onSubmit={save}><Field label="Incidencia"><select value={f.incidentId} onChange={e=>setF({...f,incidentId:e.target.value})}>{state.incidents.map(i=><option key={i.id} value={i.id}>{i.category} · {i.name}</option>)}</select></Field><Field label="Severidad"><select value={f.severity} onChange={e=>setF({...f,severity:+e.target.value})}>{Object.entries(severityLabels).map(([v,l])=><option key={v} value={v}>{v} · {l}</option>)}</select></Field><Field label="Estado inicial"><input value="Detectado" disabled/></Field><Field label="Responsable"><input value={f.responsible} onChange={e=>setF({...f,responsible:e.target.value})}/></Field><Field label="Próxima revisión"><input type="date" value={f.followUpDate} onChange={e=>setF({...f,followUpDate:e.target.value})}/></Field><Field label="Acción inmediata"><input value={f.action} onChange={e=>setF({...f,action:e.target.value})}/></Field><Field label="Observación técnica"><textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})}/></Field><div className="form-actions"><button className="button primary">Guardar hallazgo</button></div></form></Modal></>
 }
