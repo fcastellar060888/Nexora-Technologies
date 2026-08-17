@@ -16,6 +16,28 @@ function ownerForSite(state,siteId){
  return[...new Set(list(state?.sites).filter(item=>text(item?.id)===id).map(explicitOrganizationId).filter(Boolean))]
 }
 
+function plantPositionGeographyValid(state,record,organizationId){
+ const owner=text(organizationId),directSiteId=text(record?.siteId),bedId=text(record?.bedId)
+ if(!owner)return false
+ if(!bedId)return!directSiteId||ownerForSite(state,directSiteId).includes(owner)
+ const beds=list(state?.beds).filter(item=>text(item?.id)===bedId&&irrigationMirfeRecordOrganizationId(state,'beds',item)===owner)
+ if(beds.length!==1)return false
+ const bed=beds[0],declaredHouseId=text(record?.houseId),bedHouseId=text(bed?.houseId)
+ if(declaredHouseId&&bedHouseId&&declaredHouseId!==bedHouseId)return false
+ let derivedSiteId=text(bed?.siteId)
+ if(bedHouseId){
+  const houses=list(state?.houses).filter(item=>text(item?.id)===bedHouseId&&irrigationMirfeRecordOrganizationId(state,'houses',item)===owner)
+  if(houses.length!==1)return false
+  const houseSiteId=text(houses[0]?.siteId)
+  if(derivedSiteId&&houseSiteId&&derivedSiteId!==houseSiteId)return false
+  derivedSiteId=houseSiteId||derivedSiteId
+ }
+ if(derivedSiteId&&!ownerForSite(state,derivedSiteId).includes(owner))return false
+ if(directSiteId&&derivedSiteId&&directSiteId!==derivedSiteId)return false
+ if(directSiteId&&!ownerForSite(state,directSiteId).includes(owner))return false
+ return true
+}
+
 function materialPlantOwners(state,id){
  const targetId=text(id),owners=[]
  if(!targetId)return owners
@@ -36,7 +58,9 @@ function sharedRecordOrganizationId(state,collection,record){
   const owners=ownerForSite(state,record?.siteId)
   return owners.length===1?owners[0]:''
  }
- return irrigationMirfeRecordOrganizationId(state,collection,record)
+ const owner=irrigationMirfeRecordOrganizationId(state,collection,record)
+ if(collection==='plantPositions'&&owner&&!plantPositionGeographyValid(state,record,owner))return''
+ return owner
 }
 
 function ownersForReference(state,collection,id){
