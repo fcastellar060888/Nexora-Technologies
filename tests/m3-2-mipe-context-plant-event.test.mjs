@@ -40,6 +40,29 @@ test('F010: permiso de observación se valida contra la sede real del target, no
  assert.throws(()=>preparePlantEventCommand(current,{...input,plantId:'plant-a2',commandId:'site-bypass'}),/permiso.*sede/i)
 })
 
+test('F010: houseId o siteId redundante que contradiga plant→bed→house→site falla cerrado',()=>{
+ const siteConflict=state(),plant=siteConflict.plantPositions.find(item=>item.organizationId==='org-a'&&item.id==='plant-shared')
+ plant.siteId='site-a2'
+ assert.throws(()=>preparePlantEventCommand(siteConflict,{...input,commandId:'site-conflict'}),/ubicación.*contradictoria/i)
+ const houseConflict=state(),samePlant=houseConflict.plantPositions.find(item=>item.organizationId==='org-a'&&item.id==='plant-shared')
+ samePlant.houseId='house-a2'
+ assert.throws(()=>preparePlantEventCommand(houseConflict,{...input,commandId:'house-conflict'}),/ubicación.*contradictoria/i)
+})
+
+test('F010: cambio de ubicación canónica entre prepare y apply invalida la intención',()=>{
+ const current=state(),prepared=preparePlantEventCommand(current,{...input,commandId:'location-switch'})
+ current.memberships[0].siteIds=['site-a1','site-a2']
+ current.beds.find(item=>item.organizationId==='org-a'&&item.id==='bed-shared').houseId='house-a2'
+ assert.throws(()=>applyPreparedPlantEvent(current,prepared),/ubicación canónica.*cambió/i)
+})
+
+test('F010: siteId forma parte de la firma de replay y una relocalización no reutiliza el commandId',()=>{
+ const current=state(),prepared=preparePlantEventCommand(current,{...input,commandId:'location-replay'}),committed=applyPreparedPlantEvent(current,prepared)
+ committed.memberships[0].siteIds=['site-a1','site-a2']
+ committed.beds.find(item=>item.organizationId==='org-a'&&item.id==='bed-shared').houseId='house-a2'
+ assert.throws(()=>preparePlantEventCommand(committed,{...input,commandId:'location-replay'}),/contenido diferente/i)
+})
+
 test('F010: identidad de planta duplicada dentro del tenant falla cerrado',()=>{
  const current=state();current.plantPositions.push({...current.plantPositions[0],healthStatus:'duplicada'})
  assert.throws(()=>preparePlantEventCommand(current,{...input,commandId:'duplicate-plant'}),/duplicada/i)
