@@ -93,3 +93,21 @@ test('F010: Dashboard MIPE deriva KPIs y tareas desde scopeOperationalState, no 
  assert.doesNotMatch(source,/useState\(\{siteId:/)
  assert.match(source,/El alcance Empresa → Sede → Nave → Cama → Planta/)
 })
+
+test('F010: Hallazgos y Tratamientos heredan la jerarquía compartida y limpian acciones stale al cambiar contexto',async()=>{
+ const findings=await readFile('src/pages/FindingsPage.jsx','utf8'),treatments=await readFile('src/pages/TreatmentsPage.jsx','utf8')
+ for(const source of[findings,treatments]){
+  assert.match(source,/scopeOperationalState\(tenantState,tenantState\.currentContext\)/)
+  assert.match(source,/const contextKey=\['companyId','siteId','houseId','bedId','plantId'\]/)
+ }
+ assert.match(findings,/setEditing\(null\);setTransitioning\(null\)/)
+ assert.match(treatments,/setF\(initialForm\(state\)\);setExecution\(\{\}\);setMsg\(''\)/)
+ assert.match(treatments,/state\.inventoryLots\.filter/)
+})
+
+test('F010: catálogo sanitario conserva semántica tenant-global y no finge granularidad geográfica',async()=>{
+ const source=await readFile('src/components/ContextBar.jsx','utf8'),incidents=await readFile('src/pages/IncidentsPage.jsx','utf8')
+ assert.ok(source.includes("[/^\\/mipe\\/incidents/,['company']]"))
+ assert.match(incidents,/useMipeCommandStore/)
+ assert.doesNotMatch(incidents,/scopeOperationalState/)
+})
