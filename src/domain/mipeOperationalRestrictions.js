@@ -62,6 +62,7 @@ function matchingFindings(state,{organizationId,targetType,targetId}){
 function restriction({id,type,organizationId,siteId,targetType,targetId,findingId,treatmentId='',startsAt='',endsAt='',reason=''}){
  return freeze({id,type,organizationId,siteId:text(siteId),targetType,targetId,findingId,treatmentId:text(treatmentId),startsAt:text(startsAt),endsAt:text(endsAt),reason:text(reason)})
 }
+function activeWindow(start,end,now){return Date.parse(start)<=now&&now<Date.parse(end)}
 
 export function projectMipeOperationalRestrictions(state,{targetType,targetId,organizationId=activeOrganizationId(state),at=new Date().toISOString()}={}){
  const owner=text(organizationId),type=text(targetType),id=text(targetId),when=iso(at,'La fecha de evaluación')
@@ -73,20 +74,21 @@ export function projectMipeOperationalRestrictions(state,{targetType,targetId,or
  for(const treatment of treatments){
   const finding=findings.find(item=>item.id===treatment.findingId)
   if(!finding)continue
-  const start=text(treatment.executedAt||finding.lastTreatmentAt||treatment.updatedAt||treatment.createdAt)
+  const start=iso(treatment.executedAt||finding.lastTreatmentAt||treatment.updatedAt||treatment.createdAt,'La ejecución')
   const reentryEnd=text(treatment.reentryUntil||finding.reentryUntil)
   if(reentryEnd){
    const end=iso(reentryEnd,'La reentrada')
-   if(Date.parse(end)>now)restrictions.push(restriction({id:`${owner}:${treatment.id}:reentry`,type:MIPE_RESTRICTION_TYPES.REENTRY,organizationId:owner,siteId:treatment.siteId||finding.siteId,targetType:type,targetId:id,findingId:finding.id,treatmentId:treatment.id,startsAt:start?iso(start,'La ejecución'):when,endsAt:end,reason:'Periodo de reentrada MIPE activo'}))
+   if(activeWindow(start,end,now))restrictions.push(restriction({id:`${owner}:${treatment.id}:reentry`,type:MIPE_RESTRICTION_TYPES.REENTRY,organizationId:owner,siteId:treatment.siteId||finding.siteId,targetType:type,targetId:id,findingId:finding.id,treatmentId:treatment.id,startsAt:start,endsAt:end,reason:'Periodo de reentrada MIPE activo'}))
   }
   const withdrawalEnd=text(treatment.harvestRestrictedUntil||finding.harvestRestrictedUntil)
   if(withdrawalEnd){
    const end=iso(withdrawalEnd,'La carencia')
-   if(Date.parse(end)>now)restrictions.push(restriction({id:`${owner}:${treatment.id}:withdrawal`,type:MIPE_RESTRICTION_TYPES.HARVEST_WITHDRAWAL,organizationId:owner,siteId:treatment.siteId||finding.siteId,targetType:type,targetId:id,findingId:finding.id,treatmentId:treatment.id,startsAt:start?iso(start,'La ejecución'):when,endsAt:end,reason:'Periodo de carencia MIPE activo'}))
+   if(activeWindow(start,end,now))restrictions.push(restriction({id:`${owner}:${treatment.id}:withdrawal`,type:MIPE_RESTRICTION_TYPES.HARVEST_WITHDRAWAL,organizationId:owner,siteId:treatment.siteId||finding.siteId,targetType:type,targetId:id,findingId:finding.id,treatmentId:treatment.id,startsAt:start,endsAt:end,reason:'Periodo de carencia MIPE activo'}))
   }
  }
  if(type==='MATERIAL_PLANT')for(const finding of findings){
-  if(finding.restrictsPropagation===true&&openFinding(finding))restrictions.push(restriction({id:`${owner}:${finding.id}:propagation-block`,type:MIPE_RESTRICTION_TYPES.PROPAGATION_BLOCK,organizationId:owner,siteId:finding.siteId,targetType:type,targetId:id,findingId:finding.id,startsAt:text(finding.reportedAt||finding.createdAt),reason:'Hallazgo MIPE bloquea propagación'}))
+  const start=text(finding.reportedAt||finding.createdAt)
+  if(finding.restrictsPropagation===true&&openFinding(finding)&&start&&Date.parse(iso(start,'El inicio del hallazgo'))<=now)restrictions.push(restriction({id:`${owner}:${finding.id}:propagation-block`,type:MIPE_RESTRICTION_TYPES.PROPAGATION_BLOCK,organizationId:owner,siteId:finding.siteId,targetType:type,targetId:id,findingId:finding.id,startsAt:iso(start,'El inicio del hallazgo'),reason:'Hallazgo MIPE bloquea propagación'}))
  }
  const byType=Object.fromEntries(Object.values(MIPE_RESTRICTION_TYPES).map(value=>[value,restrictions.filter(item=>item.type===value)]))
  const latestEnd=items=>items.map(item=>item.endsAt).filter(Boolean).sort().at(-1)||''
