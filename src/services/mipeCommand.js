@@ -4,10 +4,10 @@ import{appendMaterialPlantFindings,appendMipeIntervention,resolveMaterialPlantFi
 import{executeTreatment,scheduleTreatment}from'../domain/mipe.js'
 import{reassignMipeReviewTask}from'../domain/mipeReviewTasks.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
-import{findMipeRecord,mergeMipeState,scopeMipeState}from'../domain/mipeTenancy.js'
+import{findMipeRecord,scopeMipeState}from'../domain/mipeTenancy.js'
 import{activeUser,hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
-import{mutateMipeTenantState}from'./mipeTenantStore.js'
+import{mutateMipeTenantState}from'./mipeTenantState.js'
 
 export const MIPE_OPERATIONS=Object.freeze({
  CREATE_INCIDENT:'CREATE_INCIDENT',
@@ -103,10 +103,6 @@ function materialTargets(state,organizationId,ids){
  if(!targets.length)throw new Error('Selecciona al menos una planta material para registrar MIPE.')
  return targets
 }
-function stampNewMaterialRecords(beforeIds,state,organizationId){
- const findings=list(state.findings).map(item=>beforeIds.has(item.id)?item:{...item,organizationId}),interventions=list(state.mipeInterventions).map(item=>beforeIds.has(item.id)?item:{...item,organizationId})
- return{...state,findings,mipeInterventions:interventions}
-}
 function planMaterialFindings(state,input,aggregateId,organizationId,occurredAt){
  const targets=materialTargets(state,organizationId,input.plantIds),draft={type:required(input.type,'type'),severity:text(input.severity)||'Media',notes:text(input.notes),reportedAt:occurredAt,restrictAvailability:input.restrictAvailability===true}
  const siteIds=[...new Set(targets.map(item=>text(item.siteId)).filter(Boolean))],siteId=siteIds.length===1?siteIds[0]:null
@@ -128,8 +124,10 @@ function planResolveFinding(state,input,aggregateId,organizationId,occurredAt){
  const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),status=text(input.status)||'Resuelto'
  return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_RESOLVED,siteId,payload:{findingId:aggregateId,status,resolutionNotes:text(input.resolutionNotes||input.notes),releaseAvailability:input.releaseAvailability!==false},apply:current=>{
   if(finding.materialPlantId){
-   const outcome=resolveMaterialPlantFinding(current,{findingId:aggregateId,status,resolutionNotes:text(input.resolutionNotes||input.notes),resolvedAt:occurredAt,releaseAvailability:input.releaseAvailability!==false})
-   return outcome.state
+   const tenant=scopeMipeState(current,organizationId),scopedCurrent={...current,findings:tenant.findings,mipeInterventions:tenant.mipeInterventions}
+   const outcome=resolveMaterialPlantFinding(scopedCurrent,{findingId:aggregateId,status,resolutionNotes:text(input.resolutionNotes||input.notes),resolvedAt:occurredAt,releaseAvailability:input.releaseAvailability!==false})
+   const merged=tenantMutation(current,organizationId,currentTenant=>({...currentTenant,findings:outcome.state.findings,mipeInterventions:outcome.state.mipeInterventions}))
+   return{...merged,materialPlantUnits:outcome.state.materialPlantUnits,plantEvents:outcome.state.plantEvents}
   }
   return tenantMutation(current,organizationId,tenant=>({...tenant,findings:tenant.findings.map(item=>item.id===aggregateId?{...item,status,closedAt:occurredAt,resolvedAt:occurredAt,resolutionNotes:text(input.resolutionNotes||input.notes),updatedAt:occurredAt}:item)}))
  }}
@@ -150,10 +148,12 @@ function planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt)
 function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt){
  const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId)
  return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_RECORDED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,type:text(input.type),responsible:text(input.responsible),nextReviewAt:text(input.nextReviewAt)},apply:current=>{
-   const before=new Set(list(current.mipeInterventions).map(item=>item.id)),next=appendMipeIntervention(current,{...input,findingId:finding.id,performedAt:input.performedAt||occurredAt})
+   const tenant=scopeMipeState(current,organizationId),before=new Set(list(tenant.mipeInterventions).map(item=>item.id)),next=appendMipeIntervention(tenant,{...input,findingId:finding.id,performedAt:input.performedAt||occurredAt})
    const candidates=list(next.mipeInterventions).filter(item=>!before.has(item.id))
    if(candidates.length!==1)throw new Error('La intervención MIPE no produjo una identidad única.')
-   return{...next,mipeInterventions:list(next.mipeInterventions).map(item=>item.id===candidates[0].id?{...item,id:aggregateId,organizationId}:item)}
+   const stamped=list(next.mipeInterventions).map(item=>item.id===candidates[0].id?{...item,id:aggregateId,organizationId}:item)
+   const merged=tenantMutation(current,organizationId,currentTenant=>({...currentTenant,mipeInterventions:stamped}))
+   return{...merged,plantEvents:next.plantEvents}
  }}
 }
 function planReassignIntervention(state,input,aggregateId,organizationId){
