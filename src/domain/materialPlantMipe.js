@@ -101,4 +101,4 @@ export function resolveMaterialPlantFinding(state,{findingId,organizationId='',s
  return{state:{...next,plantEvents},released,interventionCount:interventions.length,remainingBlockingFindings:openBlockingMipeFindings(next,finding.materialPlantId,{excludeFindingId:findingId,organizationId:owner}).length}
 }
 
-export function materialPlantFindingDetail(plants,{type,severity='Media',restrictAvailability=false}={}){const count=list(plants).length;return`${count} planta${count===1?'':'s'} · ${fields.join(' · ')||'actualización individual'}`}
+export function materialPlantFindingDetail(plants,{type,severity='Media',restrictAvailability=false}={}){const count=list(plants).length;return`${count} planta${count===1?'':'s'} · ${required(type)||'Hallazgo MIPE'} · Severidad ${required(severity)||'Media'}${restrictAvailability?' · Bloqueo para corte':''}`}
