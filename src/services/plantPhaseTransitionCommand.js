@@ -1,0 +1,60 @@
+import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
+import{cultivationPhases}from'../domain/propagation.js'
+import{MIPE_RESTRICTED_OPERATIONS,assertMipeOperationAllowed}from'../domain/mipeOperationalRestrictions.js'
+import{activeOrganizationId}from'../domain/organizationOwnership.js'
+import{findMipeRecord,mipeRecordOrganizationId,scopeMipeState}from'../domain/mipeTenancy.js'
+import{hasPermission}from'./permissions.js'
+import{executeCoreOperationCommand}from'./coreOperationCommand.js'
+
+const text=value=>String(value??'').trim()
+const iso=value=>{const normalized=text(value);if(!normalized||Number.isNaN(Date.parse(normalized)))throw new Error('occurredAt del cambio de fase no es válido.');return new Date(normalized).toISOString()}
+const dateOnly=value=>{const normalized=text(value);if(!/^\d{4}-\d{2}-\d{2}$/.test(normalized))throw new Error('La fecha del cambio de fase no es válida.');return normalized}
+
+function positionSite(state,position,organizationId){
+ const tenant=scopeMipeState(state,organizationId),bed=tenant.beds.find(item=>item.id===position?.bedId),house=tenant.houses.find(item=>item.id===bed?.houseId)
+ return text(position?.siteId||bed?.siteId||house?.siteId)
+}
+function existingTransition(state,organizationId,commandId){
+ const matches=(state.phaseTransitions||[]).filter(item=>text(item.id)===commandId&&text(item.organizationId||item.companyId||item._organizationId)===organizationId)
+ if(matches.length>1)throw new Error('El cambio de fase tiene identidad duplicada dentro de la empresa activa.')
+ return matches[0]||null
+}
+
+export function preparePlantPhaseTransition(state,input={}, {commandId=text(input.commandId),occurredAt=input.occurredAt||new Date().toISOString()}={}){
+ const organizationId=activeOrganizationId(state),id=text(commandId)
+ if(!id)throw new Error('commandId es obligatorio para cambiar la fase de una planta.')
+ const retry=existingTransition(state,organizationId,id)
+ if(retry)return Object.freeze({organizationId,transition:retry,retry:true})
+ const plantId=text(input.plantId),plant=findMipeRecord(state,'plantPositions',plantId,{label:'planta/Position',organizationId})
+ const fromPhase=text(input.fromPhase||plant.currentPhase),toPhase=text(input.toPhase),when=iso(occurredAt),date=dateOnly(input.date||when.slice(0,10))
+ if(!cultivationPhases.includes(fromPhase)||!cultivationPhases.includes(toPhase))throw new Error('La fase de cultivo solicitada no es válida.')
+ if(fromPhase===toPhase)throw new Error('La fase nueva debe ser diferente de la fase actual.')
+ const siteId=text(input.siteId)||positionSite(state,plant,organizationId)
+ if(!siteId)throw new Error('No se pudo resolver la sede de la planta.')
+ const operation=toPhase==='Cosecha'?MIPE_RESTRICTED_OPERATIONS.HARVEST:MIPE_RESTRICTED_OPERATIONS.CULTIVATION_WORK
+ assertMipeOperationAllowed(state,{operation,targetType:'POSITION',targetId:plant.id,organizationId,at:when})
+ const transition=Object.freeze({id,commandId:id,organizationId,entityType:'plant',entityId:plant.id,plantId:plant.id,fromPhase,toPhase,date,occurredAt:when,createdAt:when,siteId,houseId:text(input.houseId),bedId:text(input.bedId),responsible:text(input.responsible),notes:text(input.notes)})
+ return Object.freeze({organizationId,plant,transition,retry:false})
+}
+
+function applyPrepared(current,prepared){
+ const{organizationId,transition,plant}=prepared,existing=existingTransition(current,organizationId,transition.id)
+ if(existing)return current
+ const candidates=(current.plantPositions||[]).filter(item=>text(item.id)===plant.id&&mipeRecordOrganizationId(current,'plantPositions',item)===organizationId)
+ if(candidates.length!==1)throw new Error(candidates.length?'La planta tiene identidad duplicada dentro de la empresa activa.':'La planta ya no pertenece a la empresa activa.')
+ return{
+  ...current,
+  phaseTransitions:[...(current.phaseTransitions||[]),transition],
+  plantPositions:(current.plantPositions||[]).map(item=>item===candidates[0]?{...item,currentPhase:transition.toPhase,phaseStartDate:transition.date}:item)
+ }
+}
+
+export async function executePlantPhaseTransitionCommand(state,input={},deps={}){
+ if(!hasPermission(state,'manage_cultivation'))throw new Error('No tienes permiso para cambiar la fase de cultivo.')
+ const commandId=text(input.commandId)||crypto.randomUUID(),occurredAt=input.occurredAt||new Date().toISOString(),prepared=preparePlantPhaseTransition(state,input,{commandId,occurredAt})
+ if(prepared.retry)return Object.freeze({ok:true,retry:true,commandId,transition:prepared.transition})
+ const publishEvent=deps.publishEvent||((event)=>publishDomainEvent(state,event)),commit=deps.commit
+ if(typeof commit!=='function')throw new TypeError('commit es obligatorio para cambiar la fase de una planta.')
+ await executeCoreOperationCommand({commandId,organizationId:prepared.organizationId,siteId:prepared.transition.siteId,aggregateType:'cultivation.plant',aggregateId:prepared.plant.id,completedEventName:DomainEvents.CROP_PHASE_CHANGED,occurredAt,payload:{plantId:prepared.plant.id,fromPhase:prepared.transition.fromPhase,toPhase:prepared.transition.toPhase,date:prepared.transition.date},metadata:{module:'cultivation',restrictionGuard:'mipe'} ,apply:current=>applyPrepared(current,prepared)},{publishEvent,commit})
+ return Object.freeze({ok:true,retry:false,commandId,transition:prepared.transition})
+}
