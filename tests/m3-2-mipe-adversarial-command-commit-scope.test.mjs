@@ -2,7 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{DomainEvents}from'../src/core/events/eventCatalog.js'
 import{appendMaterialPlantFindings}from'../src/domain/materialPlantMipe.js'
-import{isFollowUpDue,scheduleTreatment}from'../src/domain/mipe.js'
+import{executeTreatment,isFollowUpDue,scheduleTreatment}from'../src/domain/mipe.js'
 import{MIPE_OPERATIONS,executeMipeCommand}from'../src/services/mipeCommand.js'
 
 function state(){return{
@@ -97,4 +97,17 @@ test('F012: helper directo no programa Treatment ni seguimiento sobre Planta eli
  const p=product()
  assert.throws(()=>scheduleTreatment({findings:[closed],products:[p],treatments:[]},{id:'treatment-a',findingId:'finding-a',productId:'product-a',dose:2,doseUnit:'mL/L',mixVolume:10,createdAt:'2026-08-17T20:00:00.000Z'}),/hallazgo cerrado/i)
  assert.equal(isFollowUpDue(closed),false)
+})
+
+test('F012: executeTreatment directo no consume inventario ni reabre un Finding terminal',()=>{
+ for(const status of ['Resuelto','Falso positivo','Planta eliminada']){
+  const finding={...openFinding(),status},p=product()
+  const treatment={id:'treatment-a',organizationId:'org-a',siteId:'site-a',findingId:'finding-a',productId:'product-a',dose:2,doseUnit:'mL/L',mixVolume:10,totalQuantity:20,inventoryUnit:'mL',status:'Programado',createdAt:'2026-08-17T18:30:00.000Z'}
+  const lot={id:'lot-a',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:100,unit:'mL'}
+  const before={findings:[finding],products:[p],treatments:[treatment],inventoryLots:[lot],inventoryMovements:[],costEntries:[]}
+  assert.throws(()=>executeTreatment(before,{treatmentId:'treatment-a',lotId:'lot-a',responsible:'Operador',executedAt:'2026-08-17T20:30:00.000Z',siteId:'site-a',movementId:`movement-${status}`,costEntryId:`cost-${status}`}),/hallazgo.*cerrado|terminal/i)
+  assert.equal(before.inventoryLots[0].quantity,100)
+  assert.deepEqual(before.inventoryMovements,[])
+  assert.equal(before.findings[0].status,status)
+ }
 })
