@@ -208,9 +208,10 @@ function planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt,
  })}
 }
 function materialInterventionPlantEvent(finding,record,organizationId){
- if(!text(finding?.materialPlantId))return null
+ const materialPlantId=text(record?.findingSnapshot?.materialPlantId||finding?.materialPlantId)
+ if(!materialPlantId)return null
  const detail=record.type==='Tratamiento'?`${record.product||'Tratamiento'}${record.dose?` · ${record.dose}`:''}`:record.outcome||'Seguimiento registrado'
- return Object.freeze({id:`${record.id}:plant-event`,organizationId,siteId:record.siteId||null,plantId:finding.materialPlantId,entityId:finding.materialPlantId,type:'MIPE',title:record.type==='Tratamiento'?'Tratamiento MIPE registrado':'Seguimiento MIPE registrado',detail,date:record.performedAt,createdAt:record.performedAt,source:'mipe-intervention-authority',findingId:finding.id,interventionId:record.id})
+ return Object.freeze({id:`${organizationId}:${record.id}:plant-event`,organizationId,siteId:record.siteId||null,plantId:materialPlantId,entityId:materialPlantId,type:'MIPE',title:record.type==='Tratamiento'?'Tratamiento MIPE registrado':'Seguimiento MIPE registrado',detail,date:record.performedAt,createdAt:record.performedAt,source:'mipe-intervention-authority',findingId:finding.id,interventionId:record.id})
 }
 function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor){
  const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId),treatmentId=text(input.treatmentId),treatment=treatmentId?activeRecord(state,'treatments',treatmentId,'tratamiento',organizationId):null
