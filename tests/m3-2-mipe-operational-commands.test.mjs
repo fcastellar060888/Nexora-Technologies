@@ -47,7 +47,7 @@ test('F009: commandId homónimo de otro tenant no se trata como replay del tenan
 function propagationState({availability='Disponible para corte',findingStatus='Detectado',withFinding=true}={}){return{
  currentContext:{companyId:'org-a'},
  companies:[{id:'org-a',name:'A'}],sites:[{id:'site-a',name:'Site A',companyId:'org-a'}],
- geneticProfiles:[{id:'g-1',organizationId:'org-a',name:'G1',code:'G1',active:true}],
+ genetics:[{id:'g-1',organizationId:'org-a',name:'G1',code:'G1',active:true}],
  propagationBanks:[{id:'bank-1',organizationId:'org-a',siteId:'site-a',name:'Banco 1',active:true,trays:[{id:'tray-1',quantity:1,cellsPerTray:30}]}],propagationUnits:[],propagationBatches:[],lotEvents:[],
  motherPlants:[{id:'mother-lot',organizationId:'org-a',siteId:'site-a',geneticId:'g-1',lotCode:'MAD-01',quantity:1,status:'Activa',healthStatus:'Sana',createdAt:'2026-08-01T00:00:00.000Z'}],grandmotherPlants:[],
  materialPlantUnits:[{id:'mother-unit-1',organizationId:'org-a',lotId:'mother-lot',plantType:'MOTHER',unitIndex:0,siteId:'site-a',geneticId:'g-1',status:'Activa',healthStatus:'Sana',operationalAvailability:availability,createdAt:'2026-08-01T00:00:00.000Z'}],
