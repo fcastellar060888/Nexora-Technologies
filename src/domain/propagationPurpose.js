@@ -1,4 +1,5 @@
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'./materialPlantIdentity.js'
+import{MIPE_RESTRICTED_OPERATIONS,blockersForMipeOperation}from'./mipeOperationalRestrictions.js'
 import{activeOrganizationId,assertActiveOrganization,explicitOrganizationId}from'./organizationOwnership.js'
 
 export const PROPAGATION_PURPOSES=Object.freeze({
@@ -22,6 +23,7 @@ export const PROPAGATION_SOURCE_AVAILABILITY='Disponible para corte'
 const allowedPurposes=new Set(Object.values(PROPAGATION_PURPOSES))
 const allowedSourceTypes=new Set(Object.values(MATERIAL_PLANT_TYPES))
 const retiredStatuses=new Set(['Retirada','Descartada','Fallecida'])
+const legacyMipeBlockedAvailability='Bloqueada por MIPE'
 
 export function propagationSourceEligibility(unit){
  if(!unit)return Object.freeze({eligible:false,reason:'No se encontró la planta de origen.'})
@@ -32,14 +34,28 @@ export function propagationSourceEligibility(unit){
  return Object.freeze({eligible:true,reason:'Disponible para corte.'})
 }
 
-export function propagationSourceUnits(state,{organizationId=activeOrganizationId(state),siteId='',activeOnly=true,eligibleOnly=true}={}){
+function sourceMipeEligibility(state,unit,organizationId,at){
+ try{
+  const result=blockersForMipeOperation(state,{operation:MIPE_RESTRICTED_OPERATIONS.PROPAGATION_CUT,targetType:'MATERIAL_PLANT',targetId:unit.id,organizationId,at})
+  return{blocked:result.blockers.length>0,projection:result.projection}
+ }catch(error){return{blocked:true,error}}
+}
+
+export function propagationSourceUnits(state,{organizationId=activeOrganizationId(state),siteId='',activeOnly=true,eligibleOnly=true,at=new Date().toISOString()}={}){
  assertActiveOrganization(state,organizationId,{label:'La organización de propagación'})
  const overrides=state.materialPlantUnits||[]
  const lots=[
   ...(state.grandmotherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,overrides})),
   ...(state.motherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,overrides}))
  ]
- return lots.filter(unit=>explicitOrganizationId(unit)===organizationId&&(!siteId||unit.siteId===siteId)&&(!activeOnly||!retiredStatuses.has(unit.status))&&(!eligibleOnly||propagationSourceEligibility(unit).eligible))
+ return lots.filter(unit=>{
+  if(explicitOrganizationId(unit)!==organizationId||Boolean(siteId&&unit.siteId!==siteId)||Boolean(activeOnly&&retiredStatuses.has(unit.status)))return false
+  if(!eligibleOnly)return true
+  const mipe=sourceMipeEligibility(state,unit,organizationId,at)
+  if(mipe.blocked)return false
+  const normalized=unit.operationalAvailability===legacyMipeBlockedAvailability?{...unit,operationalAvailability:PROPAGATION_SOURCE_AVAILABILITY}:unit
+  return propagationSourceEligibility(normalized).eligible
+ })
 }
 
 export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId='',sourceUnit=null,organizationId=''}){
@@ -49,7 +65,7 @@ export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose
  if(sourceUnit){
   const owner=explicitOrganizationId(sourceUnit)
   if(organizationId&&owner!==organizationId)throw new Error('La planta de origen pertenece a otra organización.')
-  const eligibility=propagationSourceEligibility(sourceUnit);if(!eligibility.eligible)throw new Error(`La planta no puede originar esquejes. ${eligibility.reason}`)
+  const eligibility=propagationSourceEligibility(sourceUnit);if(!eligibility.eligible&&sourceUnit.operationalAvailability!==legacyMipeBlockedAvailability)throw new Error(`La planta no puede originar esquejes. ${eligibility.reason}`)
  }
  if(purpose===PROPAGATION_PURPOSES.PRODUCTION&&productionLotId===null)throw new Error('El destino productivo no es válido.')
  return true
