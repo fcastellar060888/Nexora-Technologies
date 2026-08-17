@@ -71,11 +71,12 @@ export function availableMipeFindingTransitions(finding){
 export function transitionMipeFinding(finding,transitionName,{commandId,actor={},occurredAt,notes='',metadata={}}={}){
  const name=required(transitionName,'transition'),definition=TRANSITIONS[name]
  if(!definition)throw new Error(`La transición MIPE ${name} no existe.`)
+ const history=[...mipeFindingHistory(finding)],id=eventId(commandId,`transition:${name}`)
+ if(history.some(item=>item.id===id))return freeze(clone(finding))
  const state=required(finding?.status||MIPE_FINDING_STATES.DETECTED,'finding.status')
  if(TERMINAL.has(state))throw new Error(`El hallazgo MIPE está cerrado en ${state}.`)
  if(!definition.from.includes(state))throw new Error(`La transición ${name} no está permitida desde ${state}.`)
- const when=occurred(occurredAt||new Date().toISOString()),history=[...mipeFindingHistory(finding)],id=eventId(commandId,`transition:${name}`)
- if(history.some(item=>item.id===id))return freeze(clone(finding))
+ const when=occurred(occurredAt||new Date().toISOString())
  const previousTime=Date.parse(history.at(-1)?.occurredAt||0)
  if(Number.isFinite(previousTime)&&Date.parse(when)<previousTime)throw new Error('La transición MIPE no puede retroceder el tiempo del historial.')
  const event=freeze({id,type:'TRANSITION',transition:name,from:state,to:definition.to,occurredAt:when,actor:actorSnapshot(actor),notes:text(notes),metadata:freeze(clone(metadata||{}))})
@@ -85,11 +86,12 @@ export function transitionMipeFinding(finding,transitionName,{commandId,actor={}
 export function correctMipeFinding(finding,patch,{commandId,actor={},occurredAt,reason}={}){
  const correctionReason=required(reason,'El motivo de la corrección'),input=patch&&typeof patch==='object'&&!Array.isArray(patch)?patch:{}
  for(const key of Object.keys(input))if(FORBIDDEN_CORRECTION_FIELDS.has(key)||!CORRECTABLE_FIELDS.includes(key))throw new Error(`El campo ${key} no puede reescribirse mediante una corrección MIPE.`)
+ const history=[...mipeFindingHistory(finding)],id=eventId(commandId,'correction')
+ if(history.some(item=>item.id===id))return freeze(clone(finding))
  const changes={}
  for(const key of CORRECTABLE_FIELDS){if(input[key]===undefined)continue;const before=finding?.[key]??'',after=input[key]??'';if(JSON.stringify(before)!==JSON.stringify(after))changes[key]={before:clone(before),after:clone(after)}}
  if(!Object.keys(changes).length)throw new Error('La corrección MIPE no contiene cambios efectivos.')
- const when=occurred(occurredAt||new Date().toISOString()),history=[...mipeFindingHistory(finding)],id=eventId(commandId,'correction')
- if(history.some(item=>item.id===id))return freeze(clone(finding))
+ const when=occurred(occurredAt||new Date().toISOString())
  const previousTime=Date.parse(history.at(-1)?.occurredAt||0)
  if(Number.isFinite(previousTime)&&Date.parse(when)<previousTime)throw new Error('La corrección MIPE no puede retroceder el tiempo del historial.')
  const event=freeze({id,type:'CORRECTION',from:text(finding?.status),to:text(finding?.status),occurredAt:when,actor:actorSnapshot(actor),reason:correctionReason,changes:freeze(changes)})
