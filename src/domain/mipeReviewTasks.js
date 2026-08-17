@@ -2,6 +2,7 @@ const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 const organizationOf=value=>text(value?.organizationId||value?.companyId||value?._organizationId)
 const closedFindingStatuses=new Set(['Resuelto','Falso positivo','Planta eliminada'])
+const FOLLOW_UP_TYPE='Seguimiento'
 
 export const MIPE_REVIEW_TASK_STATUS=Object.freeze({
  PENDING:'Pendiente',
@@ -15,10 +16,15 @@ const validDate=value=>value&&!Number.isNaN(Date.parse(value))
 const timestamp=value=>validDate(value)?Date.parse(value):0
 const identity=(organizationId,id)=>`${text(organizationId)}\u0000${text(id)}`
 
-function sameTenant(left,right){const a=organizationOf(left),b=organizationOf(right);return!a||!b||a===b}
+function sameTenant(left,right){
+ const a=organizationOf(left),b=organizationOf(right)
+ if(a||b)return Boolean(a&&b&&a===b)
+ return true
+}
 
 export function interventionCompletesReview(intervention,source){
  if(!intervention||!source||text(intervention.id)===text(source.id))return false
+ if(text(intervention.type)!==FOLLOW_UP_TYPE)return false
  if(text(intervention.findingId)!==text(source.findingId)||!sameTenant(intervention,source))return false
  const sourceAt=timestamp(source.performedAt||source.createdAt),performedAt=timestamp(intervention.performedAt)
  return sourceAt>0&&performedAt>sourceAt
@@ -38,7 +44,7 @@ export function projectMipeReviewTasks(state,{now=new Date(),organizationId='',s
  const findingsByIdentity=new Map(),findingsById=new Map()
  for(const finding of list(state?.findings)){
   const id=text(finding?.id),owner=organizationOf(finding);if(!id)continue
-  if(owner)findingsByIdentity.set(identity(owner,id),finding)
+  if(owner){const key=identity(owner,id);if(findingsByIdentity.has(key))throw new Error(`Finding MIPE duplicado dentro de la empresa: ${id}.`);findingsByIdentity.set(key,finding)}
   findingsById.set(id,[...(findingsById.get(id)||[]),finding])
  }
  const interventions=list(state?.mipeInterventions)
