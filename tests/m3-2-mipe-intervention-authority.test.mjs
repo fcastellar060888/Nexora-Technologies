@@ -50,6 +50,16 @@ test('M32-F006: a follow-up performed before or exactly at due time completes th
  assert.equal(tasks[0].status,MIPE_REVIEW_TASK_STATUS.COMPLETED)
 })
 
+test('M32-F006: simultaneous interventions do not complete each other review obligations',()=>{
+ const source=createCanonicalMipeIntervention({finding:positionFinding,organizationId:'org-a',commandId:'same-source',occurredAt:'2026-08-17T08:00:00.000Z',input:{type:'Seguimiento',outcome:'Origen',nextReviewAt:'2026-08-17T09:00:00.000Z'}})
+ const simultaneous=createCanonicalMipeIntervention({finding:positionFinding,organizationId:'org-a',commandId:'same-peer',occurredAt:'2026-08-17T08:00:00.000Z',input:{type:'Seguimiento',outcome:'Registro simultáneo',nextReviewAt:'2026-08-18T09:00:00.000Z'}})
+ assert.equal(interventionCompletesReview(simultaneous,source),false)
+ assert.equal(interventionCompletesReview(source,simultaneous),false)
+ const tasks=projectMipeReviewTasks({findings:[positionFinding],mipeInterventions:[source,simultaneous]},{now:'2026-08-17T10:00:00.000Z'})
+ assert.equal(tasks.find(item=>item.interventionId==='same-source').status,MIPE_REVIEW_TASK_STATUS.OVERDUE)
+ assert.equal(tasks.find(item=>item.interventionId==='same-peer').status,MIPE_REVIEW_TASK_STATUS.PENDING)
+})
+
 test('M32-F006: review projection isolates same Finding id across organizations',()=>{
  const findingA={...positionFinding,id:'finding-shared'},findingB={...positionFinding,id:'finding-shared',organizationId:'org-b',siteId:'site-b',plantPositionId:'position-b',targetId:'position-b'}
  const sourceA=createCanonicalMipeIntervention({finding:findingA,organizationId:'org-a',commandId:'source-a',occurredAt:'2026-08-17T08:00:00.000Z',input:{type:'Seguimiento',outcome:'A',nextReviewAt:'2026-08-17T12:00:00.000Z'}})
