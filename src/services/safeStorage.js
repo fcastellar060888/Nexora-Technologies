@@ -4,13 +4,14 @@ import { getPersistenceDriver } from './persistenceDriver'
 import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
+import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
 import{cleanupLegacySeed}from'./legacySeedCleanup.js'
 import{quarantineLegacyInlineDocuments}from'./legacyInlineDocumentMigration.js'
 
 let lastObservedAuditId=''
 let persistenceRuntime=createPersistenceRuntime()
 const persistenceListeners=new Set()
-const normalizeState=value=>cleanupLegacySeed(migrateMaterialPlantIdentity(migrateState(value)))
+const normalizeState=value=>cleanupLegacySeed(migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState(value))))
 const preparePersistedState=value=>normalizeState(quarantineLegacyInlineDocuments(value))
 
 function cloneInitialState(){
