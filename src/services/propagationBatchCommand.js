@@ -1,6 +1,7 @@
 import{DomainEvents,publishDomainEvent}from'../core/events/index.js'
 import{geneticProfilesForOrganization}from'../domain/geneticProfile.js'
 import{lotCode}from'../domain/lifecycle.js'
+import{MIPE_RESTRICTED_OPERATIONS,assertMipeOperationAllowed}from'../domain/mipeOperationalRestrictions.js'
 import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'../domain/organizationOwnership.js'
 import{allocateUnitsToBank}from'../domain/propagationAllocation.js'
 import{createPurposeAwareBatch,PROPAGATION_PURPOSES,propagationSourceUnits}from'../domain/propagationPurpose.js'
@@ -25,6 +26,7 @@ export function preparePropagationBatch(state,input={}, {commandId,occurredAt=ne
  if(!bank||resolveOrganizationId(state,{record:bank,siteId,label:'el banco'})!==organizationId)throw new Error('El banco no pertenece a la sede y organización activas.')
  const source=propagationSourceUnits(state,{organizationId,siteId}).find(item=>item.id===sourcePlantId)
  if(!source)throw new Error('La planta de origen no es elegible dentro de la organización y sede activas.')
+ assertMipeOperationAllowed(state,{operation:MIPE_RESTRICTED_OPERATIONS.PROPAGATION_CUT,targetType:'MATERIAL_PLANT',targetId:source.id,organizationId,at:occurredAt})
  const resolvedGeneticId=geneticId||source.geneticId
  if(resolvedGeneticId!==source.geneticId)throw new Error('La genética del corte no coincide con la planta de origen.')
  const genetic=geneticProfilesForOrganization(state,organizationId).find(item=>item.id===resolvedGeneticId&&item.active)
