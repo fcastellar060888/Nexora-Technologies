@@ -1,6 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{DomainEvents}from'../src/core/events/eventCatalog.js'
+import{appendMaterialPlantFindings}from'../src/domain/materialPlantMipe.js'
 import{isFollowUpDue,scheduleTreatment}from'../src/domain/mipe.js'
 import{MIPE_OPERATIONS,executeMipeCommand}from'../src/services/mipeCommand.js'
 
@@ -17,6 +18,7 @@ function state(){return{
 }}
 function request(){return{operation:MIPE_OPERATIONS.CREATE_FINDING,input:{plantPositionId:'plant-a',incidentId:'incident-a',severity:3,notes:'Prueba commit-scope'},commandId:'cmd-mipe-commit-scope',occurredAt:'2026-08-17T19:58:00.000Z'}}
 function openFinding(){return{id:'finding-a',organizationId:'org-a',siteId:'site-a',plantPositionId:'plant-a',targetType:'POSITION',targetId:'plant-a',incidentId:'incident-a',severity:3,status:'Seguimiento',reportedAt:'2026-08-17T18:00:00.000Z',createdAt:'2026-08-17T18:00:00.000Z'}}
+function treatmentFinding(){return{...openFinding(),status:'Detectado'}}
 function product(){return{id:'product-a',organizationId:'org-a',siteId:'site-a',name:'Bio',category:'MIPE',active:true,unit:'mL',doseUnit:'mL/L',doseMin:1,doseMax:5,reentryHours:12,withdrawalDays:2,cost:10,technicalRevision:1}}
 
 test('F012: MIPE revalida permiso site-scoped entre requested y commit',async()=>{
@@ -71,7 +73,7 @@ test('F012: RECORD_INTERVENTION revalida que Finding siga abierto entre requeste
 })
 
 test('F012: SCHEDULE_TREATMENT no congela un Product que fue archivado después de requested',async()=>{
- let current={...state(),findings:[openFinding()],products:[product()]},events=[]
+ let current={...state(),findings:[treatmentFinding()],products:[product()]},events=[]
  const deps={
   publishEvent:async event=>{events.push(event);if(event.name===DomainEvents.CORE_OPERATION_REQUESTED)current={...current,products:current.products.map(item=>item.id==='product-a'?{...item,active:false,archivedAt:'2026-08-17T20:00:30.000Z'}:item)};return event},
   commit:recipe=>{current=recipe(current)}
@@ -81,6 +83,13 @@ test('F012: SCHEDULE_TREATMENT no congela un Product que fue archivado después 
  assert.equal(events.length,1)
  assert.deepEqual(current.treatments,[])
  assert.deepEqual(current.mipeCommandReceipts,[])
+})
+
+test('F012: helper material revalida Incident actual antes de anexar Findings',()=>{
+ const archived={...state(),incidents:[{id:'incident-a',organizationId:'org-a',name:'Botritis',active:false,archivedAt:'2026-08-17T20:00:30.000Z'}]}
+ const plant={id:'material-a',organizationId:'org-a',siteId:'site-a',plantType:'MOTHER',lotId:'mother-a',unitIndex:0,code:'M-A001'}
+ assert.throws(()=>appendMaterialPlantFindings(archived,[plant],{incidentId:'incident-a',type:'Botritis',severity:'Crítica',reportedAt:'2026-08-17T20:00:00.000Z'}),/incidencia.*archivada|no admite nuevos hallazgos/i)
+ assert.deepEqual(archived.findings,[])
 })
 
 test('F012: helper directo no programa Treatment ni seguimiento sobre Planta eliminada',()=>{
