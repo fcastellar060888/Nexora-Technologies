@@ -1,6 +1,6 @@
 import{DomainEvents}from'../core/events/eventCatalog.js'
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'../domain/materialPlantIdentity.js'
-import{appendMaterialPlantFindings,appendMipeIntervention,resolveMaterialPlantFinding}from'../domain/materialPlantMipe.js'
+import{appendMaterialPlantFindings,resolveMaterialPlantFinding}from'../domain/materialPlantMipe.js'
 import{executeTreatment,scheduleTreatment}from'../domain/mipe.js'
 import{
  MIPE_FINDING_STATES,
@@ -11,7 +11,7 @@ import{
  transitionMipeFinding,
  transitionNameForResolution
 }from'../domain/mipeFindingWorkflow.js'
-import{reassignMipeReviewTask}from'../domain/mipeReviewTasks.js'
+import{createCanonicalMipeIntervention,reassignCanonicalMipeIntervention}from'../domain/mipeInterventionAuthority.js'
 import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{findMipeRecord,scopeMipeState}from'../domain/mipeTenancy.js'
 import{activeUser,hasPermission}from'./permissions.js'
@@ -207,20 +207,28 @@ function planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt,
    return replaceFinding(executed,workflowFinding)
  })}
 }
-function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt){
- const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId)
- return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_RECORDED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,type:text(input.type),responsible:text(input.responsible),nextReviewAt:text(input.nextReviewAt)},apply:current=>{
-   const tenant=scopeMipeState(current,organizationId),before=new Set(list(tenant.mipeInterventions).map(item=>item.id)),next=appendMipeIntervention(tenant,{...input,findingId:finding.id,performedAt:input.performedAt||occurredAt})
-   const candidates=list(next.mipeInterventions).filter(item=>!before.has(item.id))
-   if(candidates.length!==1)throw new Error('La intervención MIPE no produjo una identidad única.')
-   const stamped=list(next.mipeInterventions).map(item=>item.id===candidates[0].id?{...item,id:aggregateId,organizationId}:item)
-   const merged=tenantMutation(current,organizationId,currentTenant=>({...currentTenant,mipeInterventions:stamped}))
-   return{...merged,plantEvents:next.plantEvents}
+function materialInterventionPlantEvent(finding,record,organizationId){
+ if(!text(finding?.materialPlantId))return null
+ const detail=record.type==='Tratamiento'?`${record.product||'Tratamiento'}${record.dose?` · ${record.dose}`:''}`:record.outcome||'Seguimiento registrado'
+ return Object.freeze({id:`${record.id}:plant-event`,organizationId,siteId:record.siteId||null,plantId:finding.materialPlantId,entityId:finding.materialPlantId,type:'MIPE',title:record.type==='Tratamiento'?'Tratamiento MIPE registrado':'Seguimiento MIPE registrado',detail,date:record.performedAt,createdAt:record.performedAt,source:'mipe-intervention-authority',findingId:finding.id,interventionId:record.id})
+}
+function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor){
+ const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId),treatmentId=text(input.treatmentId),treatment=treatmentId?activeRecord(state,'treatments',treatmentId,'tratamiento',organizationId):null
+ const record=createCanonicalMipeIntervention({finding,treatment,input,organizationId,commandId:aggregateId,actor:commandActor,occurredAt}),plantEvent=materialInterventionPlantEvent(finding,record,organizationId)
+ return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_RECORDED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,treatmentId:record.treatmentId,type:record.type,responsible:record.responsible,nextReviewAt:record.nextReviewAt,targetType:record.findingSnapshot.targetType,targetId:record.findingSnapshot.targetId},apply:current=>{
+   const merged=tenantMutation(current,organizationId,tenant=>{
+    if(tenant.mipeInterventions.some(item=>item.id===aggregateId))throw new Error('La intervención MIPE ya existe en la empresa activa.')
+    return{...tenant,mipeInterventions:[...tenant.mipeInterventions,record]}
+   })
+   if(!plantEvent)return merged
+   if(list(merged.plantEvents).some(item=>item.id===plantEvent.id))return merged
+   return{...merged,plantEvents:[...list(merged.plantEvents),plantEvent]}
  }}
 }
-function planReassignIntervention(state,input,aggregateId,organizationId){
+function planReassignIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor){
  const intervention=activeRecord(state,'mipeInterventions',aggregateId,'intervención',organizationId),finding=activeRecord(state,'findings',intervention.findingId,'hallazgo',organizationId),siteId=text(intervention.siteId||finding.siteId),responsible=required(input.responsible,'responsible')
- return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_REASSIGNED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,responsible},apply:current=>tenantMutation(current,organizationId,tenant=>reassignMipeReviewTask(tenant,{interventionId:aggregateId,responsible}))}
+ const preview=reassignCanonicalMipeIntervention(intervention,{responsible,commandId:input.commandId,actor:commandActor,occurredAt})
+ return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_REASSIGNED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,previousResponsible:text(intervention.responsible),responsible:preview.responsible},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,mipeInterventions:tenant.mipeInterventions.map(item=>item.id===aggregateId?reassignCanonicalMipeIntervention(item,{responsible,commandId:input.commandId,actor:commandActor,occurredAt}):item)}))}
 }
 
 function plan(state,{operation,input,aggregateId,organizationId,occurredAt,commandActor}){
@@ -234,8 +242,8 @@ function plan(state,{operation,input,aggregateId,organizationId,occurredAt,comma
  if(operation===MIPE_OPERATIONS.DELETE_FINDING)return planDeleteFinding(state,input,aggregateId,organizationId)
  if(operation===MIPE_OPERATIONS.SCHEDULE_TREATMENT)return planScheduleTreatment(state,input,aggregateId,organizationId,occurredAt,commandActor)
  if(operation===MIPE_OPERATIONS.EXECUTE_TREATMENT)return planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt,commandActor)
- if(operation===MIPE_OPERATIONS.RECORD_INTERVENTION)return planRecordIntervention(state,input,aggregateId,organizationId,occurredAt)
- if(operation===MIPE_OPERATIONS.REASSIGN_INTERVENTION)return planReassignIntervention(state,input,aggregateId,organizationId)
+ if(operation===MIPE_OPERATIONS.RECORD_INTERVENTION)return planRecordIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor)
+ if(operation===MIPE_OPERATIONS.REASSIGN_INTERVENTION)return planReassignIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor)
  throw new Error('Operación MIPE desconocida.')
 }
 
