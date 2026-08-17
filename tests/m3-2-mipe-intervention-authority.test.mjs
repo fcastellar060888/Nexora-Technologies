@@ -86,7 +86,7 @@ test('M32-F006: material intervention emits one deterministic plant event and re
  const h=harness()
  await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:'finding-mat',type:'Tratamiento',product:'Jabón potásico',dose:'5 mL/L',responsible:'Agrónomo A',nextReviewAt:'2026-08-18T10:00:00.000Z'},commandId:'cmd-mat',occurredAt:'2026-08-17T10:00:00.000Z'},h.deps)
  assert.equal(h.state.mipeInterventions.find(item=>item.id==='cmd-mat').findingSnapshot.targetType,'MATERIAL_PLANT')
- assert.equal(h.state.plantEvents.filter(item=>item.id==='cmd-mat:plant-event').length,1)
+ assert.equal(h.state.plantEvents.filter(item=>item.id==='org-a:cmd-mat:plant-event').length,1)
  const request={operation:MIPE_OPERATIONS.REASSIGN_INTERVENTION,entityId:'cmd-mat',input:{responsible:'Técnico B'},commandId:'cmd-reassign',occurredAt:'2026-08-17T11:00:00.000Z'}
  await executeMipeCommand(h.state,request,h.deps)
  let record=h.state.mipeInterventions.find(item=>item.id==='cmd-mat')
@@ -96,7 +96,7 @@ test('M32-F006: material intervention emits one deterministic plant event and re
  await executeMipeCommand(h.state,request,h.deps)
  record=h.state.mipeInterventions.find(item=>item.id==='cmd-mat')
  assert.equal(record.assignmentHistory.length,2)
- assert.equal(h.state.plantEvents.filter(item=>item.id==='cmd-mat:plant-event').length,1)
+ assert.equal(h.state.plantEvents.filter(item=>item.id==='org-a:cmd-mat:plant-event').length,1)
 })
 
 test('M32-F006: command boundary no longer imports legacy intervention mutation helpers',async()=>{
