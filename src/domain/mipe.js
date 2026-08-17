@@ -106,11 +106,11 @@ export function executeTreatment(state,input){
  if(!finding)throw new Error('El hallazgo asociado ya no existe.')
  const executedAt=input.executedAt||new Date().toISOString()
  const quantity=Number(treatment.totalQuantity)
- let next=transactInventory(state,{lotId:lot.id,type:'Consumo',quantity,date:executedAt.slice(0,10),createdAt:executedAt,sourceType:'MipeTreatment',sourceId:treatment.id,reference:`Tratamiento ${treatment.id}`,responsible:input.responsible||treatment.responsible,notes:input.notes||treatment.notes})
+ let next=transactInventory(state,{id:input.movementId,lotId:lot.id,type:'Consumo',quantity,date:executedAt.slice(0,10),createdAt:executedAt,sourceType:'MipeTreatment',sourceId:treatment.id,reference:`Tratamiento ${treatment.id}`,responsible:input.responsible||treatment.responsible,notes:input.notes||treatment.notes})
  const cost=quantity*Number(product.cost||0)
  const reentryUntil=addHours(executedAt,product.reentryHours||0)
  const harvestRestrictedUntil=addDays(executedAt,product.withdrawalDays||0)
- next={...next,treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),costEntries:[...(next.costEntries||[]),{id:input.costEntryId||crypto.randomUUID(),date:executedAt.slice(0,10),createdAt:executedAt,module:'MIPE',category:'Tratamiento',amount:cost,quantity,unit:product.unit,productId:product.id,inventoryLotId:lot.id,findingId:finding.id,treatmentId:treatment.id,siteId:lot.siteId,responsible:input.responsible||treatment.responsible,notes:input.notes||''}]}
+ next={...next,treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',siteId:input.siteId||x.siteId||finding.siteId||lot.siteId,lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),costEntries:[...(next.costEntries||[]),{id:input.costEntryId||crypto.randomUUID(),date:executedAt.slice(0,10),createdAt:executedAt,module:'MIPE',category:'Tratamiento',amount:cost,quantity,unit:product.unit,productId:product.id,inventoryLotId:lot.id,findingId:finding.id,treatmentId:treatment.id,siteId:input.siteId||lot.siteId,responsible:input.responsible||treatment.responsible,notes:input.notes||''}]}
  return next
 }
 
