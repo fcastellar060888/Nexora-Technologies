@@ -25,7 +25,7 @@ export function formatDateTime(value){
  return Number.isNaN(d.getTime())?String(value):d.toLocaleString('es-CO',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
 }
 export function isFollowUpDue(f){
- if(!f?.followUpDate||['Resuelto','Falso positivo'].includes(f.status))return false
+ if(!f?.followUpDate||['Resuelto','Falso positivo','Planta eliminada'].includes(f.status))return false
  const t=new Date();t.setHours(0,0,0,0);return new Date(f.followUpDate+'T00:00:00')<=t
 }
 
@@ -77,7 +77,7 @@ export function activePlantRestrictions(state,plantId,at=new Date().toISOString(
 export function scheduleTreatment(state,input){
  const finding=(state.findings||[]).find(x=>x.id===input.findingId)
  if(!finding)throw new Error('Selecciona un hallazgo válido.')
- if(['Resuelto','Falso positivo'].includes(finding.status))throw new Error('No puedes programar un tratamiento para un hallazgo cerrado.')
+ if(['Resuelto','Falso positivo','Planta eliminada'].includes(finding.status))throw new Error('No puedes programar un tratamiento para un hallazgo cerrado.')
  const product=(state.products||[]).find(x=>x.id===input.productId)
  if(!product)throw new Error('Selecciona un producto válido.')
  const totalQuantity=calculateTreatmentQuantity(input.dose,input.doseUnit,input.mixVolume)
