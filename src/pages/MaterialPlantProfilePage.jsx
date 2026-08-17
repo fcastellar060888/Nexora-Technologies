@@ -13,6 +13,7 @@ import{useStore}from'../services/store.jsx'
 const indicator=(passport,key)=>passport?.indicators.find(item=>item.key===key)?.value||0
 const formatDate=value=>value?new Intl.DateTimeFormat('es-CO',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—'
 const materialContextKey=value=>[value?.organizationId||value?.companyId||'',value?.siteId||'',value?.geneticId||'',value?.houseId||'',value?.bedId||'',value?.plantId||''].join(':')
+const MIPE_GRAPH_TYPES=new Set(['mipe.finding','mipe.incident','mipe.intervention','mipe.treatment','inventory.product','inventory.lot','mipe.restriction','mipe.resolution'])
 
 export default function MaterialPlantProfilePage(){
  const{plantId}=useParams(),{state,update}=useStore()
@@ -28,12 +29,13 @@ export default function MaterialPlantProfilePage(){
  const plantTypeValue=identity.plantType||authorizedUnit.plantType,plantType=plantTypeValue===MATERIAL_PLANT_TYPES.GRANDMOTHER?'Abuela':'Madre'
  const site=options.sites.find(item=>item.id===object.siteId),genetic=options.genetics.find(item=>item.id===attributes.geneticId)
  const lotCode=authorizedUnit.sourceLot?.lotCode||authorizedUnit.sourceLot?.code||identity.lotId||'—'
+ const domainRelationships=passport.relationships.filter(item=>!MIPE_GRAPH_TYPES.has(item.targetType))
  return <>
   <PageHeader eyebrow="Passport universal" title={object.label} subtitle={`${plantType} · ${genetic?.name||attributes.geneticName||'Sin genética'} · ${site?.name||'Sin sede'}`}/>
   <div className="kpi-grid"><Card className="kpi-card"><span>Estado</span><strong>{object.status}</strong></Card><Card className="kpi-card"><span>Disponibilidad</span><strong>{attributes.operationalAvailability||'Disponible para corte'}</strong></Card><Card className="kpi-card"><span>Apta para corte</span><strong>{indicator(passport,'available_for_cutting')?'Sí':'No'}</strong></Card><Card className="kpi-card"><span>MIPE abiertos</span><strong>{indicator(passport,'open_mipe_findings')}</strong></Card></div>
   <div className="content-grid two">
    <Card title="Ficha integral" subtitle={`Passport ${passport.passportId}`}><div className="detail-grid"><div><span>Tipo</span><strong>{plantType}</strong></div><div><span>Lote</span><strong>{lotCode}</strong></div><div><span>Genética</span><strong>{genetic?.name||attributes.geneticName||'—'}</strong></div><div><span>Sede</span><strong>{site?.name||'—'}</strong></div><div><span>Sanidad</span><strong>{attributes.healthStatus||'—'}</strong></div><div><span>Descendientes</span><strong>{indicator(passport,'descendants')}</strong></div></div><AttachmentUploader entityType="materialPlant" entityId={plantId} label="Agregar foto, video o PDF"/></Card>
-   <Card title="Relaciones"><div className="drawer-findings"><h4><Link2 size={17}/> Relaciones del dominio</h4>{passport.relationships.length?passport.relationships.map(item=><p key={`${item.type}:${item.targetId}`}><strong>{item.type.replaceAll('_',' ')}:</strong> {item.label}</p>):<p className="muted">Sin relaciones registradas.</p>}</div></Card>
+   <Card title="Relaciones vegetales"><div className="drawer-findings"><h4><Link2 size={17}/> Linaje y ubicación</h4>{domainRelationships.length?domainRelationships.map(item=><p key={`${item.type}:${item.targetType}:${item.targetId}`}><strong>{item.type.replaceAll('_',' ')}:</strong> {item.label}</p>):<p className="muted">Sin relaciones vegetales registradas.</p>}</div></Card>
   </div>
   <MipeKnowledgeGraphCard passport={passport}/>
   {passport.risks.length>0&&<Card title="Riesgos y MIPE"><div className="drawer-findings"><h4><AlertTriangle size={17}/> Riesgos activos</h4>{passport.risks.map(item=><article key={item.id}><strong>{item.label}</strong><span>{item.status} · Severidad {item.severity||'—'}</span>{item.notes&&<p>{item.notes}</p>}</article>)}</div></Card>}
