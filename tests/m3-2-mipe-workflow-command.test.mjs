@@ -37,6 +37,18 @@ test('M32-F005: correction records before/after and preserves original date and 
  assert.deepEqual(verifyMipeFindingHistory(corrected),{valid:true,errors:[]})
 })
 
+test('M32-F005: identical correction replay is idempotent after the first effect changed current state',async()=>{
+ const h=harness();const original=await createFinding(h),request={operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:original.id,input:{severity:3,notes:'Confirmado',correctionReason:'Verificación microscópica'},commandId:'cmd-correct-replay',occurredAt:'2026-08-17T02:00:00.000Z'}
+ await executeMipeCommand(h.state,request,h.deps)
+ const historyLength=h.state.findings[0].mipeHistory.length,receiptCount=h.state.mipeCommandReceipts.length
+ await executeMipeCommand(h.state,request,h.deps)
+ assert.equal(h.state.findings[0].severity,3)
+ assert.equal(h.state.findings[0].notes,'Confirmado')
+ assert.equal(h.state.findings[0].mipeHistory.length,historyLength)
+ assert.equal(h.state.mipeCommandReceipts.length,receiptCount)
+ assert.equal(h.state.findings[0].mipeHistory.filter(item=>item.id==='cmd-correct-replay:correction').length,1)
+})
+
 test('M32-F005: forbidden correction keys fail closed before requested event or receipt',async()=>{
  const h=harness();const original=await createFinding(h),before=h.events.length,receiptCount=h.state.mipeCommandReceipts.length
  await assert.rejects(()=>executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:original.id,input:{severity:3,status:'Resuelto',createdAt:'2020-01-01',correctionReason:'Payload hostil'},commandId:'cmd-forbidden',occurredAt:'2026-08-17T02:00:00.000Z'},h.deps),/no puede reescribirse/)
