@@ -10,7 +10,9 @@ const CLOSED_FINDING_STATES=new Set(['Resuelto','Falso positivo','Planta elimina
 export const MIPE_INTERVENTION_TYPES=Object.freeze({TREATMENT:'Tratamiento',FOLLOW_UP:'Seguimiento'})
 
 function targetSnapshot(finding){
- const materialPlantId=text(finding?.materialPlantId),plantPositionId=text(finding?.plantPositionId||finding?.targetId)
+ const declared=text(finding?.targetType).toUpperCase(),targetId=text(finding?.targetId),materialPlantId=text(finding?.materialPlantId),plantPositionId=text(finding?.plantPositionId)
+ if(declared==='MATERIAL_PLANT'&&(materialPlantId||targetId)){const id=materialPlantId||targetId;return deepFreeze({targetType:'MATERIAL_PLANT',targetId:id,materialPlantId:id})}
+ if(declared==='POSITION'&&(plantPositionId||targetId)){const id=plantPositionId||targetId;return deepFreeze({targetType:'POSITION',targetId:id,plantPositionId:id})}
  if(materialPlantId)return deepFreeze({targetType:'MATERIAL_PLANT',targetId:materialPlantId,materialPlantId})
  if(plantPositionId)return deepFreeze({targetType:'POSITION',targetId:plantPositionId,plantPositionId})
  throw new Error('El Finding de la intervención MIPE no tiene un target operativo inequívoco.')
@@ -36,6 +38,7 @@ export function createCanonicalMipeIntervention({finding,treatment=null,input={}
  const owner=required(organizationId,'organizationId'),id=required(commandId,'commandId')
  assertFinding(finding,owner)
  const siteId=required(finding.siteId,'finding.siteId'),linkedTreatment=assertTreatment(treatment,finding,owner,siteId)
+ if(text(input.treatmentId)&&!linkedTreatment)throw new Error('La intervención referencia un Treatment no verificado.')
  const type=required(input.type,'type')
  if(!Object.values(MIPE_INTERVENTION_TYPES).includes(type))throw new Error(`Tipo de intervención MIPE no soportado: ${type}`)
  const performedAt=iso(input.performedAt||occurredAt,'performedAt'),findingStart=Date.parse(finding.reportedAt||finding.createdAt||'')
@@ -44,9 +47,9 @@ export function createCanonicalMipeIntervention({finding,treatment=null,input={}
  if(nextReviewAt&&Date.parse(nextReviewAt)<Date.parse(performedAt))throw new Error('La próxima revisión MIPE no puede preceder la intervención.')
  const outcome=text(input.outcome)
  if(type===MIPE_INTERVENTION_TYPES.FOLLOW_UP&&!outcome)throw new Error('El seguimiento MIPE requiere un resultado.')
- const product=text(input.product),dose=text(input.dose),treatmentId=text(linkedTreatment?.id||input.treatmentId)
+ const product=text(input.product),dose=text(input.dose),treatmentId=text(linkedTreatment?.id)
  if(type===MIPE_INTERVENTION_TYPES.TREATMENT&&!treatmentId&&!product)throw new Error('La intervención de tratamiento requiere Treatment canónico o producto documentado.')
- const responsible=text(input.responsible),when=iso(occurredAt||performedAt,'occurredAt'),target=targetSnapshot(finding)
+ const responsible=text(input.responsible)||text(actor?.name)||'Sistema',when=iso(occurredAt||performedAt,'occurredAt'),target=targetSnapshot(finding)
  const record={
   id,organizationId:owner,siteId,findingId:text(finding.id),treatmentId:treatmentId||null,type,responsible,product:product||null,dose:dose||null,outcome:outcome||null,notes:text(input.notes),performedAt,nextReviewAt:nextReviewAt||null,
   findingSnapshot:{id:text(finding.id),status:text(finding.status),severity:finding.severity??null,incidentId:text(finding.incidentId)||null,...target},
