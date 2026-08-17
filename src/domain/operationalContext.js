@@ -9,6 +9,11 @@ const terminalFinding = status => ['Resuelto', 'Falso positivo', 'Planta elimina
 
 export const OPERATIONAL_CONTEXT_FIELDS = Object.freeze(['companyId', 'siteId', 'houseId', 'bedId', 'plantId'])
 
+const INDIRECT_GEOGRAPHY_REFERENCES = Object.freeze({
+  inventoryMovements: Object.freeze([Object.freeze(['inventoryLots', 'lotId', 'lote de inventario'])]),
+  workOrders: Object.freeze([Object.freeze(['tankPreparations', 'preparationId', 'preparación de tanque'])])
+})
+
 function activeUserId(state) {
   const activeUsers = list(state?.users).filter(item => item?.activeSession && item?.active !== false)
   if (activeUsers.length > 1) throw new Error('La sesión activa es ambigua; existen múltiples usuarios activos.')
@@ -180,31 +185,106 @@ function scopeDirect(state, key, organizationId, allowedSiteIds) {
   return list(state?.[key]).filter(record => directRecordBelongs(state, record, organizationId, allowedSiteIds))
 }
 
-function operationalRecordMatchesScope(state, record, organizationId, { siteIds, houseIds, bedIds, plantIds }) {
-  const plantId = text(record?.plantPositionId || record?.plantId)
-  if (plantId) {
-    const plant = uniqueById(recordsForOrganization(state, 'plantPositions', organizationId), plantId, 'La planta del registro contextual')
-    return Boolean(plant) && plantIds.has(text(plant.id))
+function hierarchyReference(state, collection, id, organizationId, label) {
+  return uniqueById(recordsForOrganization(state, collection, organizationId), id, label)
+}
+
+function canonicalSiteForHouse(state, houseId, organizationId) {
+  const house = hierarchyReference(state, 'houses', houseId, organizationId, 'La nave del registro contextual')
+  if (!house) return null
+  const siteId = text(house?.siteId)
+  const site = siteId ? hierarchyReference(state, 'sites', siteId, organizationId, 'La sede de la nave contextual') : null
+  if (!site) return null
+  return { siteId: text(site.id), houseId: text(house.id) }
+}
+
+function canonicalSiteForBed(state, bedId, organizationId) {
+  const bed = hierarchyReference(state, 'beds', bedId, organizationId, 'La cama del registro contextual')
+  if (!bed) return null
+  const lineage = canonicalSiteForHouse(state, bed?.houseId, organizationId)
+  if (!lineage) return null
+  const declaredSiteId = text(bed?.siteId)
+  if (declaredSiteId && declaredSiteId !== lineage.siteId) return null
+  return { ...lineage, bedId: text(bed.id) }
+}
+
+function canonicalSiteForPlant(state, plantId, organizationId) {
+  const plant = hierarchyReference(state, 'plantPositions', plantId, organizationId, 'La planta del registro contextual')
+  if (!plant) return null
+  const lineage = canonicalSiteForBed(state, plant?.bedId, organizationId)
+  if (!lineage) return null
+  const declaredHouseId = text(plant?.houseId)
+  const declaredSiteId = text(plant?.siteId)
+  if (declaredHouseId && declaredHouseId !== lineage.houseId) return null
+  if (declaredSiteId && declaredSiteId !== lineage.siteId) return null
+  return { ...lineage, plantId: text(plant.id) }
+}
+
+function directGeographyEvidence(state, record, organizationId, { siteIds, houseIds, bedIds, plantIds }) {
+  const evidence = []
+  const directSiteId = text(record?.siteId)
+  const directHouseId = text(record?.houseId)
+  const directBedId = text(record?.bedId)
+  const plantId = text(record?.plantId)
+  const plantPositionId = text(record?.plantPositionId)
+
+  if (plantId && plantPositionId && plantId !== plantPositionId) return { valid: false, hasGeography: true, siteIds: [] }
+
+  if (directSiteId) {
+    const site = hierarchyReference(state, 'sites', directSiteId, organizationId, 'La sede del registro contextual')
+    if (!site || !siteIds.has(text(site.id))) return { valid: false, hasGeography: true, siteIds: [] }
+    evidence.push(text(site.id))
   }
 
-  const bedId = text(record?.bedId)
-  if (bedId) {
-    const bed = uniqueById(recordsForOrganization(state, 'beds', organizationId), bedId, 'La cama del registro contextual')
-    return Boolean(bed) && bedIds.has(text(bed.id))
+  if (directHouseId) {
+    const lineage = canonicalSiteForHouse(state, directHouseId, organizationId)
+    if (!lineage || !houseIds.has(lineage.houseId)) return { valid: false, hasGeography: true, siteIds: [] }
+    evidence.push(lineage.siteId)
   }
 
-  const houseId = text(record?.houseId)
-  if (houseId) {
-    const house = uniqueById(recordsForOrganization(state, 'houses', organizationId), houseId, 'La nave del registro contextual')
-    return Boolean(house) && houseIds.has(text(house.id))
+  if (directBedId) {
+    const lineage = canonicalSiteForBed(state, directBedId, organizationId)
+    if (!lineage || !bedIds.has(lineage.bedId)) return { valid: false, hasGeography: true, siteIds: [] }
+    evidence.push(lineage.siteId)
   }
 
-  const siteId = text(record?.siteId)
-  if (siteId) {
-    const site = uniqueById(recordsForOrganization(state, 'sites', organizationId), siteId, 'La sede del registro contextual')
-    return Boolean(site) && siteIds.has(text(site.id))
+  const effectivePlantId = plantPositionId || plantId
+  if (effectivePlantId) {
+    const lineage = canonicalSiteForPlant(state, effectivePlantId, organizationId)
+    if (!lineage || !plantIds.has(lineage.plantId)) return { valid: false, hasGeography: true, siteIds: [] }
+    evidence.push(lineage.siteId)
   }
 
+  const resolvedSites = [...new Set(evidence)]
+  if (resolvedSites.length > 1) return { valid: false, hasGeography: true, siteIds: resolvedSites }
+  return { valid: true, hasGeography: evidence.length > 0, siteIds: resolvedSites }
+}
+
+function indirectGeographyEvidence(state, collection, record, organizationId, hierarchyScope) {
+  const evidence = []
+  let hasGeography = false
+  for (const [targetCollection, field, label] of INDIRECT_GEOGRAPHY_REFERENCES[collection] || []) {
+    const referenceId = text(record?.[field])
+    if (!referenceId) continue
+    hasGeography = true
+    const target = hierarchyReference(state, targetCollection, referenceId, organizationId, `La ${label} del registro contextual`)
+    if (!target) return { valid: false, hasGeography: true, siteIds: [] }
+    const targetEvidence = directGeographyEvidence(state, target, organizationId, hierarchyScope)
+    if (!targetEvidence.valid || !targetEvidence.hasGeography) return { valid: false, hasGeography: true, siteIds: [] }
+    evidence.push(...targetEvidence.siteIds)
+  }
+  const resolvedSites = [...new Set(evidence)]
+  if (resolvedSites.length > 1) return { valid: false, hasGeography: true, siteIds: resolvedSites }
+  return { valid: true, hasGeography, siteIds: resolvedSites }
+}
+
+function operationalRecordMatchesScope(state, collection, record, organizationId, hierarchyScope) {
+  const direct = directGeographyEvidence(state, record, organizationId, hierarchyScope)
+  if (!direct.valid) return false
+  const indirect = indirectGeographyEvidence(state, collection, record, organizationId, hierarchyScope)
+  if (!indirect.valid) return false
+  const resolvedSites = [...new Set([...direct.siteIds, ...indirect.siteIds])]
+  if (resolvedSites.length > 1) return false
   return true
 }
 
@@ -277,7 +357,7 @@ export function scopeOperationalState(state, requested = state?.currentContext |
   for (const key of ['propagationBanks', 'propagationUnits', 'genetics', 'products', 'inventoryLots', 'inventoryMovements', 'workOrders', 'costEntries']) {
     if (Array.isArray(state?.[key])) {
       scoped[key] = recordsForOrganization(state, key, organizationId)
-        .filter(record => operationalRecordMatchesScope(state, record, organizationId, hierarchyScope))
+        .filter(record => operationalRecordMatchesScope(state, key, record, organizationId, hierarchyScope))
     }
   }
 
@@ -285,14 +365,14 @@ export function scopeOperationalState(state, requested = state?.currentContext |
     if (Array.isArray(state?.[key])) {
       scoped[key] = list(state[key])
         .filter(record => mipeRecordOrganizationId(state, key, record) === organizationId)
-        .filter(record => operationalRecordMatchesScope(state, record, organizationId, hierarchyScope))
+        .filter(record => operationalRecordMatchesScope(state, key, record, organizationId, hierarchyScope))
     }
   }
 
   for (const key of ['propagationBatches', 'mapElements', 'facilityAreas', 'operationalAreas', 'finishedGoods', 'finishedGoodsMovements', 'sales', 'customers', 'phaseTransitions', 'plantEvents']) {
     if (Array.isArray(state?.[key])) {
       scoped[key] = scopeDirect(state, key, organizationId, allAuthorizedSiteIds)
-        .filter(record => operationalRecordMatchesScope(state, record, organizationId, hierarchyScope))
+        .filter(record => operationalRecordMatchesScope(state, key, record, organizationId, hierarchyScope))
     }
   }
 
