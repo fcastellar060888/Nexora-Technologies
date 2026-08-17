@@ -96,3 +96,13 @@ test('M32-F003: treatment execution mutates only active tenant and replay does n
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,9800)
  assert.equal(h.state.inventoryMovements.filter(item=>item.organizationId==='org-a').length,1)
 })
+
+test('M32-F003: intervention command resolves the active-tenant finding before invoking legacy helper',async()=>{
+ const h=harness(baseState())
+ await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:'finding-shared',type:'Seguimiento',responsible:'Operador',outcome:'Disminuyó la incidencia',nextReviewAt:'2026-08-18T10:00:00.000Z'},commandId:'cmd-intervention',occurredAt:'2026-08-17T10:00:00.000Z'},h.deps)
+ assert.equal(h.state.mipeInterventions.length,1)
+ assert.equal(h.state.mipeInterventions[0].id,'cmd-intervention')
+ assert.equal(h.state.mipeInterventions[0].organizationId,'org-a')
+ assert.equal(h.state.mipeInterventions[0].findingId,'finding-shared')
+ assert.equal(h.events.at(-1).name,DomainEvents.MIPE_INTERVENTION_RECORDED)
+})
