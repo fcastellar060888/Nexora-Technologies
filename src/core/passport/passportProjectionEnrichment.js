@@ -12,16 +12,17 @@ function hasIrrigationMirfeEvidence(projection){
  const summary=projection?.summary||{}
  return['assignmentIds','pulseIds','measurementIds','drainageMeasurementIds','applicationIds','preparationIds','formulaIds','inventoryLotIds'].some(key=>list(summary[key]).length>0)
 }
-function addMipeTrace(state,object,source,{targetType,includeTreatmentTimeline=false}={}){
+function addMipeTrace(state,object,source,{targetType,includeTreatmentTimeline=false,replaceLegacyTreatmentTimeline=false}={}){
  const trace=projectMipePassportTrace(state,{organizationId:text(object.organizationId),targetType,targetId:text(object.objectId),includeTreatmentTimeline})
- return{...source,relationships:[...list(source?.relationships),...trace.relationships],indicators:[...list(source?.indicators),...trace.indicators],timeline:[...list(source?.timeline),...trace.timeline]}
+ const baseTimeline=replaceLegacyTreatmentTimeline?list(source?.timeline).filter(item=>!text(item?.id).startsWith('treatment:')):list(source?.timeline)
+ return{...source,relationships:[...list(source?.relationships),...trace.relationships],indicators:[...list(source?.indicators),...trace.indicators],timeline:[...baseTimeline,...trace.timeline]}
 }
 function enrichCultivationPlant(input,source){
  const object=input?.object,state=input?.state
  if(object?.objectType!=='cultivation.plant'||!state)return source
  const organizationId=text(object.organizationId),plant={id:text(object.objectId),trayId:text(object?.identity?.trayId),createdAt:object.createdAt||null},location=cultivationLocation(source,object),irrigationMirfe=projectPlantIrrigationMirfe(state,{plant,location,organizationId})
  const enriched=hasIrrigationMirfeEvidence(irrigationMirfe)?{...source,relationships:[...list(source?.relationships),...projectIrrigationMirfeRelationships(irrigationMirfe,organizationId)],indicators:[...list(source?.indicators),...projectIrrigationMirfeIndicators(irrigationMirfe)],timeline:[...list(source?.timeline),...projectIrrigationMirfeTimeline(irrigationMirfe)]}:source
- return addMipeTrace(state,object,enriched,{targetType:'POSITION'})
+ return addMipeTrace(state,object,enriched,{targetType:'POSITION',includeTreatmentTimeline:true,replaceLegacyTreatmentTimeline:true})
 }
 function enrichMaterialPlant(input,source){
  const object=input?.object,state=input?.state
