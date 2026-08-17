@@ -82,9 +82,9 @@ test('M32-F006: command records canonical POSITION follow-up without bogus mater
  assert.equal(h.state.plantEvents.length,0)
 })
 
-test('M32-F006: material intervention emits one deterministic plant event and reassignment is append-only/replay-safe',async()=>{
+test('M32-F006: material follow-up emits one deterministic plant event and reassignment is append-only/replay-safe',async()=>{
  const h=harness()
- await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:'finding-mat',type:'Tratamiento',product:'Jabón potásico',dose:'5 mL/L',responsible:'Agrónomo A',nextReviewAt:'2026-08-18T10:00:00.000Z'},commandId:'cmd-mat',occurredAt:'2026-08-17T10:00:00.000Z'},h.deps)
+ await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.RECORD_INTERVENTION,input:{findingId:'finding-mat',type:'Seguimiento',outcome:'Sin nuevas lesiones',responsible:'Agrónomo A',nextReviewAt:'2026-08-18T10:00:00.000Z'},commandId:'cmd-mat',occurredAt:'2026-08-17T10:00:00.000Z'},h.deps)
  assert.equal(h.state.mipeInterventions.find(item=>item.id==='cmd-mat').findingSnapshot.targetType,'MATERIAL_PLANT')
  assert.equal(h.state.plantEvents.filter(item=>item.id==='org-a:cmd-mat:plant-event').length,1)
  const request={operation:MIPE_OPERATIONS.REASSIGN_INTERVENTION,entityId:'cmd-mat',input:{responsible:'Técnico B'},commandId:'cmd-reassign',occurredAt:'2026-08-17T11:00:00.000Z'}
@@ -108,7 +108,7 @@ test('M32-F006: command boundary no longer imports legacy intervention mutation 
 })
 
 test('M32-F006: direct reassignment authority is idempotent by assignment event id',()=>{
- const base=createCanonicalMipeIntervention({finding:materialFinding,organizationId:'org-a',commandId:'int-base',actor:{id:'u1'},occurredAt:'2026-08-17T10:00:00.000Z',input:{type:'Tratamiento',product:'Aceite',responsible:'A'}})
+ const base=createCanonicalMipeIntervention({finding:materialFinding,organizationId:'org-a',commandId:'int-base',actor:{id:'u1'},occurredAt:'2026-08-17T10:00:00.000Z',input:{type:'Seguimiento',outcome:'Estable',responsible:'A'}})
  const first=reassignCanonicalMipeIntervention(base,{responsible:'B',commandId:'reassign-1',actor:{id:'u2'},occurredAt:'2026-08-17T11:00:00.000Z'})
  const replay=reassignCanonicalMipeIntervention(first,{responsible:'B',commandId:'reassign-1',actor:{id:'u2'},occurredAt:'2026-08-17T09:00:00.000Z'})
  assert.equal(replay.assignmentHistory.length,2)
