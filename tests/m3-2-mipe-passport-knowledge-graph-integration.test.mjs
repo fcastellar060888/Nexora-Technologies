@@ -4,7 +4,7 @@ import{createCultivationPlantPassportFromState}from'../src/core/passport/cultiva
 import{createMaterialPlantPassportFromState}from'../src/core/passport/materialPlantPassport.js'
 
 function state(){
- const finding=(id,targetType,targetId)=>({id,organizationId:'org-a',siteId:'site-a',targetType,targetId,...(targetType==='POSITION'?{plantPositionId:targetId}:{materialPlantId:targetId}),incidentId:'incident-a',severity:2,status:'Seguimiento',reportedAt:'2026-08-17T10:00:00.000Z',mipeHistory:[{id:`${id}:created`,type:'CREATED',from:null,to:'Detectado',occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'u1',name:'Operario'},metadata:{}},{id:`${id}:follow`,type:'TRANSITION',transition:'START_FOLLOW_UP',from:'En tratamiento',to:'Seguimiento',occurredAt:'2026-08-17T11:00:00.000Z',actor:{id:'u1',name:'Operario'},metadata:{}}],mipeHistoryVersion:2})
+ const finding=(id,targetType,targetId)=>({id,organizationId:'org-a',siteId:'site-a',targetType,targetId,...(targetType==='POSITION'?{plantPositionId:targetId}:{materialPlantId:targetId}),incidentId:'incident-a',severity:2,status:'Seguimiento',reportedAt:'2026-08-17T10:00:00.000Z',mipeHistory:[{id:`${id}:import`,type:'IMPORTED',from:null,to:'Seguimiento',occurredAt:'2026-08-17T11:00:00.000Z',actor:{id:'legacy-import',name:'Migración legacy'},metadata:{legacyImported:true}}],mipeHistoryVersion:1})
  const treatment=(id,findingId)=>({id,organizationId:'org-a',siteId:'site-a',findingId,productId:'product-a',lotId:'inventory-lot-a',status:'Ejecutado',dose:1,doseUnit:'mL/L',mixVolume:10,totalQuantity:10,inventoryUnit:'mL',executedAt:'2026-08-17T11:30:00.000Z',reentryUntil:'2026-08-17T23:30:00.000Z',harvestRestrictedUntil:'2026-08-19T11:30:00.000Z',productSnapshot:{name:'Producto congelado',unit:'mL',doseUnit:'mL/L',reentryHours:12,withdrawalDays:2,cost:7}})
  return{
   currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a',name:'A'}],
@@ -23,22 +23,16 @@ function state(){
 function assertTrace(passport,treatmentId){
  const targetTypes=new Set(passport.relationships.map(item=>item.targetType))
  for(const expected of['mipe.finding','mipe.incident','mipe.treatment','inventory.product','inventory.lot','mipe.restriction'])assert.ok(targetTypes.has(expected),`Falta ${expected}`)
- const treatment=passport.relationships.find(item=>item.targetType==='mipe.treatment'&&item.targetId===treatmentId)
- assert.equal(treatment.label,'Producto congelado')
- const product=passport.relationships.find(item=>item.targetType==='inventory.product')
- assert.equal(product.label,'Producto congelado')
+ const treatment=passport.relationships.find(item=>item.targetType==='mipe.treatment'&&item.targetId===treatmentId);assert.equal(treatment.label,'Producto congelado')
+ const product=passport.relationships.find(item=>item.targetType==='inventory.product');assert.equal(product.label,'Producto congelado')
  assert.ok(passport.timeline.some(item=>item.id===`mipekg:treatment:${treatmentId}`&&item.title==='Producto congelado'))
  assert.ok(passport.relationships.every(item=>item.targetOrganizationId==='org-a'))
 }
 
 test('F011: Passport de Position integra Knowledge Graph MIPE y reemplaza el nombre mutable del Treatment',()=>{
- const passport=createCultivationPlantPassportFromState(state(),{plantId:'plant-a'})
- assertTrace(passport,'treatment-pos')
- assert.equal(passport.timeline.some(item=>item.id==='treatment:treatment-pos'),false)
+ const passport=createCultivationPlantPassportFromState(state(),{plantId:'plant-a'});assertTrace(passport,'treatment-pos');assert.equal(passport.timeline.some(item=>item.id==='treatment:treatment-pos'),false)
 })
 
 test('F011: Passport de Madre/Abuela integra el mismo Knowledge Graph causal',()=>{
- const passport=createMaterialPlantPassportFromState(state(),{unitId:'material-a'})
- assertTrace(passport,'treatment-mat')
- assert.equal(passport.object.objectType,'cultivation.materialplant')
+ const passport=createMaterialPlantPassportFromState(state(),{unitId:'material-a'});assertTrace(passport,'treatment-mat');assert.equal(passport.object.objectType,'cultivation.materialplant')
 })
