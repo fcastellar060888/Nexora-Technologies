@@ -1,7 +1,8 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{MIPE_OPERATIONS,executeMipeCommand}from'../src/services/mipeCommand.js'
-import{mipeRecordOrganizationId}from'../src/domain/mipeTenancy.js'
+import{mipeRecordOrganizationId,scopeMipeState}from'../src/domain/mipeTenancy.js'
+import{applyRemoteRecords}from'../src/services/syncEngine.js'
 
 function spoofedState(){return{
  currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a'}],
@@ -56,4 +57,24 @@ test('F012: Treatment e Intervention same-tenant deben conservar la misma sede d
  assert.equal(mipeRecordOrganizationId(state,'treatments',treatment),'')
  const intervention={id:'intervention-spoof',organizationId:'org-a',siteId:'site-a',findingId:'finding-b',treatmentId:'treatment-b',type:'Seguimiento'}
  assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',intervention),'')
+})
+
+test('F012: Treatment explícito sin Finding causal queda en cuarentena aunque Product y sede sean válidos',()=>{
+ const state=causalState(),record={id:'treatment-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-missing',productId:'product-b',lotId:'lot-b',status:'Ejecutado'}
+ assert.equal(mipeRecordOrganizationId(state,'treatments',record),'')
+})
+
+test('F012: Intervention explícita requiere Finding y Treatment cuando su tipo es Tratamiento',()=>{
+ const state=causalState()
+ assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',{id:'intervention-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-missing',type:'Seguimiento'}),'')
+ assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',{id:'intervention-treatment-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-b',type:'Tratamiento'}),'')
+})
+
+test('F012: applyRemoteRecords puede conservar evidencia hostil raw, pero scope MIPE nunca la expone',()=>{
+ const state=causalState(),payload={id:'finding-remote-spoof',organizationId:'org-a',siteId:'site-a',targetType:'POSITION',targetId:'plant-b',plantPositionId:'plant-b',incidentId:'incident-a',status:'Detectado'}
+ const hydrated=applyRemoteRecords(state,[{companyId:'org-a',collection:'findings',recordId:payload.id,payload,version:1,updatedAt:'2026-08-17T14:30:00.000Z'}],{companyId:'org-a'})
+ assert.ok(hydrated.findings.some(item=>item.id===payload.id),'La capa sync conserva el payload para diagnóstico/reconciliación')
+ const scoped=scopeMipeState(hydrated,'org-a')
+ assert.equal(scoped.findings.some(item=>item.id===payload.id),false)
+ assert.equal(mipeRecordOrganizationId(hydrated,'findings',hydrated.findings.find(item=>item.id===payload.id)),'')
 })
