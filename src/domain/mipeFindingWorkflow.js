@@ -31,7 +31,7 @@ const TRANSITIONS=Object.freeze({
  [MIPE_FINDING_TRANSITIONS.APPROVE_TREATMENT]:{from:[MIPE_FINDING_STATES.DETECTED,MIPE_FINDING_STATES.EVALUATING],to:MIPE_FINDING_STATES.TREATMENT_APPROVED,label:'Aprobar tratamiento'},
  [MIPE_FINDING_TRANSITIONS.BEGIN_TREATMENT]:{from:[MIPE_FINDING_STATES.TREATMENT_APPROVED],to:MIPE_FINDING_STATES.IN_TREATMENT,label:'Iniciar tratamiento'},
  [MIPE_FINDING_TRANSITIONS.START_FOLLOW_UP]:{from:[MIPE_FINDING_STATES.IN_TREATMENT],to:MIPE_FINDING_STATES.FOLLOW_UP,label:'Iniciar seguimiento'},
- [MIPE_FINDING_TRANSITIONS.RESOLVE]:{from:[MIPE_FINDING_STATES.EVALUATING,MIPE_FINDING_STATES.FOLLOW_UP],to:MIPE_FINDING_STATES.RESOLVED,label:'Resolver'},
+ [MIPE_FINDING_TRANSITIONS.RESOLVE]:{from:[MIPE_FINDING_STATES.DETECTED,MIPE_FINDING_STATES.EVALUATING,MIPE_FINDING_STATES.FOLLOW_UP],to:MIPE_FINDING_STATES.RESOLVED,label:'Resolver'},
  [MIPE_FINDING_TRANSITIONS.MARK_FALSE_POSITIVE]:{from:[MIPE_FINDING_STATES.DETECTED,MIPE_FINDING_STATES.EVALUATING],to:MIPE_FINDING_STATES.FALSE_POSITIVE,label:'Marcar falso positivo'},
  [MIPE_FINDING_TRANSITIONS.MARK_PLANT_REMOVED]:{from:[MIPE_FINDING_STATES.DETECTED,MIPE_FINDING_STATES.EVALUATING,MIPE_FINDING_STATES.TREATMENT_APPROVED,MIPE_FINDING_STATES.IN_TREATMENT,MIPE_FINDING_STATES.FOLLOW_UP],to:MIPE_FINDING_STATES.PLANT_REMOVED,label:'Registrar planta eliminada'}
 })
@@ -45,7 +45,7 @@ function eventId(commandId,suffix){return `${required(commandId,'commandId')}:${
 function uniqueHistory(history){const ids=new Set();for(const item of history){const id=required(item?.id,'El id del evento MIPE');if(ids.has(id))throw new Error('El historial MIPE contiene un eventId duplicado.');ids.add(id)}return history}
 
 function legacyImportEvent(finding){
- const when=occurred(finding?.updatedAt||finding?.reportedAt||finding?.createdAt||new Date().toISOString())
+ const when=occurred(finding?.updatedAt||finding?.reportedAt||finding?.createdAt||'1970-01-01T00:00:00.000Z')
  return freeze({id:`${required(finding?.id,'finding.id')}:workflow:legacy-import`,type:'IMPORTED',from:null,to:required(finding?.status||MIPE_FINDING_STATES.DETECTED,'finding.status'),occurredAt:when,actor:actorSnapshot({id:'legacy-import',name:'Migración legacy'}),metadata:freeze({legacyImported:true})})
 }
 
