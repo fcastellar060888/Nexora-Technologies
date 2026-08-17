@@ -1,25 +1,16 @@
 import{activeUser,hasPermission}from'./permissions.js'
 import{DomainEvents}from'../core/events/eventCatalog.js'
+import{activeOrganizationId,explicitOrganizationId}from'../domain/organizationOwnership.js'
+import{findIrrigationMirfeRecord}from'../domain/irrigationMirfeTenancy.js'
 
 const text=value=>String(value??'').trim()
 const list=value=>Array.isArray(value)?value:[]
-const ownerOf=value=>text(value?.organizationId||value?.companyId||value?._organizationId)
 const ALLOWED_TYPES=new Set(['Observación','MIPE','MIRFE','Riego','Producción','Trasplante','Cosecha'])
 
-function activeOrganizationId(state){
- const active=text(state?.currentContext?.companyId)
- if(active)return active
- const companies=list(state?.companies)
- if(companies.length===1)return text(companies[0]?.id)
- if(companies.length===0)return'local-installation'
- throw new Error('Selecciona una empresa antes de registrar eventos de planta.')
-}
-
-function plantLocation(state,plant){
- const bed=list(state?.beds).find(item=>item?.id===plant?.bedId)||null
- const house=list(state?.houses).find(item=>item?.id===(plant?.houseId||bed?.houseId))||null
- const site=list(state?.sites).find(item=>item?.id===(plant?.siteId||house?.siteId))||null
- const organizationId=ownerOf(plant)||ownerOf(bed)||ownerOf(house)||ownerOf(site)
+function plantLocation(state,plant,organizationId){
+ const bedId=text(plant?.bedId),bed=bedId?findIrrigationMirfeRecord(state,'beds',bedId,{label:'cama de la planta',organizationId}):null
+ const houseId=text(plant?.houseId||bed?.houseId),house=houseId?findIrrigationMirfeRecord(state,'houses',houseId,{label:'nave de la planta',organizationId}):null
+ const siteId=text(plant?.siteId||house?.siteId),site=siteId?findIrrigationMirfeRecord(state,'sites',siteId,{label:'sede de la planta',organizationId}):null
  return{bed,house,site,organizationId}
 }
 
@@ -30,7 +21,13 @@ function normalizedDate(value){
 }
 
 function sameCommand(existing,record){
- return existing.plantId===record.plantId&&existing.organizationId===record.organizationId&&existing.type===record.type&&existing.title===record.title&&text(existing.detail)===text(record.detail)&&new Date(existing.date).toISOString()===record.date
+ return existing.plantId===record.plantId&&explicitOrganizationId(existing)===record.organizationId&&existing.type===record.type&&existing.title===record.title&&text(existing.detail)===text(record.detail)&&new Date(existing.date).toISOString()===record.date
+}
+
+function existingCommand(state,commandId,organizationId){
+ const matches=list(state?.plantEvents).filter(item=>(text(item?.commandId)===commandId||text(item?.id)===commandId)&&explicitOrganizationId(item)===organizationId)
+ if(matches.length>1)throw new Error('El commandId tiene más de un evento de planta dentro de la empresa activa.')
+ return matches[0]||null
 }
 
 export function preparePlantEventCommand(state,{plantId,commandId,type='Observación',title,detail='',date=new Date().toISOString()}={}){
@@ -38,18 +35,16 @@ export function preparePlantEventCommand(state,{plantId,commandId,type='Observac
  const id=text(plantId),cmd=text(commandId)
  if(!id)throw new Error('La planta es obligatoria.')
  if(!cmd)throw new Error('El commandId es obligatorio para garantizar idempotencia.')
- const plant=list(state?.plantPositions).find(item=>item?.id===id)
- if(!plant)throw new Error('No se encontró la planta productiva solicitada.')
- const organizationId=activeOrganizationId(state),location=plantLocation(state,plant)
- if(location.organizationId&&location.organizationId!==organizationId)throw new Error('La planta pertenece a otra empresa.')
- if(!location.organizationId&&list(state?.companies).length>1)throw new Error('No se puede demostrar el ownership organizacional de la planta.')
+ const organizationId=activeOrganizationId(state)
+ const plant=findIrrigationMirfeRecord(state,'plantPositions',id,{label:'planta productiva',organizationId})
+ const location=plantLocation(state,plant,organizationId)
  const normalizedType=text(type)
  if(!ALLOWED_TYPES.has(normalizedType))throw new Error('El tipo de evento de planta no es válido.')
  const normalizedTitle=text(title)
  if(!normalizedTitle)throw new Error('El título del evento de planta es obligatorio.')
  const occurredAt=normalizedDate(date),actor=activeUser(state)
  const record=Object.freeze({id:cmd,commandId:cmd,plantId:id,organizationId,siteId:location.site?.id||plant.siteId||null,actorId:actor?.remoteId||actor?.id||'system',type:normalizedType,title:normalizedTitle,detail:text(detail),date:occurredAt})
- const existing=list(state?.plantEvents).find(item=>item?.commandId===cmd||item?.id===cmd)
+ const existing=existingCommand(state,cmd,organizationId)
  if(existing){
   if(!sameCommand(existing,record))throw new Error('El commandId ya fue usado con contenido diferente.')
   return Object.freeze({duplicate:true,record:Object.freeze({...existing}),organizationId,siteId:record.siteId,commandId:cmd})
@@ -58,17 +53,15 @@ export function preparePlantEventCommand(state,{plantId,commandId,type='Observac
 }
 
 export function applyPreparedPlantEvent(state,prepared){
- const existing=list(state?.plantEvents).find(item=>item?.commandId===prepared.commandId||item?.id===prepared.commandId)
+ const existing=existingCommand(state,prepared.commandId,prepared.organizationId)
  if(existing){
   if(!sameCommand(existing,prepared.record))throw new Error('Colisión de idempotencia al aplicar el evento de planta.')
   return state
  }
  const active=activeOrganizationId(state)
  if(active!==prepared.organizationId)throw new Error('La empresa activa cambió antes de confirmar el evento de planta.')
- const plant=list(state?.plantPositions).find(item=>item?.id===prepared.record.plantId)
- if(!plant)throw new Error('La planta dejó de estar disponible antes de confirmar el evento.')
- const location=plantLocation(state,plant)
- if(location.organizationId&&location.organizationId!==prepared.organizationId)throw new Error('La planta cambió de ownership antes de confirmar el evento.')
+ const plant=findIrrigationMirfeRecord(state,'plantPositions',prepared.record.plantId,{label:'planta productiva',organizationId:prepared.organizationId})
+ plantLocation(state,plant,prepared.organizationId)
  return{...state,plantEvents:[...list(state?.plantEvents),prepared.record]}
 }
 
