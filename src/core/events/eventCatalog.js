@@ -53,6 +53,7 @@ export const DomainEvents=Object.freeze({
  MIPE_FINDING_RESOLVED:'mipe.finding.resolved',
  MIPE_FINDING_DELETED:'mipe.finding.deleted',
  MIPE_INCIDENT_CREATED:'mipe.incident.created',
+ MIPE_INCIDENT_ARCHIVED:'mipe.incident.archived',
  MIPE_INCIDENT_DELETED:'mipe.incident.deleted',
  MIPE_TREATMENT_SCHEDULED:'mipe.treatment.scheduled',
  MIPE_TREATMENT_EXECUTED:'mipe.treatment.executed',
