@@ -1,6 +1,6 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 8/12 Verified**  
+Estado: **AUDIT IN PROGRESS — 9/12 Verified**  
 Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
 Bloque: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
 Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
@@ -22,7 +22,7 @@ MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severida
 | M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076; documental #2078. |
 | M32-F007 | P1 | **Verified** | Incident/product authority | Incident no destructivo y vigente; Product técnico ejecutable congelado en Treatment; costo/reentrada/carencia no dependen del catálogo mutable. Quality #2118; documental #2120. |
 | M32-F008 | P1 | **Verified** | Persistence/sync | Migración MIPE dedicada, caché/bootstrap/sync/tombstones y receipts tenant-aware con identidad estable. Quality #2135. |
-| M32-F009 | P1 | **Open** | Operational restrictions | Falta consolidar reentrada, carencia y bloqueos/liberaciones como restricciones proyectables. |
+| M32-F009 | P1 | **Verified** | Operational restrictions | Reentrada, carencia y bloqueo de propagación son restricciones derivadas tenant-aware y guards no-bypassables en executors. Quality #2176. |
 | M32-F010 | P1 | **Open** | Dashboard/croquis/context | Falta cerrar contexto jerárquico persistente Empresa→Sede→Nave→Cama→Planta y croquis. |
 | M32-F011 | P1 | **Open** | Passport/Knowledge Graph | Falta traza canónica Finding→Incident→Intervention/Treatment→Product/Lot→Restriction/Resolution. |
 | M32-F012 | P1 | **Open** | Adversarial verification | Falta reauditoría transversal final de workflow, sync, Graph y ausencia de fuga/regresión. |
@@ -244,6 +244,41 @@ El backend genérico `erp_records` ya aceptaba cualquier colección, pero el cli
 - Quality #2135: **verde, 1083/1083 pruebas**, cero fallos; workflow `Quality` concluido `success`.
 - Reauditoría final: backend genérico intacto; no hay nueva autoridad SQL paralela; cache/bootstrap/sync comparten la misma identidad tenant-aware; receipts contradictorios fallan y los idénticos convergen; F004 conserva su atomicidad de cinco colecciones.
 
+## M32-F009 — cierre verificado
+
+### Problema reproducido
+
+Reentrada y carencia se calculaban, pero no constituían una autoridad operativa única. La transición a `Cosecha` verificaba carencia en UI antes de mutar Store directamente; una llamada programática podía saltarla. La reentrada no protegía el executor de cambio de fase. En propagación, la elegibilidad dependía principalmente del string mutable `operationalAvailability`, por lo que un override manual podía contradecir la evidencia MIPE. La reauditoría también detectó dos riesgos adicionales: un `commandId` de fase reutilizado con otro payload podía confundirse con replay y una evidencia futura podía bloquear retroactivamente si solo se evaluaba su fecha final.
+
+### Solución
+
+- `src/domain/mipeOperationalRestrictions.js` define una autoridad derivada, de solo lectura y tenant-aware para `REENTRY`, `HARVEST_WITHDRAWAL` y `PROPAGATION_BLOCK`.
+- Las restricciones temporales nacen únicamente de Treatments ejecutados causales del target y respetan ventana `[startsAt, endsAt)`: no bloquean antes de ejecutarse y expiran automáticamente sin mutación adicional.
+- Reentrada y carencia sobreviven al cierre posterior del Finding hasta que vence su evidencia temporal; cerrar un Finding no cancela retroactivamente el Treatment ejecutado.
+- Para material vegetal, un Finding abierto con `restrictsPropagation=true` proyecta bloqueo de corte. Un Finding terminal libera la proyección; un string legacy `Bloqueada por MIPE` solo se ignora como stale cuando existe causalidad canónica histórica que ya terminó. Sin causalidad verificable se mantiene fail-closed.
+- Homónimos cross-tenant se filtran por ownership antes de proyectar; evidencia ambigua o identidad duplicada same-tenant falla cerrado.
+- `activePlantRestrictions()` conserva su contrato legacy pero delega a la autoridad canónica, evitando dos semánticas de restricciones.
+- `preparePropagationBatch()` vuelve a comprobar `PROPAGATION_CUT` dentro del command boundary y usa el mismo `occurredAt` tanto para el prefilter de fuentes como para el guard. Un override manual `Disponible para corte` no libera evidencia MIPE activa.
+- `src/services/plantPhaseTransitionCommand.js` reemplaza la mutación directa de `PhaseTransitionsPage`: `CULTIVATION_WORK` exige ausencia de reentrada y `HARVEST` exige ausencia de reentrada y carencia dentro del executor.
+- El cambio de fase usa `executeCoreOperationCommand()`, permiso `manage_cultivation`, identidad tenant-aware y evento canónico `cultivation.plant.phase_changed`.
+- Replay de cambio de fase es effect-idempotent solo para el mismo payload; reutilizar `commandId` con `plantId`, fase, fecha o contexto distintos falla cerrado.
+- `WorkOrdersPage` no se forzó dentro de F009 porque hoy las órdenes solo tienen `siteId` y texto, sin target agronómico canónico. Aplicar reentrada ahí como bloqueo global de sede inventaría semántica; la incorporación de scope jerárquico verificable corresponde a F010.
+
+### Pruebas adversariales
+
+- `tests/m3-2-mipe-operational-restrictions.test.mjs`: tenancy, Treatments futuros, expiración automática, cierre de Finding, operación CULTIVATION_WORK/HARVEST, bloqueos materiales, homónimos y duplicados fail-closed.
+- `tests/m3-2-mipe-operational-commands.test.mjs`: bypass directo de fase/cosecha, replay/collision de `commandId`, homónimo cross-tenant, override manual de disponibilidad, legacy fail-closed y liberación causal stale.
+- `tests/m3-2-mipe-operational-contract.test.mjs`: PhaseTransitions sin `update()` directo, guard dentro de propagación, reloj único, delegación de `activePlantRestrictions`, evento plant-specific y selector que no confía ciegamente en el string legacy.
+
+### Quality y reauditoría
+
+- Quality #2172 sobre `10b7836fdb8890fef480cfe42a68c822ed3576dc`: **1105/1106**. Las invariantes F009 pasaron; el único rojo era el fixture de liberación stale, que declaraba la genética en `geneticProfiles` en vez de la colección canónica `genetics`.
+- Se corrigió exclusivamente el fixture. La reauditoría concurrente añadió `at: occurredAt` al selector de fuentes para que prefilter y guard compartan reloj determinista.
+- HEAD funcional final: `1fcb48ef30cbe17644e88a00f6e89a63fdb328e8`.
+- Quality #2176: **verde, 1106/1106 pruebas**, cero fallos, cero cancelados y cero skipped; workflow `Quality` concluyó `success`.
+- Reauditoría de regresión F004 dentro del mismo artefacto: nueve adversariales verdes y conjunto atómico preservado en exactamente `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries`.
+- Reauditoría final F009: no queda mutación directa de fase en UI; los guards viven en executors; restricciones temporales son causales y autoexpiran; propagación no puede liberarse mediante override mutable; replay y tenancy fallan cerrado.
+
 ## Orden de cierre
 
 1. **F001 Domain authority — Verified.**
@@ -254,7 +289,7 @@ El backend genérico `erp_records` ya aceptaba cualquier colección, pero el cli
 6. **F006 Follow-up/interventions — Verified.**
 7. **F007 Incident/product authority — Verified.**
 8. **F008 Persistence/sync — Verified.**
-9. **F009 Operational restrictions** — reentrada, carencia y disponibilidad como autoridad proyectable.
+9. **F009 Operational restrictions — Verified.**
 10. **F010 Dashboard/croquis/context** — contexto jerárquico persistente y acciones desde croquis.
 11. **F011 Passport/Knowledge Graph** — trazabilidad explicable end-to-end.
 12. **F012 Adversarial verification** — reauditoría transversal y cierre.
@@ -283,7 +318,7 @@ El backend genérico `erp_records` ya aceptaba cualquier colección, pero el cli
 
 ## Estado actual
 
-- Verified: **8**
-- Open: **4**
+- Verified: **9**
+- Open: **3**
 - P0 abiertos: **0**
-- P1 abiertos: **4**
+- P1 abiertos: **3**
