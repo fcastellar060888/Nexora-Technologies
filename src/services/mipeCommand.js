@@ -7,6 +7,7 @@ import{activeOrganizationId}from'../domain/organizationOwnership.js'
 import{findMipeRecord,scopeMipeState}from'../domain/mipeTenancy.js'
 import{activeUser,hasPermission}from'./permissions.js'
 import{executeCoreOperationCommand}from'./coreOperationCommand.js'
+import{applyMipeTreatmentConfirmation,buildMipeTreatmentTransaction}from'./mipeTreatmentTransaction.js'
 import{mutateMipeTenantState}from'./mipeTenantState.js'
 
 export const MIPE_OPERATIONS=Object.freeze({
@@ -53,11 +54,16 @@ function findReceipt(state,organizationId,commandId){
 }
 function assertReceipt(receipt,signature){if(receipt&&receipt.signature!==signature)throw new Error('El commandId ya fue usado con contenido diferente.')}
 function appendReceipt(state,receipt){return{...state,mipeCommandReceipts:[...receipts(state),receipt]}}
-function applyOnce(current,organizationId,receipt,mutation){
+function applyReceiptOnly(current,organizationId,receipt){
  if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIPE.')
  const existing=findReceipt(current,organizationId,receipt.commandId)
  if(existing){assertReceipt(existing,receipt.signature);return current}
- return appendReceipt(mutation(current),receipt)
+ return appendReceipt(current,receipt)
+}
+function applyOnce(current,organizationId,receipt,mutation){
+ const checked=applyReceiptOnly(current,organizationId,receipt)
+ if(checked!==current)return mutation(checked)
+ return current
 }
 
 function tenantMutation(current,organizationId,recipe){
@@ -142,8 +148,9 @@ function planScheduleTreatment(state,input,aggregateId,organizationId,occurredAt
  return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_SCHEDULED,siteId,payload:{treatmentId:aggregateId,findingId:finding.id,productId:product.id,dose:Number(input.dose),doseUnit:text(input.doseUnit),mixVolume:Number(input.mixVolume)},apply:current=>tenantMutation(current,organizationId,tenant=>scheduleTreatment(tenant,request))}
 }
 function planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt){
- const treatment=activeRecord(state,'treatments',aggregateId,'tratamiento',organizationId),lot=activeRecord(state,'inventoryLots',required(input.lotId,'lotId'),'lote de inventario',organizationId),finding=activeRecord(state,'findings',treatment.findingId,'hallazgo',organizationId),siteId=text(treatment.siteId||finding.siteId||lot.siteId)
- return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_EXECUTED,siteId,payload:{treatmentId:aggregateId,findingId:finding.id,lotId:lot.id,totalQuantity:Number(treatment.totalQuantity||0)},apply:current=>tenantMutation(current,organizationId,tenant=>executeTreatment(tenant,{treatmentId:aggregateId,lotId:lot.id,responsible:text(input.responsible),executedAt:occurredAt,costEntryId:text(input.costEntryId)||`${aggregateId}:${text(input.commandId)||'execution'}:cost`}))}
+ const treatment=activeRecord(state,'treatments',aggregateId,'tratamiento',organizationId),lot=activeRecord(state,'inventoryLots',required(input.lotId,'lotId'),'lote de inventario',organizationId),finding=activeRecord(state,'findings',treatment.findingId,'hallazgo',organizationId),siteId=text(treatment.siteId||finding.siteId||lot.siteId),commandId=required(input.commandId,'commandId')
+ if(!siteId)throw new Error('No se pudo resolver la sede de la ejecución MIPE.')
+ return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_EXECUTED,siteId,payload:{treatmentId:aggregateId,findingId:finding.id,lotId:lot.id,totalQuantity:Number(treatment.totalQuantity||0)},apply:current=>tenantMutation(current,organizationId,tenant=>executeTreatment(tenant,{treatmentId:aggregateId,lotId:lot.id,responsible:text(input.responsible),executedAt:occurredAt,siteId,movementId:`${aggregateId}:${commandId}:movement`,costEntryId:text(input.costEntryId)||`${aggregateId}:${commandId}:cost`}))}
 }
 function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt){
  const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId)
@@ -183,5 +190,15 @@ export async function executeMipeCommand(state,{operation,entityId='',input={},c
  const planned=plan(state,{operation,input:{...normalizedInput,commandId:id},aggregateId,organizationId,occurredAt})
  authorize(state,operation,organizationId,planned.siteId)
  const receipt=Object.freeze({commandId:id,organizationId,signature,operation,aggregateId,occurredAt,actor:actor(state)})
- return executeCoreOperationCommand({commandId:id,organizationId,siteId:planned.siteId,aggregateType:planned.aggregateType,aggregateId,completedEventName:planned.eventName,occurredAt,payload:planned.payload,metadata:{source:'m3.2-mipe-command',operation,actorName:receipt.actor.name},commitMeta:{module:'MIPE',action:operation,detail:aggregateId},apply:current=>applyOnce(current,organizationId,receipt,planned.apply)},deps)
+ const localApply=current=>applyOnce(current,organizationId,receipt,planned.apply)
+ const remoteTreatment=operation===MIPE_OPERATIONS.EXECUTE_TREATMENT&&!existing&&typeof deps.commitTreatmentTransaction==='function'
+ const transaction=remoteTreatment?buildMipeTreatmentTransaction(state,localApply(state),{commandId:id,signature,organizationId,treatmentId:aggregateId,siteId:planned.siteId}):null
+ const prepareCommit=remoteTreatment?()=>deps.commitTreatmentTransaction(transaction):null
+ const apply=remoteTreatment?(current,confirmation)=>{
+  if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIPE.')
+  const hydrated=applyMipeTreatmentConfirmation(current,confirmation,organizationId)
+  return applyReceiptOnly(hydrated,organizationId,receipt)
+ }:localApply
+ const commitMeta={module:'MIPE',action:operation,detail:aggregateId,...(remoteTreatment?{sync:false}:{})}
+ return executeCoreOperationCommand({commandId:id,organizationId,siteId:planned.siteId,aggregateType:planned.aggregateType,aggregateId,completedEventName:planned.eventName,occurredAt,payload:planned.payload,metadata:{source:'m3.2-mipe-command',operation,actorName:receipt.actor.name,remoteTreatment},prepareCommit,commitMeta,apply},deps)
 }
