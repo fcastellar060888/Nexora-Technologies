@@ -6,7 +6,17 @@ const text=value=>String(value??'').trim()
 const finite=value=>Number.isFinite(Number(value))?Number(value):0
 const uniqueById=items=>[...new Map(items.filter(item=>text(item?.id)).map(item=>[text(item.id),item])).values()]
 
-function recordsFor(state,collection,organizationId){return list(state?.[collection]).filter(item=>irrigationMirfeRecordOrganizationId(state,collection,item)===organizationId)}
+function declaredOrganizationId(item){return text(item?.organizationId||item?.companyId)}
+function recordsFor(state,collection,organizationId,{matches=()=>true,label=collection}={}){
+ const accepted=[]
+ for(const item of list(state?.[collection])){
+  if(!matches(item))continue
+  const resolved=irrigationMirfeRecordOrganizationId(state,collection,item)
+  if(resolved===organizationId){accepted.push(item);continue}
+  if(declaredOrganizationId(item)===organizationId&&!resolved)throw new Error(`${label} de la empresa de la planta tiene referencias extranjeras o ownership ambiguo`)
+ }
+ return accepted
+}
 function referenceFor(state,collection,id,organizationId,label){
  const key=text(id)
  if(!key)return null
@@ -40,7 +50,7 @@ function safeDate(value){return Number.isNaN(Date.parse(value))?null:new Date(va
 function sum(items,valueFor){return Number(items.reduce((total,item)=>total+finite(valueFor(item)),0).toFixed(4))}
 
 export function projectPlantIrrigationMirfe(state,{plant,location,organizationId}={}){
- const assignments=recordsFor(state,'irrigationAssignments',organizationId).filter(item=>targetMatches(item,plant,location))
+ const assignments=recordsFor(state,'irrigationAssignments',organizationId,{matches:item=>targetMatches(item,plant,location),label:'La asignación de riego'})
  const sectors=[],emitters=[],windowsBySector=new Map()
  for(const assignment of assignments){
   const sector=referenceFor(state,'irrigationSectors',assignment.sectorId,organizationId,'El sector de riego')
@@ -49,11 +59,11 @@ export function projectPlantIrrigationMirfe(state,{plant,location,organizationId
   const windows=windowsBySector.get(text(sector.id))||[];windows.push(assignment);windowsBySector.set(text(sector.id),windows)
  }
  const sectorIds=new Set([...windowsBySector.keys()])
- const pulses=recordsFor(state,'irrigationPulses',organizationId).filter(item=>sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.startedAt))
+ const pulses=recordsFor(state,'irrigationPulses',organizationId,{matches:item=>sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.startedAt),label:'El pulso de riego'})
  const pulseIds=new Set(pulses.map(item=>text(item.id)))
- const measurements=recordsFor(state,'irrigationMeasurements',organizationId).filter(item=>item.pulseId?pulseIds.has(text(item.pulseId)):sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.measuredAt))
- const drainageMeasurements=recordsFor(state,'drainageMeasurements',organizationId).filter(item=>item.pulseId?pulseIds.has(text(item.pulseId)):sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.measuredAt))
- const applications=recordsFor(state,'irrigationApplications',organizationId).filter(item=>applicationMatches(item,location,sectorIds))
+ const measurements=recordsFor(state,'irrigationMeasurements',organizationId,{matches:item=>item.pulseId?pulseIds.has(text(item.pulseId)):sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.measuredAt),label:'La medición de riego'})
+ const drainageMeasurements=recordsFor(state,'drainageMeasurements',organizationId,{matches:item=>item.pulseId?pulseIds.has(text(item.pulseId)):sectorIds.has(text(item.sectorId))&&occursForSector(windowsBySector,item.sectorId,item.measuredAt),label:'La medición de drenaje'})
+ const applications=recordsFor(state,'irrigationApplications',organizationId,{matches:item=>applicationMatches(item,location,sectorIds),label:'La aplicación de fertirriego'})
  const preparations=[],formulas=[],lotEvidence=[]
  for(const application of applications){
   const preparation=referenceFor(state,'tankPreparations',application.preparationId,organizationId,'La preparación de fertirriego')
