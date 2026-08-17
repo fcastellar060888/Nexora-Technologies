@@ -1,4 +1,4 @@
-import{useMemo,useState}from'react'
+import{useEffect,useMemo,useState}from'react'
 import{useParams}from'react-router-dom'
 import Card from'../components/Card'
 import Field from'../components/Field'
@@ -6,6 +6,7 @@ import PageHeader from'../components/PageHeader'
 import AttachmentUploader from'../components/AttachmentUploader'
 import{createCultivationPlantPassportFromState}from'../core/passport/index.js'
 import{publishDomainEvent}from'../core/events/publishDomainEvent.js'
+import{operationalContextForPlant,scopeOperationalState}from'../domain/operationalContext.js'
 import{useStore}from'../services/store'
 import{hasPermission}from'../services/permissions.js'
 import{executePlantEventCommand}from'../services/plantEventCommand.js'
@@ -14,15 +15,21 @@ import{formatDateTime}from'../domain/mipe'
 const relation=(passport,type,targetType)=>passport.relationships.find(item=>item.type===type&&(!targetType||item.targetType===targetType))
 const indicator=(passport,key)=>passport.indicators.find(item=>item.key===key)?.value||0
 const emptyEvent=()=>({commandId:crypto.randomUUID(),type:'Observación',title:'',detail:'',date:new Date().toISOString()})
+const contextKey=context=>['companyId','siteId','houseId','bedId','plantId'].map(key=>context?.[key]||'').join(':')
 
 export default function PlantProfilePage(){
  const{plantId}=useParams();const{state,update}=useStore()
- const passport=useMemo(()=>{try{return createCultivationPlantPassportFromState(state,{plantId})}catch{return null}},[state,plantId])
+ const resolvedContext=useMemo(()=>{try{return operationalContextForPlant(state,plantId)}catch{return null}},[state,plantId])
+ const resolvedKey=contextKey(resolvedContext),currentKey=contextKey(state.currentContext)
+ const profileState=useMemo(()=>resolvedContext?scopeOperationalState(state,resolvedContext):null,[state,resolvedKey])
+ const passport=useMemo(()=>{if(!profileState)return null;try{return createCultivationPlantPassportFromState(profileState,{plantId})}catch{return null}},[profileState,plantId])
  const[event,setEvent]=useState(emptyEvent)
  const[submitError,setSubmitError]=useState('')
  const[isSaving,setIsSaving]=useState(false)
- const canRecord=hasPermission(state,'record_observations')
- if(!passport)return <Card><p>Planta no encontrada.</p></Card>
+ useEffect(()=>{if(resolvedContext&&resolvedKey!==currentKey)update(current=>({...current,currentContext:operationalContextForPlant(current,plantId)}),{audit:false,sync:false})},[plantId,resolvedKey,currentKey,update])
+ useEffect(()=>{setEvent(emptyEvent());setSubmitError('')},[plantId])
+ const canRecord=profileState?hasPermission(profileState,'record_observations'):false
+ if(!passport)return <Card><p>Planta no encontrada o fuera del alcance operativo autorizado.</p></Card>
  const{object,timeline}=passport,identity=object.identity,attributes=object.attributes
  const site=relation(passport,'located_in','organization.site'),house=relation(passport,'located_in','cultivation.house'),bed=relation(passport,'located_in','cultivation.bed')
  const mother=relation(passport,'descends_from','cultivation.mother'),grandmother=relation(passport,'descends_from','cultivation.grandmother'),lot=relation(passport,'member_of_lot','cultivation.lot'),unit=relation(passport,'originated_from','propagation.unit')
