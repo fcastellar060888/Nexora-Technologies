@@ -33,7 +33,7 @@ export function interventionCompletesReview(intervention,source){
 function resolveFinding(findingsByIdentity,findingsById,source){
  const organizationId=organizationOf(source),id=text(source?.findingId)
  if(!id)return null
- if(organizationId){const exact=findingsByIdentity.get(identity(organizationId,id));if(exact)return exact}
+ if(organizationId)return findingsByIdentity.get(identity(organizationId,id))||null
  const matches=findingsById.get(id)||[]
  return matches.length===1?matches[0]:null
 }
@@ -41,17 +41,18 @@ function resolveFinding(findingsByIdentity,findingsById,source){
 export function projectMipeReviewTasks(state,{now=new Date(),organizationId='',siteId='',responsible='',status='',includeCompleted=false}={}){
  const nowMs=now instanceof Date?now.getTime():Date.parse(now)
  if(Number.isNaN(nowMs))throw new Error('La fecha de referencia MIPE no es válida')
- const findingsByIdentity=new Map(),findingsById=new Map()
+ const findingsByIdentity=new Map(),findingsById=new Map(),requestedOrganization=text(organizationId)
  for(const finding of list(state?.findings)){
   const id=text(finding?.id),owner=organizationOf(finding);if(!id)continue
+  if(requestedOrganization&&owner!==requestedOrganization)continue
   if(owner){const key=identity(owner,id);if(findingsByIdentity.has(key))throw new Error(`Finding MIPE duplicado dentro de la empresa: ${id}.`);findingsByIdentity.set(key,finding)}
   findingsById.set(id,[...(findingsById.get(id)||[]),finding])
  }
- const interventions=list(state?.mipeInterventions)
- const tasks=interventions.filter(item=>validDate(item.nextReviewAt)).map(source=>{
+ const interventions=list(state?.mipeInterventions),taskSources=interventions.filter(item=>validDate(item.nextReviewAt)&&(!requestedOrganization||organizationOf(item)===requestedOrganization))
+ const tasks=taskSources.map(source=>{
   const owner=organizationOf(source),finding=resolveFinding(findingsByIdentity,findingsById,source)
   if(!finding)throw new Error(`No se pudo resolver de forma inequívoca el Finding ${text(source.findingId)} de la revisión MIPE.`)
-  if(owner&&organizationOf(finding)&&owner!==organizationOf(finding))throw new Error('La tarea MIPE referencia un Finding de otra empresa.')
+  if(owner&&organizationOf(finding)!==owner)throw new Error('La tarea MIPE referencia un Finding sin ownership exacto o de otra empresa.')
   const completedBy=interventions.filter(item=>interventionCompletesReview(item,source)).sort((a,b)=>timestamp(a.performedAt)-timestamp(b.performedAt)||text(a.id).localeCompare(text(b.id)))[0]||null
   const dueMs=timestamp(source.nextReviewAt),findingClosed=closedFindingStatuses.has(finding.status)
   let taskStatus=MIPE_REVIEW_TASK_STATUS.PENDING
@@ -81,7 +82,7 @@ export function projectMipeReviewTasks(state,{now=new Date(),organizationId='',s
    notes:text(source.notes),
    findingStatus:finding?.status||'Desconocido'
   })
- }).filter(task=>(!organizationId||task.organizationId===organizationId)&&(!siteId||task.siteId===siteId)&&(!responsible||task.responsible===responsible)&&(!status||task.status===status)&&(includeCompleted||![MIPE_REVIEW_TASK_STATUS.COMPLETED,MIPE_REVIEW_TASK_STATUS.CANCELLED].includes(task.status)))
+ }).filter(task=>(!siteId||task.siteId===siteId)&&(!responsible||task.responsible===responsible)&&(!status||task.status===status)&&(includeCompleted||![MIPE_REVIEW_TASK_STATUS.COMPLETED,MIPE_REVIEW_TASK_STATUS.CANCELLED].includes(task.status)))
  return Object.freeze(tasks.sort((a,b)=>timestamp(a.dueAt)-timestamp(b.dueAt)||a.id.localeCompare(b.id)))
 }
 
