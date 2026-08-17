@@ -26,7 +26,7 @@ test('M32-F005: command-created finding has CREATED history and cannot start in 
 
 test('M32-F005: correction records before/after and preserves original date and state',async()=>{
  const h=harness();const original=await createFinding(h)
- await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:original.id,input:{severity:3,notes:'Confirmado',status:'Resuelto',createdAt:'2020-01-01',correctionReason:'Verificación microscópica'},commandId:'cmd-correct',occurredAt:'2026-08-17T02:00:00.000Z'},h.deps)
+ await executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:original.id,input:{severity:3,notes:'Confirmado',correctionReason:'Verificación microscópica'},commandId:'cmd-correct',occurredAt:'2026-08-17T02:00:00.000Z'},h.deps)
  const corrected=h.state.findings[0]
  assert.equal(corrected.createdAt,'2026-08-17T01:00:00.000Z')
  assert.equal(corrected.status,'Detectado')
@@ -35,6 +35,16 @@ test('M32-F005: correction records before/after and preserves original date and 
  assert.equal(corrected.mipeHistory.at(-1).reason,'Verificación microscópica')
  assert.equal(h.events.at(-1).name,DomainEvents.MIPE_FINDING_CORRECTED)
  assert.deepEqual(verifyMipeFindingHistory(corrected),{valid:true,errors:[]})
+})
+
+test('M32-F005: forbidden correction keys fail closed before requested event or receipt',async()=>{
+ const h=harness();const original=await createFinding(h),before=h.events.length,receiptCount=h.state.mipeCommandReceipts.length
+ await assert.rejects(()=>executeMipeCommand(h.state,{operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:original.id,input:{severity:3,status:'Resuelto',createdAt:'2020-01-01',correctionReason:'Payload hostil'},commandId:'cmd-forbidden',occurredAt:'2026-08-17T02:00:00.000Z'},h.deps),/no puede reescribirse/)
+ assert.equal(h.events.length,before)
+ assert.equal(h.state.mipeCommandReceipts.length,receiptCount)
+ assert.equal(h.state.findings[0].status,'Detectado')
+ assert.equal(h.state.findings[0].createdAt,'2026-08-17T01:00:00.000Z')
+ assert.equal(h.state.findings[0].severity,2)
 })
 
 test('M32-F005: explicit transition publishes semantic event and invalid skip fails before requested event',async()=>{
