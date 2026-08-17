@@ -64,6 +64,12 @@ test('F010: croquis consume estado contextual y persiste la planta antes de abri
  assert.match(source,/<PlantPassportDrawer state=\{mapState\}/)
 })
 
+test('F010: cambio global de sede limpia drawer, selección y draft del croquis',async()=>{
+ const source=await readFile('src/pages/UnifiedCultivationMapPage.jsx','utf8')
+ assert.match(source,/useEffect\(\(\)=>\{setSelectedPlant\(null\);selection\.resetForSite\(siteId\)\},\[siteId\]\)/)
+ assert.doesNotMatch(source,/setSelectedPlant\(null\);selection\.resetForSite\(nextSiteId\)/)
+})
+
 test('F010: selección masiva del croquis no escribe plantEvents directamente',async()=>{
  const source=await readFile('src/services/useUnifiedMapSelection.js','utf8')
  assert.match(source,/executePlantEvent/)
