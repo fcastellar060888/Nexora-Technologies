@@ -4,6 +4,7 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import AttachmentUploader from'../components/AttachmentUploader'
+import MipeKnowledgeGraphCard from'../components/MipeKnowledgeGraphCard.jsx'
 import{createCultivationPlantPassportFromState}from'../core/passport/index.js'
 import{publishDomainEvent}from'../core/events/publishDomainEvent.js'
 import{operationalContextForPlant,scopeOperationalState}from'../domain/operationalContext.js'
@@ -36,11 +37,7 @@ export default function PlantProfilePage(){
  async function addEvent(e){
   e.preventDefault();if(!canRecord||isSaving)return
   setIsSaving(true);setSubmitError('')
-  try{
-   await executePlantEventCommand(state,{plantId,...event},{publishEvent:spec=>publishDomainEvent(state,spec),commit:(recipe,meta)=>update(recipe,meta)})
-   setEvent(emptyEvent())
-  }catch(error){setSubmitError(error instanceof Error?error.message:'No fue posible registrar el evento.')}
-  finally{setIsSaving(false)}
+  try{await executePlantEventCommand(state,{plantId,...event},{publishEvent:spec=>publishDomainEvent(state,spec),commit:(recipe,meta)=>update(recipe,meta)});setEvent(emptyEvent())}catch(error){setSubmitError(error instanceof Error?error.message:'No fue posible registrar el evento.')}finally{setIsSaving(false)}
  }
  return <>
   <PageHeader eyebrow="Passport universal" title={object.label} subtitle={`${site?.label||'Sin sede'} · ${house?.label||'Sin nave'} · ${bed?.label||'Sin cama'} · ${attributes.geneticName||'Sin genética'}`}/>
@@ -51,10 +48,9 @@ export default function PlantProfilePage(){
     <div className="lineage-mini"><span>Abuela</span><strong>{grandmother?.label||'Sin registrar'}</strong><span>Madre</span><strong>{mother?.label||'Sin registrar'}</strong><span>Lote</span><strong>{lot?.label||'Sin registrar'}</strong><span>Esqueje</span><strong>{unit?.label||'Sin registrar'}</strong></div>
     <AttachmentUploader entityType="plant" entityId={plantId} label="Agregar foto, video o PDF"/>
    </Card>
-   <Card title="Agregar evento">
-    {canRecord?<form className="form-grid one" onSubmit={addEvent}><Field label="Tipo"><select value={event.type} onChange={e=>setEvent({...event,type:e.target.value})}>{['Observación','MIPE','MIRFE','Riego','Producción','Trasplante','Cosecha'].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Título"><input required value={event.title} onChange={e=>setEvent({...event,title:e.target.value})}/></Field><Field label="Detalle"><textarea value={event.detail} onChange={e=>setEvent({...event,detail:e.target.value})}/></Field>{submitError?<p role="alert">{submitError}</p>:null}<button className="button primary" disabled={isSaving}>{isSaving?'Guardando…':'Guardar evento'}</button></form>:<p className="muted">Tu rol puede consultar el Passport, pero no registrar observaciones de planta.</p>}
-   </Card>
+   <Card title="Agregar evento">{canRecord?<form className="form-grid one" onSubmit={addEvent}><Field label="Tipo"><select value={event.type} onChange={e=>setEvent({...event,type:e.target.value})}>{['Observación','MIPE','MIRFE','Riego','Producción','Trasplante','Cosecha'].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Título"><input required value={event.title} onChange={e=>setEvent({...event,title:e.target.value})}/></Field><Field label="Detalle"><textarea value={event.detail} onChange={e=>setEvent({...event,detail:e.target.value})}/></Field>{submitError?<p role="alert">{submitError}</p>:null}<button className="button primary" disabled={isSaving}>{isSaving?'Guardando…':'Guardar evento'}</button></form>:<p className="muted">Tu rol puede consultar el Passport, pero no registrar observaciones de planta.</p>}</Card>
   </div>
+  <MipeKnowledgeGraphCard passport={passport}/>
   <Card title="Línea de tiempo completa" subtitle={`${timeline.length} eventos consolidados desde MIPE, tratamientos y operación.`}>{timeline.length?timeline.map(x=><div className="timeline-item" key={`${x.type}-${x.id}`}><i/><div><strong>{x.title}</strong><small>{formatDateTime(x.occurredAt)} · {x.type} · {x.status||''}</small><p>{x.summary||'Sin detalle'}</p></div></div>):<p className="muted">No hay eventos.</p>}</Card>
  </>
 }
