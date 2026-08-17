@@ -2,7 +2,8 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 import{initialState}from'../src/services/storage.js'
-import{CURRENT_SCHEMA_VERSION,migrateState}from'../src/services/stateMigration.js'
+import{migrateState}from'../src/services/stateMigration.js'
+import{MIPE_PERSISTENCE_VERSION,migrateMipePersistenceState}from'../src/services/mipePersistenceMigration.js'
 import{compactCompanyState,readLightweightCache,writeLightweightCache}from'../src/services/lightweightCache.js'
 import{SYNCABLE_COLLECTIONS,applyRemoteRecords,collectionChanges,enqueueChanges}from'../src/services/syncEngine.js'
 import{hydrateAuthoritativeState}from'../src/services/remoteBootstrap.js'
@@ -12,22 +13,28 @@ const receipt=(organizationId,commandId,extra={})=>({id:commandId,commandId,orga
 const intervention=(organizationId,id,extra={})=>({id,organizationId,siteId:organizationId==='org-a'?'site-a':'site-b',findingId:'finding-shared',type:'Seguimiento',responsible:'A',outcome:'Estable',performedAt:'2026-08-17T10:00:00.000Z',nextReviewAt:null,findingSnapshot:{id:'finding-shared',targetType:'POSITION',targetId:'plant-shared',plantPositionId:'plant-shared'},assignmentHistory:[{id:`${id}:assignment:created`,kind:'ASSIGNED',responsible:'A',actor:{id:'u',name:'U'},occurredAt:'2026-08-17T10:00:00.000Z'}],createdAt:'2026-08-17T10:00:00.000Z',updatedAt:'2026-08-17T10:00:00.000Z',...extra})
 
 function memoryStorage(){const data=new Map();return{getItem:key=>data.has(key)?data.get(key):null,setItem:(key,value)=>data.set(key,String(value)),removeItem:key=>data.delete(key),data}}
-function base(){return migrateState({
+function base(){return migrateMipePersistenceState(migrateState({
  companies:[{id:'org-a'},{id:'org-b'}],currentContext:{companyId:'org-a',siteId:'site-a'},users:[{id:'user-a',name:'Agrónomo',role:'Encargado MIPE',activeSession:true,active:true,remote:false}],roles:[],memberships:[],
  sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-b',companyId:'org-b'}],houses:[],beds:[],plantPositions:[],grandmotherPlants:[],motherPlants:[],genetics:[],products:[],inventoryLots:[],inventoryMovements:[],costEntries:[],plantEvents:[],
  incidents:[{id:'incident-shared',organizationId:'org-a',name:'A',active:true},{id:'incident-shared',organizationId:'org-b',name:'B',active:true}],
  findings:[{id:'finding-shared',organizationId:'org-a',siteId:'site-a',plantPositionId:'plant-shared',targetType:'POSITION',targetId:'plant-shared',incidentId:'incident-shared',status:'Seguimiento',reportedAt:'2026-08-17T08:00:00.000Z'},{id:'finding-shared',organizationId:'org-b',siteId:'site-b',plantPositionId:'plant-shared',targetType:'POSITION',targetId:'plant-shared',incidentId:'incident-shared',status:'Seguimiento',reportedAt:'2026-08-17T08:00:00.000Z'}],
  treatments:[],mipeInterventions:[intervention('org-a','intervention-shared'),intervention('org-b','intervention-shared')],mipeCommandReceipts:[receipt('org-a','command-shared'),receipt('org-b','command-shared')],syncQueue:[],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[]
-})}
+}))}
 
-test('M32-F008: schema/defaults materialize Intervention and command receipt collections',()=>{
- assert.ok(CURRENT_SCHEMA_VERSION>=15)
- assert.ok(Array.isArray(initialState.mipeInterventions))
- assert.ok(Array.isArray(initialState.mipeCommandReceipts))
- const migrated=migrateState({companies:[{id:'org-a'}],currentContext:{companyId:'org-a'},sites:[{id:'site-a',organizationId:'org-a'}],incidents:[{id:'i',organizationId:'org-a'}],findings:[{id:'f',organizationId:'org-a',siteId:'site-a',incidentId:'i',plantPositionId:'p'}],mipeInterventions:[{id:'x',findingId:'f',siteId:'site-a'}],mipeCommandReceipts:[{commandId:'cmd',organizationId:'org-a',signature:'s'}]})
+test('M32-F008: dedicated migration materializes Intervention and command receipt collections',()=>{
+ assert.equal(MIPE_PERSISTENCE_VERSION,1)
+ const empty=migrateMipePersistenceState(initialState)
+ assert.ok(Array.isArray(empty.mipeInterventions))
+ assert.ok(Array.isArray(empty.mipeCommandReceipts))
+ assert.equal(empty.mipePersistenceVersion,1)
+ const migrated=migrateMipePersistenceState(migrateState({companies:[{id:'org-a'}],currentContext:{companyId:'org-a'},sites:[{id:'site-a',organizationId:'org-a'}],incidents:[{id:'i',organizationId:'org-a'}],findings:[{id:'f',organizationId:'org-a',siteId:'site-a',incidentId:'i',plantPositionId:'p'}],mipeInterventions:[{id:'x',findingId:'f',siteId:'site-a'}],mipeCommandReceipts:[{commandId:'cmd',organizationId:'org-a',signature:'s'}]}))
  assert.equal(migrated.mipeInterventions[0].organizationId,'org-a')
  assert.equal(migrated.mipeCommandReceipts[0].id,'cmd')
  assert.equal(migrated.mipeCommandReceipts[0].commandId,'cmd')
+})
+
+test('M32-F008: contradictory receipts fail closed during persistence migration',()=>{
+ assert.throws(()=>migrateMipePersistenceState({mipeCommandReceipts:[{commandId:'same',organizationId:'org-a',signature:'a'},{commandId:'same',organizationId:'org-a',signature:'b'}]}),/receipts contradictorios/)
 })
 
 test('M32-F008: segmented cache preserves nested MIPE evidence and excludes foreign homonyms',()=>{
@@ -47,12 +54,13 @@ test('M32-F008: segmented cache preserves nested MIPE evidence and excludes fore
 test('M32-F008: sync allowlist queues MIPE Interventions and receipts with stable tenant identity',()=>{
  assert.ok(SYNCABLE_COLLECTIONS.includes('mipeInterventions'))
  assert.ok(SYNCABLE_COLLECTIONS.includes('mipeCommandReceipts'))
- const prev={mipeInterventions:[],mipeCommandReceipts:[]},next={mipeInterventions:[intervention('org-a','int-a')],mipeCommandReceipts:[receipt('org-a','cmd-a')]}
+ const prev={mipeInterventions:[],mipeCommandReceipts:[]},next={mipeInterventions:[intervention('org-a','int-a')],mipeCommandReceipts:[{...receipt('org-a','cmd-a'),id:undefined}]}
  const changes=collectionChanges(prev,next,['mipeInterventions','mipeCommandReceipts'])
  assert.deepEqual(changes.map(item=>[item.collection,item.recordId,item.organizationId]).sort(),[['mipeCommandReceipts','cmd-a','org-a'],['mipeInterventions','int-a','org-a']])
  const queued=enqueueChanges({syncQueue:[]},changes,{companyId:'org-a',userId:'u',deviceId:'d'})
  assert.equal(queued.syncQueue.length,2)
  assert.ok(queued.syncQueue.every(item=>item.companyId==='org-a'&&item.recordId))
+ assert.equal(queued.syncQueue.find(item=>item.collection==='mipeCommandReceipts').payload.id,'cmd-a')
 })
 
 test('M32-F008: remote upsert and tombstone affect only active-tenant MIPE homonym',()=>{
