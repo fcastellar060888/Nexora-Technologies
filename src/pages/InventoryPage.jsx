@@ -7,6 +7,8 @@ import{useStore}from'../services/store'
 import{createInventoryLot}from'../domain/inventory'
 
 const emptyProduct={name:'',category:'MIPE',activeIngredient:'',manufacturer:'',registrationNumber:'',unit:'mL',doseMin:0,doseMax:0,doseUnit:'mL/L',reentryHours:0,withdrawalDays:0,cost:0,validFrom:'',validUntil:'',technicalRevision:1}
+const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].includes(category)
+const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
  const{state,update}=useStore()
@@ -18,6 +20,7 @@ export default function InventoryPage(){
   if(Number(p.doseMax)>0&&Number(p.doseMin)>Number(p.doseMax))return alert('La dosis mínima no puede superar la máxima.')
   if(!Number.isSafeInteger(Number(p.technicalRevision))||Number(p.technicalRevision)<1)return alert('La revisión técnica debe ser un entero positivo.')
   if(p.validFrom&&p.validUntil&&Date.parse(p.validUntil)<Date.parse(p.validFrom))return alert('La vigencia final no puede ser anterior a la inicial.')
+  if(executableMipeCategory(p.category)){const expected=expectedInventoryUnit(p.doseUnit);if(!expected||p.unit!==expected)return alert(`La unidad de inventario debe ser ${expected||'compatible'} para ${p.doseUnit}.`)}
   const organizationId=state.currentContext?.companyId||'';if(!organizationId)return alert('Selecciona una empresa antes de crear el insumo.')
   const id=crypto.randomUUID(),record={id,organizationId,...p,name:p.name.trim(),active:true}
   update(s=>({...s,products:[...s.products,record]}),{module:'Inventario',action:'Crear insumo',detail:p.name.trim()});setLot(current=>({...current,productId:id}));setP(emptyProduct)
@@ -43,6 +46,7 @@ export default function InventoryPage(){
     <Field label="Reentrada horas"><input min="0" type="number" value={p.reentryHours} onChange={e=>setP({...p,reentryHours:+e.target.value})}/></Field>
     <Field label="Carencia días"><input min="0" type="number" value={p.withdrawalDays} onChange={e=>setP({...p,withdrawalDays:+e.target.value})}/></Field>
     <Field label="Costo por unidad"><input min="0" type="number" step=".01" value={p.cost} onChange={e=>setP({...p,cost:+e.target.value})}/></Field>
+    {executableMipeCategory(p.category)&&<small className="form-help">Para {p.doseUnit}, el inventario ejecutable debe registrarse en {expectedInventoryUnit(p.doseUnit)}.</small>}
     <FormActions><button className="button primary">Guardar insumo</button></FormActions>
    </form></Card>
    <Card title="Registrar lote"><form id="inventory-lot-new" data-module="Nuevo lote de inventario" data-record-id="new-lot" className="form-grid one" onSubmit={addL}>
