@@ -38,6 +38,17 @@ function plantPositionGeographyValid(state,record,organizationId){
  return true
 }
 
+function plantPositionSiteId(state,record,organizationId){
+ if(!plantPositionGeographyValid(state,record,organizationId))return''
+ const owner=text(organizationId),bedId=text(record?.bedId),directSiteId=text(record?.siteId)
+ if(!bedId)return directSiteId
+ const bed=list(state?.beds).find(item=>text(item?.id)===bedId&&irrigationMirfeRecordOrganizationId(state,'beds',item)===owner)
+ if(!bed)return''
+ const houseId=text(bed?.houseId)
+ if(houseId){const house=list(state?.houses).find(item=>text(item?.id)===houseId&&irrigationMirfeRecordOrganizationId(state,'houses',item)===owner);return text(house?.siteId)||text(bed?.siteId)||directSiteId}
+ return text(bed?.siteId)||directSiteId
+}
+
 function materialPlantOwners(state,id){
  const targetId=text(id),owners=[]
  if(!targetId)return owners
@@ -70,6 +81,48 @@ function ownersForReference(state,collection,id){
  return[...new Set(list(state?.[collection]).filter(item=>text(item?.id)===key).map(item=>resolver(state,collection,item)).filter(Boolean))]
 }
 
+function explicitOwnersForReference(state,collection,id){
+ const key=text(id)
+ if(!key)return[]
+ return[...new Set(list(state?.[collection]).filter(item=>text(item?.id)===key).map(explicitOrganizationId).filter(Boolean))]
+}
+
+function ownedReference(state,collection,id,organizationId){
+ const key=text(id),owner=text(organizationId)
+ if(!key||!owner)return null
+ const resolver=MIPE_OWNERSHIP_COLLECTIONS.includes(collection)?mipeRecordOrganizationId:sharedRecordOrganizationId
+ const matches=list(state?.[collection]).filter(item=>text(item?.id)===key&&resolver(state,collection,item)===owner)
+ return matches.length===1?matches[0]:null
+}
+
+function sitesCompatible(declaredSiteId,referenceSiteIds){
+ const declared=text(declaredSiteId),references=[...new Set(referenceSiteIds.map(text).filter(Boolean))]
+ if(references.length>1)return false
+ return!declared||!references.length||declared===references[0]
+}
+
+function recordSiteCausallyValid(state,collection,record,organizationId){
+ const owner=text(organizationId)
+ if(!owner||collection==='incidents')return Boolean(owner)
+ if(collection==='findings'){
+  const references=[]
+  const positionId=text(record?.plantPositionId)||(text(record?.targetType)==='POSITION'?text(record?.targetId):'')
+  if(positionId){const position=ownedReference(state,'plantPositions',positionId,owner);if(position)references.push(plantPositionSiteId(state,position,owner))}
+  const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
+  if(materialId){for(const source of['grandmotherPlants','motherPlants']){const material=ownedReference(state,source,materialId,owner);if(material)references.push(text(material.siteId))}}
+  return sitesCompatible(record?.siteId,references)
+ }
+ if(collection==='treatments'){
+  const finding=ownedReference(state,'findings',record?.findingId,owner),product=ownedReference(state,'products',record?.productId,owner),lot=ownedReference(state,'inventoryLots',record?.lotId||record?.inventoryLotId,owner)
+  return sitesCompatible(record?.siteId,[finding?.siteId,product?.siteId,lot?.siteId])
+ }
+ if(collection==='mipeInterventions'){
+  const finding=ownedReference(state,'findings',record?.findingId,owner),treatment=ownedReference(state,'treatments',record?.treatmentId,owner)
+  return sitesCompatible(record?.siteId,[finding?.siteId,treatment?.siteId])
+ }
+ return true
+}
+
 function findingOwnerGroups(state,record){
  const groups=[]
  const siteOwners=ownerForSite(state,record?.siteId)
@@ -78,6 +131,8 @@ function findingOwnerGroups(state,record){
  if(positionId){const owners=ownersForReference(state,'plantPositions',positionId);if(owners.length)groups.push(owners)}
  const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
  if(materialId){const owners=materialPlantOwners(state,materialId);if(owners.length)groups.push(owners)}
+ const incidentOwners=explicitOwnersForReference(state,'incidents',record?.incidentId)
+ if(incidentOwners.length)groups.push(incidentOwners)
  return groups
 }
 
@@ -119,16 +174,14 @@ export function mipeRecordOrganizationId(state,collection,record){
  if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))return sharedRecordOrganizationId(state,collection,record)
  const explicit=explicitOrganizationId(record),groups=recordOwnerGroups(state,collection,record)
  if(explicit){
-  if(groups.some(owners=>!owners.includes(explicit)))return''
+  if(groups.some(owners=>!owners.includes(explicit))||!recordSiteCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
  const inferred=[...new Set(groups.flat())]
- if(inferred.length===1)return inferred[0]
+ if(inferred.length===1)return recordSiteCausallyValid(state,collection,record,inferred[0])?inferred[0]:''
  if(inferred.length>1)return''
- const companies=list(state?.companies)
- if(companies.length===1)return text(companies[0]?.id)
- if(companies.length===0)return'local-installation'
- return''
+ const companies=list(state?.companies),fallback=companies.length===1?text(companies[0]?.id):companies.length===0?'local-installation':''
+ return fallback&&recordSiteCausallyValid(state,collection,record,fallback)?fallback:''
 }
 
 export function mipeRecordsForOrganization(state,collection,organizationId=activeOrganizationId(state)){
@@ -186,7 +239,9 @@ export function ownMipeRecord(state,collection,record,organizationId=activeOrgan
   assertReference(state,'findings',record?.findingId,owner,'hallazgo')
   if(record?.treatmentId)assertReference(state,'treatments',record.treatmentId,owner,'tratamiento')
  }
- return{...record,organizationId:owner}
+ const owned={...record,organizationId:owner}
+ if(!recordSiteCausallyValid(state,collection,owned,owner))throw new Error(`${collection} contiene causalidad de sede contradictoria dentro de la empresa activa.`)
+ return owned
 }
 
 export function scopeMipeState(state,organizationId=activeOrganizationId(state)){
