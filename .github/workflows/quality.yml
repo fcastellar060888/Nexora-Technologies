@@ -7,6 +7,7 @@ on:
       - main
       - foundation/event-bus-core
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -17,7 +18,8 @@ concurrency:
 
 jobs:
   check:
-    # Keep each gate observable so failures identify the exact contract.
+    # Draft PRs are intentionally runner-free. Quality executes when the PR is ready.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
