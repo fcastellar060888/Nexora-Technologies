@@ -54,6 +54,21 @@ function inventoryLotOrganizationId(state,lot){
  return''
 }
 
+function inventoryMovementOrganizationId(state,movement){
+ const explicit=explicitOrganizationId(movement)
+ const owners=siteOwners(state,movement?.siteId)
+ if(explicit){
+  if(owners.length&&!owners.includes(explicit))return''
+  return explicit
+ }
+ if(owners.length===1)return owners[0]
+ if(owners.length>1)return''
+ const companies=list(state?.companies)
+ if(companies.length===1)return text(companies[0]?.id)
+ if(companies.length===0)return'local-installation'
+ return''
+}
+
 function resolveScopedInventoryLot(state,lotId,organizationId){
  const id=text(lotId)
  if(!id)throw new Error('Selecciona un lote de inventario válido.')
@@ -77,6 +92,17 @@ function assertTenantLocalLotUniqueness(state,{organizationId,productId,siteId,l
   if(owner!==organizationId)continue
   if(sameIdentity)throw new Error('Ya existe un lote con esa identidad dentro de la empresa activa.')
   throw new Error('Ya existe ese lote para el producto y la sede seleccionados dentro de la empresa activa.')
+ }
+}
+
+export function inventoryViewForActiveOrganization(state){
+ const organizationId=activeOrganizationId(state)
+ return{
+  organizationId,
+  products:list(state?.products).filter(item=>fallbackRecordOrganizationId(state,item)===organizationId),
+  sites:list(state?.sites).filter(item=>fallbackRecordOrganizationId(state,item)===organizationId),
+  lots:list(state?.inventoryLots).filter(item=>inventoryLotOrganizationId(state,item)===organizationId),
+  movements:list(state?.inventoryMovements).filter(item=>inventoryMovementOrganizationId(state,item)===organizationId)
  }
 }
 
