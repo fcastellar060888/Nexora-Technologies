@@ -1,10 +1,47 @@
+import{activeOrganizationId,explicitOrganizationId}from'./organizationOwnership.js'
+
 const POSITIVE_TYPES=new Set(['Entrada','Ajuste positivo','Saldo inicial','Devolución'])
 const NEGATIVE_TYPES=new Set(['Salida','Ajuste negativo','Consumo','Baja','Vencimiento'])
+const list=value=>Array.isArray(value)?value:[]
+const text=value=>String(value??'').trim()
 
 function asPositiveNumber(value,label='La cantidad'){
  const number=Number(value)
  if(!Number.isFinite(number)||number<=0)throw new Error(`${label} debe ser mayor que cero.`)
  return number
+}
+
+function siteOwners(state,siteId){
+ const id=text(siteId)
+ if(!id)return[]
+ return[...new Set(list(state?.sites).filter(site=>text(site?.id)===id).map(explicitOrganizationId).filter(Boolean))]
+}
+
+function inventoryLotOrganizationId(state,lot){
+ const explicit=explicitOrganizationId(lot)
+ const owners=siteOwners(state,lot?.siteId)
+ if(explicit){
+  if(owners.length&&!owners.includes(explicit))return''
+  return explicit
+ }
+ if(owners.length===1)return owners[0]
+ if(owners.length>1)return''
+ const companies=list(state?.companies)
+ if(companies.length===1)return text(companies[0]?.id)
+ if(companies.length===0)return'local-installation'
+ return''
+}
+
+function resolveScopedInventoryLot(state,lotId,organizationId){
+ const id=text(lotId)
+ if(!id)throw new Error('Selecciona un lote de inventario válido.')
+ const lots=list(state?.inventoryLots)
+ const homonyms=lots.map((lot,index)=>({lot,index})).filter(candidate=>text(candidate.lot?.id)===id)
+ if(!homonyms.length)throw new Error('Selecciona un lote de inventario válido.')
+ const matches=homonyms.filter(candidate=>inventoryLotOrganizationId(state,candidate.lot)===organizationId)
+ if(matches.length>1)throw new Error('El lote de inventario tiene identidad duplicada o ambigua dentro de la empresa activa.')
+ if(matches.length===0)throw new Error('El lote de inventario pertenece a otra empresa o no tiene ownership inequívoco.')
+ return matches[0]
 }
 
 export function movementSign(type){
@@ -14,8 +51,12 @@ export function movementSign(type){
 }
 
 export function transactInventory(state,input){
- const lot=(state.inventoryLots||[]).find(item=>item.id===input.lotId)
- if(!lot)throw new Error('Selecciona un lote de inventario válido.')
+ const organizationId=activeOrganizationId(state)
+ const requestedOrganizationId=text(input?.organizationId)
+ if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('La transacción de inventario pertenece a otra empresa.')
+ const{lot, index:lotIndex}=resolveScopedInventoryLot(state,input?.lotId,organizationId)
+ const requestedSiteId=text(input?.siteId)
+ if(requestedSiteId&&requestedSiteId!==text(lot.siteId))throw new Error('El lote de inventario pertenece a otra sede.')
 
  const quantity=asPositiveNumber(input.quantity)
  const signedQuantity=movementSign(input.type)*quantity
@@ -25,6 +66,7 @@ export function transactInventory(state,input){
 
  const movement={
   id:input.id||crypto.randomUUID(),
+  organizationId,
   lotId:lot.id,
   productId:lot.productId,
   siteId:lot.siteId,
@@ -45,8 +87,8 @@ export function transactInventory(state,input){
 
  return{
   ...state,
-  inventoryLots:(state.inventoryLots||[]).map(item=>item.id===lot.id?{...item,quantity:balanceAfter,updatedAt:movement.createdAt}:item),
-  inventoryMovements:[...(state.inventoryMovements||[]),movement]
+  inventoryLots:list(state?.inventoryLots).map((item,index)=>index===lotIndex?{...item,organizationId,quantity:balanceAfter,updatedAt:movement.createdAt}:item),
+  inventoryMovements:[...list(state?.inventoryMovements),movement]
  }
 }
 
@@ -63,8 +105,10 @@ export function createInventoryLot(state,input){
  if(!Number.isFinite(minimum)||minimum<0)throw new Error('El stock mínimo no puede ser negativo.')
 
  const createdAt=input.createdAt||new Date().toISOString()
+ const organizationId=activeOrganizationId(state)
  const lot={
   id:input.id||crypto.randomUUID(),
+  organizationId,
   productId:input.productId,
   siteId:input.siteId,
   quantity:0,
@@ -77,6 +121,8 @@ export function createInventoryLot(state,input){
  let next={...state,inventoryLots:[...(state.inventoryLots||[]),lot]}
  if(openingQuantity>0){
   next=transactInventory(next,{
+   organizationId,
+   siteId:lot.siteId,
    lotId:lot.id,
    type:'Saldo inicial',
    quantity:openingQuantity,
