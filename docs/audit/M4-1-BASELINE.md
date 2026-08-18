@@ -144,14 +144,63 @@ Cambios:
 
 Se ejecutó un harness focal de las cuatro garantías adversariales de F003 sobre la lógica publicada: **4/4 pass**, **0 fail**.
 
-El entorno local no tiene resolución de red hacia GitHub, por lo que no fue posible clonar el branch y ejecutar la suite de repositorio completa fuera de Actions. Esta verificación focal no sustituye el Quality Gate completo.
+Esta verificación focal no sustituye el Quality Gate completo.
 
 **Estado:** Ready for Quality. No Verified.
 
-### F004 — Under investigation
+### F004 — High — Ready for Quality
 
-La creación de lotes requiere comprobar autoridad tenant-aware para producto, sede y unicidad del número de lote.
+**La creación de lotes confiaba en IDs crudos de producto/sede y aplicaba unicidad de número de lote sin scope de organización.**
+
+Evidencia en `createInventoryLot()` antes del remediation:
+
+1. `productId` y `siteId` sólo se comprobaban como strings presentes; no se resolvía que el producto y la sede pertenecieran a la empresa activa.
+2. Un caller podía suministrar un `organizationId` contradictorio sin que la creación lo rechazara explícitamente.
+3. La unicidad se calculaba con `productId + siteId + lotNumber` sobre todo `inventoryLots`, por lo que IDs homónimos cross-tenant producían falsos duplicados.
+4. Una identidad de producto duplicada dentro del mismo tenant no fallaba cerrada.
+
+Impacto: creación de lotes relacionados con objetos de otra empresa, falsos conflictos entre tenants y persistencia de relaciones ambiguas.
+
+#### Evidencia adversarial
+
+- `tests/inventory-lot-creation-tenancy.test.js`
+- Commit RED/evidence: `03e53651382f3e90ed3ecc0180869ec8f3862f80`
+
+La prueba cubre:
+
+- rechazo de producto perteneciente sólo a otra organización;
+- rechazo de sede perteneciente sólo a otra organización;
+- rechazo de spoof de `organizationId` por el caller;
+- mismo `productId`, `siteId` y `lotNumber` permitido entre organizaciones distintas cuando los registros homónimos están explícitamente poseídos;
+- mismo número de lote prohibido dentro del tenant para el mismo producto+sede;
+- identidad duplicada de producto dentro del tenant rechazada por ambigüedad.
+
+#### Remediation
+
+Commit: `8327a3f9c6e1f8b788f2e3c54a8d0feeb8c1fa90`
+
+- autoridad derivada de `activeOrganizationId(state)` antes de crear;
+- `organizationId` suministrado por el caller no puede contradecir la empresa activa;
+- producto y sede se resuelven por ID + ownership dentro del tenant activo;
+- referencias ownerless en estado multiempresa fallan cerradas;
+- duplicados de referencia dentro del tenant fallan por ambigüedad;
+- la unicidad de `lotNumber` se evalúa sólo dentro del tenant activo para el mismo producto+sede;
+- homónimos explícitamente extranjeros no bloquean la creación legítima del tenant activo;
+- lotes legacy con ownership ambiguo bloquean la creación hasta migración;
+- una identidad de lote suministrada por caller no puede duplicarse dentro del tenant activo.
+
+#### Verificación focal previa a Quality
+
+Se ejecutó la suite exacta de F004 contra la lógica publicada: **6/6 pass**. También se ejecutó conjuntamente con `tests/inventory-tenancy.test.js` de F001: **9/9 pass, 0 fail**.
+
+Esta verificación focal no sustituye el Quality Gate completo.
+
+**Estado:** Ready for Quality. No Verified.
+
+## Resultado del bloque
+
+M4.1 Inventory tiene **4/4 hallazgos técnicamente corregidos y Ready for Quality**. Ninguno se marca `Verified` mientras GitHub Actions no ejecute un runner funcional.
 
 ## Quality
 
-GitHub Actions continúa bloqueado externamente antes del inicio del runner. Quality #2406 volvió a concluir `failure` con `steps: null` y `logs_url: null`, confirmando que el job no llegó a ejecutar código. Hasta disponer de una ejecución funcional de Quality, F001, F002 y F003 permanecen `Ready for Quality` y no pueden marcarse `Verified`.
+GitHub Actions continúa presentando el bloqueo externo previo al runner observado en este bloque y en M3.2. Los runs anteriores concluyeron `failure` con `steps: null` y `logs_url: null`, es decir, sin ejecución del código. El run asociado al HEAD final de M4.1 debe evaluarse con el mismo criterio: sólo una ejecución funcional y verde permite promover F001–F004 a `Verified`.
