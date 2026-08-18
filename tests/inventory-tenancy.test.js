@@ -3,18 +3,20 @@ import assert from 'node:assert/strict'
 
 import { transactInventory } from '../src/domain/inventory.js'
 
+const tenantState=inventoryLots=>({
+ currentContext:{companyId:'org-a'},
+ companies:[{id:'org-a'},{id:'org-b'}],
+ inventoryLots,
+ inventoryMovements:[]
+})
+
 test('F001: inventory transaction mutates only the scoped tenant lot when raw IDs collide', () => {
- const state={
-  inventoryLots:[
-   {id:'lot-shared',organizationId:'org-b',siteId:'site-b',productId:'product-b',quantity:90},
-   {id:'lot-shared',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:20}
-  ],
-  inventoryMovements:[]
- }
+ const state=tenantState([
+  {id:'lot-shared',organizationId:'org-b',siteId:'site-b',productId:'product-b',quantity:90},
+  {id:'lot-shared',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:20}
+ ])
 
  const next=transactInventory(state,{
-  organizationId:'org-a',
-  siteId:'site-a',
   lotId:'lot-shared',
   type:'Salida',
   quantity:5,
@@ -30,36 +32,26 @@ test('F001: inventory transaction mutates only the scoped tenant lot when raw ID
 })
 
 test('F001: inventory transaction rejects a lot that only belongs to another organization', () => {
- const state={
-  inventoryLots:[
-   {id:'lot-foreign',organizationId:'org-b',siteId:'site-b',productId:'product-b',quantity:20}
-  ],
-  inventoryMovements:[]
- }
+ const state=tenantState([
+  {id:'lot-foreign',organizationId:'org-b',siteId:'site-b',productId:'product-b',quantity:20}
+ ])
 
  assert.throws(()=>transactInventory(state,{
-  organizationId:'org-a',
-  siteId:'site-a',
   lotId:'lot-foreign',
   type:'Salida',
   quantity:1
- }),/organización|empresa|lote de inventario válido/i)
+ }),/organización|empresa|ownership|lote de inventario válido/i)
 })
 
 test('F001: inventory transaction fails closed when the scoped lot identity is ambiguous', () => {
- const state={
-  inventoryLots:[
-   {id:'lot-duplicate',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:20},
-   {id:'lot-duplicate',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:30}
-  ],
-  inventoryMovements:[]
- }
+ const state=tenantState([
+  {id:'lot-duplicate',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:20},
+  {id:'lot-duplicate',organizationId:'org-a',siteId:'site-a',productId:'product-a',quantity:30}
+ ])
 
  assert.throws(()=>transactInventory(state,{
-  organizationId:'org-a',
-  siteId:'site-a',
   lotId:'lot-duplicate',
   type:'Salida',
   quantity:1
- }),/ambigu/i)
+ }),/duplicad|ambigu/i)
 })
