@@ -9,15 +9,9 @@ const canonicalState=lot=>({
  companies:[{id:'org-a'}],
  sites:[{id:'site-a',organizationId:'org-a'}],
  propagationBatches:[lot],
- lotEvents:[],
- finishedGoods:[],
- finishedGoodsMovements:[],
- productionFlows:[]
+ lotEvents:[],finishedGoods:[],finishedGoodsMovements:[],productionFlows:[]
 })
-
-const lotAt=(phase,ledger={},extra={})=>({
- id:'lot-a',organizationId:'org-a',siteId:'site-a',phase,activeQuantity:50,quantity:50,productionLedger:ledger,...extra
-})
+const lotAt=(phase,ledger={},extra={})=>({id:'lot-a',organizationId:'org-a',siteId:'site-a',phase,activeQuantity:50,quantity:50,productionLedger:ledger,...extra})
 
 test('M4.2 F004: canonical lot cannot inflate active plant quantity during a phase transition',()=>{
  const state=canonicalState(lotAt('Floración'))
@@ -51,24 +45,22 @@ test('M4.2 F004: every postharvest weight transition conserves mass',()=>{
  assert.deepEqual(['Cosecha','Secado','Manicura','Selección','Empaque'].map(phase=>ledger[phase].outputGrams),[1000,700,600,550,500])
  assert.equal(ledger.Cosecha.inputGrams,1200)
  assert.equal(ledger.Cosecha.lossGrams,200)
+ assert.deepEqual(['Cosecha','Secado','Manicura','Selección','Empaque'].map(phase=>ledger[phase].inputGrams-ledger[phase].outputGrams),[200,300,100,50,50])
 })
 
-test('M4.2 F004: legacy integrated flow rejects impossible mass and terminal re-advance',()=>{
- const state={
-  currentContext:{companyId:'org-a'},companies:[{id:'org-a'}],sites:[{id:'site-a',organizationId:'org-a'}],
-  productionFlows:[{id:'flow-a',organizationId:'org-a',siteId:'site-a',stage:'Secado',wetWeight:100,history:[{stage:'Secado',output:80}]}]
- }
- assert.throws(()=>advanceProductionFlow(state,{flowId:'flow-a',organizationId:'org-a',siteId:'site-a',output:81}),/peso|salida|entrada|superar|masa/i)
- const terminal={...state,productionFlows:[{id:'flow-a',organizationId:'org-a',siteId:'site-a',stage:'Finalizado',wetWeight:100,history:[{stage:'Finalizado',output:60}]}]}
- assert.throws(()=>advanceProductionFlow(terminal,{flowId:'flow-a',organizationId:'org-a',siteId:'site-a',output:50}),/final|terminal|avanzar/i)
+test('M4.2 F004: legacy integrated flow cannot remain a second operational authority',()=>{
+ const state={currentContext:{companyId:'org-a'},companies:[{id:'org-a'}],sites:[{id:'site-a',organizationId:'org-a'}],productionFlows:[{id:'flow-a',organizationId:'org-a',siteId:'site-a',stage:'Secado'}]}
+ assert.throws(()=>advanceProductionFlow(state,{flowId:'flow-a',organizationId:'org-a',siteId:'site-a',output:70}),/solo lectura|advanceProductionLot|canónico/i)
 })
 
 test('M4.2 F004: operational postharvest pages use the canonical production-lot authority, not legacy write arrays',()=>{
  for(const page of ['ProductionPage.jsx','DryingPage.jsx','TrimmingPage.jsx','SelectionPage.jsx','PackingPage.jsx']){
   const source=readFileSync(new URL(`../src/pages/${page}`,import.meta.url),'utf8')
-  assert.match(source,/advanceProductionLot|CanonicalPostharvestStage/)
-  assert.doesNotMatch(source,/appendPostharvestRecord/)
+  assert.match(source,/CanonicalPostharvestStage/)
+  assert.doesNotMatch(source,/appendPostharvestRecord|advanceProductionFlow/)
  }
+ const canonical=readFileSync(new URL('../src/components/CanonicalPostharvestStage.jsx',import.meta.url),'utf8')
+ assert.match(canonical,/advanceProductionLot/)
  const flow=readFileSync(new URL('../src/pages/ProductionFlowPage.jsx',import.meta.url),'utf8')
  assert.match(flow,/advanceProductionLot/)
  assert.doesNotMatch(flow,/advanceProductionFlow|appendPostharvestRecord/)
