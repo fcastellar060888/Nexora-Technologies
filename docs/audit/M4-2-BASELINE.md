@@ -29,37 +29,69 @@ Impacto: corrupción cross-tenant de fase productiva, pesos de postcosecha, pér
 - Test: `tests/postharvest-tenancy.test.js`
 - RED/evidence: `3a1d7d4b8abaa85c23d6c78ad204d36d999687cc`
 
-Casos cubiertos:
-
-- mismo `lotId` en dos organizaciones con el lote extranjero primero en el array;
-- lote existente únicamente en otra organización;
-- identidad duplicada dentro del tenant activo;
-- evento de fase con `organizationId`, `siteId` y `lotId` explícitos.
-
 ### Remediation
 
 Commit: `a4e15be6c926503bffe70cf1a10ec94c0dd3e5f2`
 
 - autoridad derivada de `activeOrganizationId(state)`;
-- `organizationId` del caller no puede contradecir la empresa activa;
-- resolución del lote por ID + ownership dentro del tenant activo;
-- ownership foreign/ambiguo falla cerrado;
-- `siteId` contradictorio falla cerrado;
-- la mutación se aplica a un único índice autorizado, no a todos los homónimos por raw ID;
-- el lote actualizado materializa `organizationId`;
-- el `lotEvent` persiste `organizationId`, `siteId` y `lotId` de primera clase.
+- resolución tenant-aware del lote productivo;
+- ownership foreign/ambiguo y `siteId` contradictorio fallan cerrado;
+- mutación de un único índice autorizado;
+- `organizationId`, `siteId` y `lotId` explícitos en el evento de fase.
 
 ### Verificación focal
 
-Se ejecutó el caso adversarial de F001 contra la lógica publicada: **3/3 pass, 0 fail**.
-
-Esta verificación focal no sustituye el Quality Gate completo.
+**3/3 pass, 0 fail**.
 
 **Estado:** Ready for Quality. No Verified.
 
-## F002 — Under investigation
+## F002 — High — Ready for Quality
 
-`receiveFinishedGoods()` también resuelve `propagationBatches` por raw `lotId` y calcula disponibilidad/duplicados sobre colecciones globales. Debe verificarse aislamiento tenant-aware y conservación de masa entre `Empaque` → `finishedGoods`.
+**El ingreso de Empaque a Finished Goods resolvía lotes, masa disponible y clasificación sobre colecciones globales por raw `lotId`.**
+
+### Evidencia
+
+Antes del remediation:
+
+1. `receiveFinishedGoods()` seleccionaba `propagationBatches` con `find(x => x.id === input.lotId)` sin tenant scope.
+2. `packedAvailableGrams()` seleccionaba el lote por raw ID y restaba todos los `finishedGoods` con ese `lotId`, incluso de otros tenants.
+3. La unicidad de `classification` se comprobaba globalmente por `lotId + classification`.
+4. El finished good y su movimiento no materializaban obligatoriamente `organizationId` + `siteId` como ownership de dominio.
+
+Impacto: un tenant podía perder masa disponible por receipts de otra organización, recibir desde el lote homónimo equivocado o sufrir falsos conflictos de clasificación; además la trazabilidad Finished Goods quedaba sin tenancy explícita.
+
+### Evidencia adversarial
+
+- Test: `tests/postharvest-finished-goods-tenancy.test.js`
+- RED/evidence: `72ae6b3e5feffdc60f053b5cc11a61abb4432f81`
+
+Casos cubiertos:
+
+- masa disponible calculada exclusivamente desde el lote del tenant activo y sus propios receipts;
+- clasificación homónima en otra empresa no bloquea el ingreso legítimo;
+- lote empacado foreign-only rechazado;
+- identidad duplicada dentro del tenant activo rechazada;
+- conservación de masa tenant-aware: no se puede superar el output de Empaque restante;
+- caller no puede suplantar `organizationId` ni `siteId`;
+- finished good y movimiento persisten `organizationId`, `siteId` y `lotId` explícitos.
+
+### Remediation
+
+Commit: `f3e488213a4ee2a2aa33f8021cdb11c1de6c2c28`
+
+- `packedAvailableGrams()` deriva la empresa activa y resuelve el lote con el mismo boundary tenant-aware de F001;
+- receipts extranjeros explícitos quedan fuera del cálculo de masa del tenant activo;
+- finished goods legacy ownerless/ambiguos en multiempresa fallan cerrado en vez de ser adoptados;
+- `receiveFinishedGoods()` valida anti-spoof de empresa y sede;
+- unicidad de clasificación se vuelve tenant-local;
+- item y movimiento de Finished Goods reciben ownership explícito;
+- la conservación de masa se calcula únicamente contra receipts autorizados del tenant activo.
+
+### Verificación focal
+
+Se ejecutaron las seis garantías adversariales de F002 sobre la lógica publicada: **6/6 pass, 0 fail**.
+
+**Estado:** Ready for Quality. No Verified.
 
 ## F003 — Under investigation
 
@@ -71,4 +103,4 @@ Se auditará conservación de masa y causalidad entre fases: Cosecha → Secado 
 
 ## Quality
 
-GitHub Actions tiene los 2.000 minutos incluidos consumidos en el ciclo actual. `Quality` fue optimizado para no asignar runner en PRs draft; la certificación completa se ejecutará cuando el PR se marque Ready y exista cuota disponible.
+Los 2.000 minutos incluidos de GitHub Actions están consumidos en el ciclo actual. El workflow ya fue optimizado para que los PR draft terminen `skipped` antes de asignar runner; Quality #2433 confirmó ese comportamiento. La certificación completa se ejecutará cuando exista cuota disponible y el PR se marque Ready.
