@@ -121,7 +121,14 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
   if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
   const receiptCollection=row.collection==='mipeCommandReceipts'
   const firstClassOwnershipCollection=FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS.has(row.collection)
-  const isTenantRecord=item=>recordId(item)===remoteId&&(receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
+  const homonyms=items.filter(item=>recordId(item)===remoteId)
+  if(firstClassOwnershipCollection){
+   const legacy=homonyms.filter(item=>!recordOrganizationId(item))
+   const owned=homonyms.filter(item=>recordOrganizationId(item)===tenant)
+   if(legacy.length)throw new Error(`${row.collection} contiene un registro legacy sin organizationId; migra ownership antes de hidratar sync`)
+   if(owned.length>1)throw new Error(`${row.collection} contiene identidades duplicadas dentro de la empresa activa`)
+  }
+  const isTenantRecord=item=>recordId(item)===remoteId&&(firstClassOwnershipCollection?recordOrganizationId(item)===tenant:receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
   let record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
   if(firstClassOwnershipCollection)record={...record,organizationId:tenant}
