@@ -1,13 +1,49 @@
 import{nextPhase}from'./lifecycle.js'
-import{activeOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
+import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
 
 const WEIGHT_PHASES=new Set(['Cosecha','Secado','Manicura','Selección','Empaque','Finalizado'])
 const SOURCE_PHASE={Cosecha:null,Secado:'Cosecha',Manicura:'Secado',Selección:'Manicura',Empaque:'Selección',Finalizado:'Empaque'}
+const POSTHARVEST_STAGE_COLLECTIONS=new Set(['productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows'])
+const PRODUCTION_FLOW_STAGES=['Cosecha','Secado','Manicura','Selección','Empaque','Finalizado']
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 
 function nonNegative(value,label){const n=Number(value);if(!Number.isFinite(n)||n<0)throw new Error(`${label} no puede ser negativo.`);return n}
 function positive(value,label){const n=nonNegative(value,label);if(n<=0)throw new Error(`${label} debe ser mayor que cero.`);return n}
+function explicitSiteOwners(state,siteId){const id=text(siteId);return[...new Set(list(state?.sites).filter(site=>text(site?.id)===id).map(explicitOrganizationId).filter(Boolean))]}
+function postharvestRecordOrganizationId(state,record){
+ const explicit=explicitOrganizationId(record)
+ const siteId=text(record?.siteId)
+ if(explicit){
+  const owners=explicitSiteOwners(state,siteId)
+  if(owners.length&&!owners.includes(explicit))return''
+  return explicit
+ }
+ if(siteId){const owners=explicitSiteOwners(state,siteId);if(owners.length===1)return owners[0];if(owners.length>1)return''}
+ const companies=list(state?.companies)
+ if(companies.length===1)return text(companies[0]?.id)
+ if(companies.length===0)return'local-installation'
+ return''
+}
+function scopedRecords(state,collection,organizationId){return list(state?.[collection]).flatMap(record=>postharvestRecordOrganizationId(state,record)===organizationId?[record.organizationId?record:{...record,organizationId}]:[])}
+function resolveScopedSite(state,siteId,organizationId){
+ const id=text(siteId)
+ if(!id)throw new Error('Selecciona una sede válida.')
+ const homonyms=list(state?.sites).filter(site=>text(site?.id)===id)
+ const matches=homonyms.filter(site=>postharvestRecordOrganizationId(state,site)===organizationId)
+ if(matches.length>1)throw new Error('La sede tiene identidad duplicada o ambigua dentro de la empresa activa.')
+ if(matches.length===0)throw new Error('La sede pertenece a otra empresa o no tiene ownership inequívoco.')
+ return matches[0]
+}
+function resolveScopedRecord(state,collection,id,organizationId,label){
+ const identity=text(id)
+ if(!identity)throw new Error(`Selecciona ${label} válido.`)
+ const homonyms=list(state?.[collection]).map((record,index)=>({record,index})).filter(candidate=>text(candidate.record?.id)===identity)
+ const matches=homonyms.filter(candidate=>postharvestRecordOrganizationId(state,candidate.record)===organizationId)
+ if(matches.length>1)throw new Error(`${label} tiene identidad duplicada o ambigua dentro de la empresa activa.`)
+ if(matches.length===0)throw new Error(`${label} pertenece a otra empresa o no tiene ownership inequívoco.`)
+ return matches[0]
+}
 function lotOrganizationId(state,lot){try{return resolveOrganizationId(state,{record:lot,siteId:lot?.siteId,label:'lote productivo'})}catch{return''}}
 function resolveScopedProductionLot(state,lotId,organizationId){
  const id=text(lotId)
@@ -29,6 +65,54 @@ function scopedFinishedGoodsForLot(state,lot,organizationId){
   if(owner===organizationId)matches.push(item)
  }
  return matches
+}
+
+export function postharvestViewForActiveOrganization(state){
+ const organizationId=activeOrganizationId(state)
+ return{
+  organizationId,
+  sites:scopedRecords(state,'sites',organizationId),
+  productionBatches:scopedRecords(state,'productionBatches',organizationId),
+  dryingBatches:scopedRecords(state,'dryingBatches',organizationId),
+  trimmingBatches:scopedRecords(state,'trimmingBatches',organizationId),
+  selectionBatches:scopedRecords(state,'selectionBatches',organizationId),
+  packingBatches:scopedRecords(state,'packingBatches',organizationId),
+  productionFlows:scopedRecords(state,'productionFlows',organizationId),
+  propagationBatches:scopedRecords(state,'propagationBatches',organizationId),
+  finishedGoods:scopedRecords(state,'finishedGoods',organizationId)
+ }
+}
+
+export function appendPostharvestRecord(state,collection,input={}){
+ if(!POSTHARVEST_STAGE_COLLECTIONS.has(collection))throw new Error('Colección postcosecha no autorizada.')
+ const organizationId=activeOrganizationId(state)
+ const requestedOrganizationId=explicitOrganizationId(input)
+ if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('El registro postcosecha pertenece a otra empresa.')
+ const site=resolveScopedSite(state,input.siteId,organizationId)
+ const id=text(input.id)||crypto.randomUUID()
+ const duplicates=list(state?.[collection]).filter(record=>text(record?.id)===id&&postharvestRecordOrganizationId(state,record)===organizationId)
+ if(duplicates.length)throw new Error('El registro postcosecha tiene identidad duplicada dentro de la empresa activa.')
+ const createdAt=input.createdAt||new Date().toISOString()
+ let record={...input,id,organizationId,siteId:site.id,createdAt}
+ if(collection==='productionFlows')record={...record,history:list(record.history).map(entry=>({...entry,organizationId,siteId:site.id}))}
+ return{...state,[collection]:[...list(state?.[collection]),record]}
+}
+
+export function advanceProductionFlow(state,input={}){
+ const organizationId=activeOrganizationId(state)
+ const requestedOrganizationId=text(input.organizationId)
+ if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('El flujo productivo pertenece a otra empresa.')
+ const{record:flow,index}=resolveScopedRecord(state,'productionFlows',input.flowId,organizationId,'flujo productivo')
+ const requestedSiteId=text(input.siteId)
+ if(requestedSiteId&&requestedSiteId!==text(flow.siteId))throw new Error('El flujo productivo pertenece a otra sede.')
+ const currentIndex=PRODUCTION_FLOW_STAGES.indexOf(flow.stage)
+ const next=PRODUCTION_FLOW_STAGES[Math.min(currentIndex+1,PRODUCTION_FLOW_STAGES.length-1)]
+ const inputWeight=Number(flow.history?.at(-1)?.output||flow.wetWeight||0)
+ const output=Number(input.output)
+ const date=input.date||new Date().toISOString().slice(0,10)
+ const historyEntry={stage:next,date,input:inputWeight,output,loss:pctLoss(inputWeight,output),responsible:input.responsible||'',organizationId,siteId:flow.siteId||null}
+ const updated={...flow,organizationId,stage:next,history:[...list(flow.history),historyEntry]}
+ return{...state,productionFlows:list(state?.productionFlows).map((item,itemIndex)=>itemIndex===index?updated:item)}
 }
 
 export function pctLoss(input,output){const i=Number(input||0),o=Number(output||0);return i>0?(i-o)/i*100:0}
