@@ -100,9 +100,53 @@ Esta verificación focal no sustituye el Quality Gate completo.
 
 **Estado:** Ready for Quality. No Verified.
 
-### F003 — Under investigation
+### F003 — High — Ready for Quality
 
-Registros legacy de inventario sin owner explícito pueden producir resolución ambigua durante migración/sincronización. Este hallazgo permanece independiente de F002: el remediation de F002 evita crear/transportar nuevos registros ownerless, pero no certifica todavía la adopción o sustitución segura de registros legacy ya existentes.
+**Registros legacy de Inventory sin owner explícito podían ser adoptados ambiguamente por el tenant activo durante migración/hidratación.**
+
+Evidencia en el HEAD previo al remediation:
+
+1. `stateMigration.js` normalizaba `inventoryLots.quantity` pero no materializaba `organizationId` para lotes o movimientos legacy.
+2. `applyRemoteRecords()` consideraba un registro local sin owner como candidato válido del tenant activo cuando coincidía el `recordId`.
+3. Con un ID homónimo y ownership local ausente, una respuesta remota autenticada para una empresa podía reemplazar ese registro legacy y asignarle el tenant del envelope sin prueba suficiente de ownership histórico.
+
+Impacto: adopción/reemplazo ambiguo de inventario legacy, con pérdida de integridad tenant-aware y riesgo de reatribución cross-company.
+
+#### Evidencia adversarial
+
+- `tests/inventory-legacy-ownership.test.js`
+- Commit RED/evidence: `4d9dc0449799babed2f3440d54c8be46ef57552c`
+
+La prueba cubre:
+
+- derivación de owner para lotes y movimientos legacy únicamente desde una sede con ownership explícito;
+- no adopción por la empresa activa cuando el ownership de la sede no puede probarse en un estado multiempresa;
+- rechazo fail-closed de un homónimo local ownerless durante hidratación remota;
+- preservación de un homónimo extranjero y actualización exclusiva del registro explícitamente perteneciente al tenant activo.
+
+#### Remediation
+
+Commits:
+
+- migración determinística: `848ab3d33d0e83a2ce6d544d0c8a80942c717faf`
+- fail-closed en sync: `4f912669f260bb2fe497063c4f4faad02d92ae23`
+
+Cambios:
+
+- `CURRENT_SCHEMA_VERSION` sube a `15`;
+- `inventoryLots` e `inventoryMovements` legacy reciben `organizationId` sólo cuando puede derivarse desde una sede explícitamente poseída o desde un estado inequívocamente monoempresa;
+- la empresa activa deja de ser una suposición suficiente para atribuir ownership de Inventory legacy en estados multiempresa;
+- un homónimo ownerless pendiente de migración bloquea la hidratación de Inventory en vez de ser adoptado;
+- duplicados homónimos dentro del tenant activo bloquean la hidratación por ambigüedad;
+- homónimos explícitamente pertenecientes a otras organizaciones se preservan y no participan en el match del tenant activo.
+
+#### Verificación focal previa a Quality
+
+Se ejecutó un harness focal de las cuatro garantías adversariales de F003 sobre la lógica publicada: **4/4 pass**, **0 fail**.
+
+El entorno local no tiene resolución de red hacia GitHub, por lo que no fue posible clonar el branch y ejecutar la suite de repositorio completa fuera de Actions. Esta verificación focal no sustituye el Quality Gate completo.
+
+**Estado:** Ready for Quality. No Verified.
 
 ### F004 — Under investigation
 
@@ -110,4 +154,4 @@ La creación de lotes requiere comprobar autoridad tenant-aware para producto, s
 
 ## Quality
 
-GitHub Actions permanece bloqueado externamente antes del inicio del runner. Hasta disponer de una ejecución funcional de Quality, F001 y F002 permanecen `Ready for Quality` y no pueden marcarse `Verified`.
+GitHub Actions continúa bloqueado externamente antes del inicio del runner. Quality #2406 volvió a concluir `failure` con `steps: null` y `logs_url: null`, confirmando que el job no llegó a ejecutar código. Hasta disponer de una ejecución funcional de Quality, F001, F002 y F003 permanecen `Ready for Quality` y no pueden marcarse `Verified`.
