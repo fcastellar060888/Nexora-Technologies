@@ -42,17 +42,18 @@ test('M4.2 F003: postharvest view exposes only records belonging to the active o
  assert.equal(view.productionFlows[0].organizationId,'org-a')
 })
 
-test('M4.2 F003: manual postharvest append stamps organization and rejects a foreign site',()=>{
+test('M4.2 F003: manual postharvest append stamps organization and rejects foreign/stale authority',()=>{
  const state=baseState()
- const next=appendPostharvestRecord(state,'productionBatches',{id:'harvest-new',siteId:'site-a',wetWeight:10,acceptedWeight:9})
+ const next=appendPostharvestRecord(state,'productionBatches',{id:'harvest-new',organizationId:'org-a',siteId:'site-a',wetWeight:10,acceptedWeight:9})
  assert.equal(next.productionBatches.at(-1).organizationId,'org-a')
  assert.equal(next.productionBatches.at(-1).siteId,'site-a')
- assert.throws(()=>appendPostharvestRecord(state,'dryingBatches',{id:'dry-foreign',siteId:'site-b'}),/empresa|organización|sede|ownership/i)
+ assert.throws(()=>appendPostharvestRecord(state,'dryingBatches',{id:'dry-foreign',organizationId:'org-a',siteId:'site-b'}),/empresa|organización|sede|ownership/i)
+ assert.throws(()=>appendPostharvestRecord(state,'dryingBatches',{id:'dry-stale',organizationId:'org-b',siteId:'site-a'}),/otra empresa|organización/i)
 })
 
 test('M4.2 F003: integrated production flow advances exactly one tenant-scoped homonym',()=>{
  const state=baseState()
- const next=advanceProductionFlow(state,{flowId:'flow-shared',output:80,responsible:'Operador A',date:'2026-08-19'})
+ const next=advanceProductionFlow(state,{flowId:'flow-shared',organizationId:'org-a',siteId:'site-a',output:80,responsible:'Operador A',date:'2026-08-19'})
  assert.equal(next.productionFlows[0].organizationId,'org-b')
  assert.equal(next.productionFlows[0].stage,'Cosecha')
  assert.equal(next.productionFlows[1].organizationId,'org-a')
@@ -62,10 +63,11 @@ test('M4.2 F003: integrated production flow advances exactly one tenant-scoped h
  assert.equal(next.productionFlows[1].history.at(-1).siteId,'site-a')
 })
 
-test('M4.2 F003: duplicate integrated-flow identity inside active tenant fails closed',()=>{
+test('M4.2 F003: stale or duplicate integrated-flow authority fails closed',()=>{
  const state=baseState()
+ assert.throws(()=>advanceProductionFlow(state,{flowId:'flow-shared',organizationId:'org-b',siteId:'site-b',output:80}),/otra empresa|organización/i)
  state.productionFlows.push({id:'flow-shared',organizationId:'org-a',siteId:'site-a',stage:'Cosecha',wetWeight:70,history:[{stage:'Cosecha',output:70}]})
- assert.throws(()=>advanceProductionFlow(state,{flowId:'flow-shared',output:60}),/duplicad|ambigu/i)
+ assert.throws(()=>advanceProductionFlow(state,{flowId:'flow-shared',organizationId:'org-a',siteId:'site-a',output:60}),/duplicad|ambigu/i)
 })
 
 test('M4.2 F003: direct postharvest pages consume the common tenancy boundary',()=>{
@@ -74,11 +76,14 @@ test('M4.2 F003: direct postharvest pages consume the common tenancy boundary',(
   const source=readFileSync(new URL(`../src/pages/${page}`,import.meta.url),'utf8')
   assert.match(source,/postharvestViewForActiveOrganization/)
   assert.match(source,/appendPostharvestRecord/)
+  assert.match(source,/organizationId:view\.organizationId/)
  }
  const finished=readFileSync(new URL('../src/pages/FinishedGoodsPage.jsx',import.meta.url),'utf8')
  assert.match(finished,/postharvestViewForActiveOrganization/)
+ assert.match(finished,/organizationId:view\.organizationId/)
  const flow=readFileSync(new URL('../src/pages/ProductionFlowPage.jsx',import.meta.url),'utf8')
  assert.match(flow,/postharvestViewForActiveOrganization/)
  assert.match(flow,/appendPostharvestRecord/)
  assert.match(flow,/advanceProductionFlow/)
+ assert.match(flow,/organizationId:view\.organizationId/)
 })
