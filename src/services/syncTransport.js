@@ -7,6 +7,9 @@ const PULL_PAGE_SIZE=1000
 const EPOCH='1970-01-01T00:00:00.000Z'
 const now=()=>new Date().toISOString()
 const list=value=>Array.isArray(value)?value:[]
+const text=value=>String(value??'').trim()
+const sameMutation=(item,entry)=>text(item?.id)===text(entry?.id)&&text(item?.companyId)===text(entry?.companyId)
+const queueIdentity=item=>`${text(item?.companyId)}|${text(item?.id)}`
 
 export function retryDelay(attempts){
  return Math.min(60000,1000*Math.pow(2,Math.max(0,Number(attempts)||0)))
@@ -86,7 +89,7 @@ export async function pushPending(state,companyId=state.currentContext?.companyI
    const result=await pushOne(entry)
    const row=Array.isArray(result)?result[0]:result
    if(row?.status==='conflict'){
-    queue=queue.map(item=>item.id===entry.id?{...item,status:'conflict',updatedAt:now(),error:'Conflicto de versión'}:item)
+    queue=queue.map(item=>sameMutation(item,entry)?{...item,status:'conflict',updatedAt:now(),error:'Conflicto de versión'}:item)
     conflicts.push({
      id:row.conflict_id||crypto.randomUUID(),companyId:entry.companyId,mutationId:entry.id,
      collection:entry.collection,recordId:entry.recordId,localPayload:entry.payload,
@@ -95,11 +98,11 @@ export async function pushPending(state,companyId=state.currentContext?.companyI
     })
    }else{
     pushed++
-    queue=queue.map(item=>item.id===entry.id?{...item,status:'completed',serverVersion:Number(row?.version||entry.baseVersion||0),updatedAt:now(),error:''}:item)
+    queue=queue.map(item=>sameMutation(item,entry)?{...item,status:'completed',serverVersion:Number(row?.version||entry.baseVersion||0),updatedAt:now(),error:''}:item)
    }
   }catch(error){
    queue=queue.map(item=>{
-    if(item.id!==entry.id)return item
+    if(!sameMutation(item,entry))return item
     const attempts=Number(item.attempts||0)+1
     return{...item,status:attempts>=MAX_ATTEMPTS?'failed':'pending',attempts,error:error instanceof Error?error.message:'Error de sincronización',nextAttemptAt:new Date(Date.now()+retryDelay(attempts)).toISOString(),updatedAt:now()}
    })
@@ -122,8 +125,9 @@ export async function pullRemote(state,companyId){
   cursor=advancePullCursor(cursor,records)
   if(records.length<PULL_PAGE_SIZE)break
  }
+ const syncedAt=now()
  return{
-  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
+  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:syncedAt,lastSyncedAtByCompany:{...(next.syncMeta?.lastSyncedAtByCompany||{}),[companyId]:syncedAt},cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
   pulled
  }
 }
@@ -135,11 +139,13 @@ export async function runIncrementalSync(state,{companyId=state.currentContext?.
  const ledger=await synchronizeOperationalLedger(state,{companyId})
  const pushed=await pushPending(ledger.state,companyId)
  const pulled=await pullRemote(pushed.state,companyId)
- return{state:purgeCompleted(pulled.state),pushed:pushed.pushed,pulled:pulled.pulled,ledgerPushed:ledger.pushed,ledgerPulled:ledger.pulled,skipped:false}
+ return{state:purgeCompleted(pulled.state,100,companyId),pushed:pushed.pushed,pulled:pulled.pulled,ledgerPushed:ledger.pushed,ledgerPulled:ledger.pulled,skipped:false}
 }
 
-export function purgeCompleted(state,keep=100){
- const completed=list(state.syncQueue).filter(item=>item.status==='completed').sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))
- const retained=new Set(completed.slice(0,keep).map(item=>item.id))
- return{...state,syncQueue:list(state.syncQueue).filter(item=>item.status!=='completed'||retained.has(item.id))}
+export function purgeCompleted(state,keep=100,companyId=state.currentContext?.companyId||''){
+ const tenant=text(companyId)
+ if(!tenant)return state
+ const completed=list(state.syncQueue).filter(item=>item.status==='completed'&&text(item.companyId)===tenant).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))
+ const retained=new Set(completed.slice(0,keep).map(queueIdentity))
+ return{...state,syncQueue:list(state.syncQueue).filter(item=>item.status!=='completed'||text(item.companyId)!==tenant||retained.has(queueIdentity(item)))}
 }
