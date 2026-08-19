@@ -20,6 +20,8 @@ const unique=items=>[...new Set((items||[]).filter(Boolean))]
 const text=value=>String(value??'').trim()
 const list=value=>Array.isArray(value)?value:[]
 const siteOwner=site=>text(site?.organizationId||site?.companyId)
+const roleOwner=role=>text(role?.organizationId||role?.companyId)
+const systemRole=role=>role?.isSystem===true||role?.is_system===true||role?.systemRole===true||role?.system_role===true
 
 export function normalizeMembership(membership={}){
  return{
@@ -39,7 +41,7 @@ export function normalizeMembership(membership={}){
 export function permissionsForMembership({membership,roles=[]}){
  const normalized=normalizeMembership(membership)
  if(normalized.status!=='active')return[]
- const matches=list(roles).filter(item=>item?.id===normalized.roleId&&item?.active!==false)
+ const matches=list(roles).filter(item=>item?.id===normalized.roleId&&item?.active!==false&&(systemRole(item)||roleOwner(item)===normalized.companyId))
  if(matches.length!==1)return[]
  const role=matches[0]
  const granted=unique([...(role?.permissions||[]),...normalized.permissionOverrides])
