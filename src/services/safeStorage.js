@@ -1,7 +1,7 @@
 import { initialState } from './storage'
 import { CURRENT_SCHEMA_VERSION, migrateState } from './stateMigration'
 import { getPersistenceDriver } from './persistenceDriver'
-import{cleanupLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
+import{cleanupLightweightCache,purgeLegacyLightweightCache,readLightweightCache,writeLightweightCache}from'./lightweightCache.js'
 import{createPersistenceRuntime,recordPersistenceResult}from'./persistenceHealth.js'
 import{migrateMaterialPlantIdentity}from'./materialPlantPersistence.js'
 import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
@@ -70,6 +70,7 @@ function emitOperationalChange(state){
 
 export function loadState(){
  try{
+  purgeLegacyLightweightCache()
   cleanupLightweightCache()
   const cached=readLightweightCache()
   if(cached)return preparePersistedState({...structuredClone(initialState),...cached})
