@@ -1,7 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{readFileSync}from'node:fs'
-import{canAccessSite,locationScopeForUser}from'../src/domain/accessControl.js'
+import{canUserAccessSite,locationScopeForUser}from'../src/domain/accessControl.js'
 
 const state=()=>({
  currentContext:{companyId:'org-a'},
@@ -13,18 +13,18 @@ const state=()=>({
 })
 
 test('M4.7 F003: membership siteIds cannot grant access to a site owned by another organization',()=>{
- assert.equal(canAccessSite(state(),'user-a','site-b'),false)
+ assert.equal(canUserAccessSite(state(),'user-a','site-b'),false)
 })
 
 test('M4.7 F003: legitimate site inside membership organization remains accessible',()=>{
  const s=state();s.memberships[0].siteIds=['site-a']
- assert.equal(canAccessSite(s,'user-a','site-a'),true)
+ assert.equal(canUserAccessSite(s,'user-a','site-a'),true)
  assert.deepEqual(locationScopeForUser(s,'user-a').siteIds,['site-a'])
 })
 
 test('M4.7 F003: homonymous site IDs across tenants fail closed instead of resolving by raw ID',()=>{
  const s=state();s.sites.push({id:'site-a',organizationId:'org-b'});s.memberships[0].siteIds=['site-a']
- assert.equal(canAccessSite(s,'user-a','site-a'),false)
+ assert.equal(canUserAccessSite(s,'user-a','site-a'),false)
  assert.deepEqual(locationScopeForUser(s,'user-a').siteIds,[])
 })
 
