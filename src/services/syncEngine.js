@@ -154,10 +154,12 @@ export function syncStatus(state,companyId=state?.currentContext?.companyId||'')
  if(!tenant)return{pending:0,failed:0,conflicts:0,lastSyncedAt:''}
  const queue=list(state.syncQueue).filter(item=>text(item?.companyId)===tenant)
  const conflicts=list(state.syncConflicts).filter(item=>text(item?.companyId)===tenant&&item.status!=='resolved')
+ const perCompany=text(state?.syncMeta?.lastSyncedAtByCompany?.[tenant])
+ const legacyFallback=list(state?.companies).length<=1?text(state?.syncMeta?.lastSyncedAt):''
  return{
   pending:queue.filter(x=>x.status==='pending').length,
   failed:queue.filter(x=>x.status==='failed').length,
   conflicts:conflicts.length,
-  lastSyncedAt:state.syncMeta?.lastSyncedAt||''
+  lastSyncedAt:perCompany||legacyFallback
  }
 }
