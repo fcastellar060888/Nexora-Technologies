@@ -1,14 +1,17 @@
-const PREFIX='cannapa_cache_v2'
+import{resolveObservabilityOwner}from'../domain/observability.js'
+
+const PREFIX='nexora_cache_v3'
 const MANIFEST_KEY=`${PREFIX}:manifest`
 const IDENTITY_KEY=`${PREFIX}:identity`
 const COMPANY_PREFIX=`${PREFIX}:company:`
+const LEGACY_SEGMENTED_PREFIXES=['cannapa_cache_v2:','canapa_cache_v2:']
 const DEFAULT_TTL_MS=30*24*60*60*1000
 const MAX_COMPANIES=3
 const MAX_COLLECTION_RECORDS=1500
 const MAX_LEDGER_RECORDS=10000
 const MAX_QUEUE_RECORDS=1000
 
-const INTERNAL_ARRAYS=new Set(['users','roles','memberships','userSessions','auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'])
+const INTERNAL_ARRAYS=new Set(['users','roles','memberships','userSessions','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'])
 const list=value=>Array.isArray(value)?value:[]
 const bytes=value=>new Blob([value||'']).size
 
@@ -24,7 +27,16 @@ function boundedLedger(records,max=MAX_LEDGER_RECORDS,pendingIds=[]){
  const unconfirmed=ordered.filter(entry=>pending.has(eventIdOf(entry)))
  return[...confirmed,...unconfirmed]
 }
-function recordOrganizationId(record){return String(record?._organizationId||record?.companyId||record?.organizationId||record?.event?.context?.organizationId||'')}
+
+export function purgeLegacyLightweightCache(storage=localStorage){
+ let removed=0
+ for(let index=Number(storage?.length||0)-1;index>=0;index--){
+  const key=storage.key(index)
+  if(!key||!LEGACY_SEGMENTED_PREFIXES.some(prefix=>key.startsWith(prefix)))continue
+  storage.removeItem(key);removed++
+ }
+ return{removed}
+}
 
 export function cacheCollections(state={}){
  return Object.keys(state).filter(key=>Array.isArray(state[key])&&!INTERNAL_ARRAYS.has(key))
@@ -36,7 +48,6 @@ export function compactIdentity(state={}){
   currentContext:state.currentContext||{},
   companies:list(state.companies),
   users:list(state.users),roles:list(state.roles),memberships:list(state.memberships),userSessions:list(state.userSessions),
-  auditLog:bounded(state.auditLog,250),
   syncQueue:bounded(state.syncQueue,MAX_QUEUE_RECORDS),
   syncConflicts:bounded(state.syncConflicts,300),
   syncHealthEvents:bounded(state.syncHealthEvents,250),
@@ -51,20 +62,17 @@ export function compactCompanyState(state={},companyId=''){
  const ledgerOutbox=state?.syncMeta?.ledgerOutboxByCompany?.[companyId]||[]
  for(const key of cacheCollections(state)){
   if(key==='companies')continue
-  const scoped=list(state[key]).filter(record=>{
-   const owner=recordOrganizationId(record)
-   return!owner||owner===companyId
-  })
+  const scoped=list(state[key]).filter(record=>resolveObservabilityOwner(state,key,record)===companyId)
   collections[key]=key==='operationalLedgerEntries'?boundedLedger(scoped,MAX_LEDGER_RECORDS,ledgerOutbox):bounded(scoped)
  }
  return{companyId,cachedAt:new Date().toISOString(),collections}
 }
 
 export function createManifest(previous={},companyId='',sizeBytes=0){
- const now=new Date().toISOString()
+ const at=new Date().toISOString()
  const entries=list(previous.companies).filter(item=>item.companyId!==companyId)
- entries.unshift({companyId,cachedAt:now,lastAccessedAt:now,sizeBytes})
- return{version:2,updatedAt:now,lastCleanupAt:previous.lastCleanupAt||'',companies:entries.slice(0,MAX_COMPANIES)}
+ if(companyId)entries.unshift({companyId,cachedAt:at,lastAccessedAt:at,sizeBytes})
+ return{version:3,updatedAt:at,lastCleanupAt:previous.lastCleanupAt||'',companies:entries.slice(0,MAX_COMPANIES)}
 }
 
 export function writeLightweightCache(state,storage=localStorage){
@@ -88,14 +96,16 @@ export function readLightweightCache(storage=localStorage){
  if(!identity)return null
  const companyId=identity.currentContext?.companyId||''
  const company=companyId?parse(storage.getItem(companyKey(companyId)),{}):{}
+ if(companyId&&company.companyId&&company.companyId!==companyId)throw new Error('La partición de caché no coincide con la empresa activa')
  return{...identity,...(company.collections||{}),cacheMeta:{...(identity.cacheMeta||{}),source:'segmented-cache',loadedAt:new Date().toISOString(),companyId}}
 }
 
-export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttlMs=DEFAULT_TTL_MS}={}){
+export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttlMs=DEFAULT_TTL_MS,companyId=''}={}){
  const manifest=parse(storage.getItem(MANIFEST_KEY),{companies:[]})
  const retained=[]
  let removed=0
  for(const entry of list(manifest.companies)){
+  if(companyId&&entry.companyId!==companyId){retained.push(entry);continue}
   const age=now-(Date.parse(entry.lastAccessedAt||entry.cachedAt)||0)
   if(age>ttlMs){storage.removeItem(companyKey(entry.companyId));removed++}
   else retained.push(entry)
@@ -105,10 +115,11 @@ export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttl
  return{removed,manifest:next}
 }
 
-export function cacheDiagnostics(storage=localStorage){
+export function cacheDiagnostics(storage=localStorage,{companyId=''}={}){
  const manifest=parse(storage.getItem(MANIFEST_KEY),{companies:[]})
  const identityRaw=storage.getItem(IDENTITY_KEY)||''
- const companies=list(manifest.companies).map(entry=>({
+ const entries=companyId?list(manifest.companies).filter(entry=>entry.companyId===companyId):list(manifest.companies)
+ const companies=entries.map(entry=>({
   ...entry,
   actualSizeBytes:bytes(storage.getItem(companyKey(entry.companyId))||''),
   available:Boolean(storage.getItem(companyKey(entry.companyId)))
@@ -117,4 +128,4 @@ export function cacheDiagnostics(storage=localStorage){
  return{version:manifest.version||0,totalBytes,identityBytes:bytes(identityRaw),companies,lastCleanupAt:manifest.lastCleanupAt||'',updatedAt:manifest.updatedAt||''}
 }
 
-export const lightweightCacheKeys={MANIFEST_KEY,IDENTITY_KEY,COMPANY_PREFIX}
+export const lightweightCacheKeys={PREFIX,MANIFEST_KEY,IDENTITY_KEY,COMPANY_PREFIX}

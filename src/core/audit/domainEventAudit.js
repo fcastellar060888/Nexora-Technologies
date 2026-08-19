@@ -1,3 +1,5 @@
+import{observabilityViewForActiveOrganization}from'../../domain/observability.js'
+
 const LABELS={
  'organization.company.created':['Configuración','Empresa creada'],
  'organization.company.updated':['Configuración','Empresa actualizada'],
@@ -29,4 +31,23 @@ export function domainEventToAuditEntry(event){
   organizationId:event.context.organizationId,
   siteId:event.context.siteId
  }
+}
+
+export function auditTrailForActiveOrganization(state){
+ const view=observabilityViewForActiveOrganization(state)
+ const byId=new Map()
+ for(const entry of view.auditLog||[]){
+  if(!entry?.id)continue
+  byId.set(entry.id,{...entry,source:'generic-audit'})
+ }
+ for(const ledgerEntry of view.operationalLedgerEntries||[]){
+  if(!ledgerEntry?.event?.eventId)continue
+  const entry=domainEventToAuditEntry(ledgerEntry.event)
+  byId.set(entry.id,{...entry,source:'operational-ledger',sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt})
+ }
+ return[...byId.values()].sort((a,b)=>{
+  const at=Date.parse(a.createdAt||a.recordedAt||0)||0
+  const bt=Date.parse(b.createdAt||b.recordedAt||0)||0
+  return at-bt||String(a.id).localeCompare(String(b.id))
+ })
 }

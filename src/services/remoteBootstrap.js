@@ -5,7 +5,7 @@ import{migrateMipePersistenceState}from'./mipePersistenceMigration.js'
 import{normalizeOperationalContext}from'../domain/operationalContext.js'
 
 const LOCAL_ONLY_COLLECTIONS=new Set([
- 'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions','auditLog',
+ 'syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth','userSessions',
  'operationalLedgerEntries','timelineEntries',
  'companies','users','roles','memberships','entitlements'
 ])
@@ -124,7 +124,6 @@ export function hydrateAuthoritativeState(localState,rows,{companyId='',hydrated
   syncHealthEvents:list(localState.syncHealthEvents),
   syncDeviceHealth:list(localState.syncDeviceHealth),
   companies:list(localState.companies),users:list(localState.users),roles:list(localState.roles),memberships:list(localState.memberships),entitlements:list(localState.entitlements),userSessions:list(localState.userSessions),
-  auditLog:list(localState.auditLog),
   operationalLedgerEntries:list(localState.operationalLedgerEntries),
   timelineEntries:list(localState.timelineEntries),
   syncMeta:{...(localState.syncMeta||{}),lastHydratedAt:hydratedAt,hydrationSource:'postgres',hydratedCompanyId:tenant}
