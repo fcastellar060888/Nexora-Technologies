@@ -1,7 +1,7 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{readFileSync}from'node:fs'
-import{auditTrailForActiveOrganization}from'../src/domain/observability.js'
+import{auditTrailForActiveOrganization}from'../src/core/audit/domainEventAudit.js'
 
 const event=(id,organizationId,action)=>({id,sequence:1,recordedAt:'2026-08-18T12:00:00.000Z',event:{eventId:id,name:'inventory.stock.updated',version:1,aggregate:{type:'inventory.stock',id:'stock-1'},context:{organizationId,siteId:'site-1',actorId:'user-1'},occurredAt:'2026-08-18T12:00:00.000Z',payload:{label:action},metadata:{actorName:'Admin'}}})
 
