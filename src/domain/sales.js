@@ -1,9 +1,11 @@
 import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
+import{currencyForActiveOrganization}from'./finance.js'
 
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 
 function positive(value,label){const n=Number(value);if(!Number.isFinite(n)||n<=0)throw new Error(`${label} debe ser mayor que cero.`);return n}
+function nonNegative(value,label){const n=Number(value);if(!Number.isFinite(n)||n<0)throw new Error(`${label} no puede ser negativo.`);return n}
 function recordOrganizationId(state,record,label){try{return resolveOrganizationId(state,{record,siteId:record?.siteId,label})}catch{return''}}
 function assertRequestedAuthority(state,input,organizationId,siteId,label){
  const requestedOrganizationId=explicitOrganizationId(input)
@@ -28,7 +30,7 @@ function resolveScopedSale(state,id,organizationId){return resolveScopedRecord(s
 function assertSaleStockConsistency(sale,stock){
  if(text(sale.stockId)!==text(stock.id)||text(sale.siteId)!==text(stock.siteId)||text(sale.lotId)!==text(stock.lotId)||text(sale.classification)!==text(stock.classification))throw new Error('La reserva comercial no coincide causalmente con el inventario de producto terminado.')
 }
-function reservationSignature(input,stock,organizationId){return JSON.stringify({operation:'RESERVE',organizationId,siteId:text(stock.siteId),stockId:text(stock.id),lotId:text(stock.lotId),classification:text(stock.classification),customer:text(input.customer),date:text(input.date),grams:Number(input.grams),pricePerGram:Number(input.pricePerGram||0),currency:text(input.currency||'COP'),exchangeRate:Number(input.exchangeRate||1),reference:text(input.reference),notes:text(input.notes)})}
+function reservationSignature(input,stock,organizationId){return JSON.stringify({operation:'RESERVE',organizationId,siteId:text(stock.siteId),stockId:text(stock.id),lotId:text(stock.lotId),classification:text(stock.classification),customer:text(input.customer),date:text(input.date),grams:Number(input.grams),pricePerGram:Number(input.pricePerGram||0),currency:text(input.currency),exchangeRate:Number(input.exchangeRate),reference:text(input.reference),notes:text(input.notes)})}
 function dispatchSignature(input,sale,stock,organizationId){return JSON.stringify({operation:'DISPATCH',organizationId,siteId:text(stock.siteId),saleId:text(sale.id),stockId:text(stock.id),dispatchReference:text(input.dispatchReference),responsible:text(input.responsible)})}
 function cancelSignature(input,sale,stock,organizationId){return JSON.stringify({operation:'CANCEL',organizationId,siteId:text(stock.siteId),saleId:text(sale.id),stockId:text(stock.id),reason:text(input.reason)})}
 function assertMovementIdentityAvailable(state,movementId,organizationId){
@@ -49,8 +51,13 @@ export function reserveFinishedGoods(state,input={}){
  const organizationId=activeOrganizationId(state)
  const{record:stock,index:stockIndex}=resolveScopedStock(state,input.stockId,organizationId)
  assertRequestedAuthority(state,input,organizationId,stock.siteId,'La reserva comercial')
- const grams=positive(input.grams,'Los gramos'),createdAt=input.createdAt||new Date().toISOString(),saleId=input.id||crypto.randomUUID()
- const commandSignature=reservationSignature({...input,grams},stock,organizationId)
+ const grams=positive(input.grams,'Los gramos')
+ const pricePerGram=nonNegative(input.pricePerGram||0,'El precio por gramo')
+ const currency=currencyForActiveOrganization(state,input.currency)
+ const exchangeRate=positive(input.exchangeRate,'La tasa congelada')
+ const createdAt=input.createdAt||new Date().toISOString(),saleId=input.id||crypto.randomUUID()
+ const normalizedInput={...input,grams,pricePerGram,currency:currency.code,exchangeRate}
+ const commandSignature=reservationSignature(normalizedInput,stock,organizationId)
  const existingSales=scopedMatches(state,'sales',saleId,organizationId,'reserva comercial')
  if(existingSales.length>1)throw new Error('La reserva comercial tiene identidad duplicada o ambigua dentro de la empresa activa.')
  if(existingSales.length===1){
@@ -61,10 +68,10 @@ export function reserveFinishedGoods(state,input={}){
  assertMovementIdentityAvailable(state,input.movementId,organizationId)
  const available=Number(stock.availableGrams||0)
  if(grams>available)throw new Error('La reserva supera el inventario disponible.')
- const sale={id:saleId,organizationId,siteId:stock.siteId||null,stockId:stock.id,lotId:stock.lotId,classification:stock.classification,customer:text(input.customer),date:input.date||createdAt.slice(0,10),grams,pricePerGram:Number(input.pricePerGram||0),currency:input.currency||'COP',exchangeRate:Number(input.exchangeRate||1),reference:input.reference||'',notes:input.notes||'',status:'Reservada',reservedAt:createdAt,createdAt,totalOriginal:grams*Number(input.pricePerGram||0),totalBase:grams*Number(input.pricePerGram||0)*Number(input.exchangeRate||1),reserveCommandSignature:commandSignature,reserveMovementId:input.movementId||null}
+ const sale={id:saleId,organizationId,siteId:stock.siteId||null,stockId:stock.id,lotId:stock.lotId,classification:stock.classification,customer:text(input.customer),date:input.date||createdAt.slice(0,10),grams,pricePerGram,currency:currency.code,exchangeRate,reference:input.reference||'',notes:input.notes||'',status:'Reservada',reservedAt:createdAt,createdAt,totalOriginal:grams*pricePerGram,totalBase:grams*pricePerGram*exchangeRate,reserveCommandSignature:commandSignature,reserveMovementId:input.movementId||null}
  if(!sale.customer)throw new Error('El cliente es obligatorio.')
  const nextStock={...stock,organizationId,availableGrams:available-grams,reservedGrams:Number(stock.reservedGrams||0)+grams}
- return{...state,finishedGoods:list(state?.finishedGoods).map((item,index)=>index===stockIndex?nextStock:item),sales:[...list(state?.sales),sale],finishedGoodsMovements:[...list(state?.finishedGoodsMovements),movement(stock,{...input,type:'Reserva',saleId:sale.id,createdAt},-grams,available,available-grams,organizationId,commandSignature)]}
+ return{...state,finishedGoods:list(state?.finishedGoods).map((item,index)=>index===stockIndex?nextStock:item),sales:[...list(state?.sales),sale],finishedGoodsMovements:[...list(state?.finishedGoodsMovements),movement(stock,{...normalizedInput,type:'Reserva',saleId:sale.id,createdAt},-grams,available,available-grams,organizationId,commandSignature)]}
 }
 
 export function dispatchSale(state,input={}){
