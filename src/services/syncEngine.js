@@ -5,12 +5,13 @@ export const SYNCABLE_COLLECTIONS=[
  'genetics','incidents','findings','treatments','mipeInterventions','mipeCommandReceipts','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
  'growingMediumProducts','growingMediumFormulas','growingMediumBatches','growingMediumAssignments','growingMediumReusePolicies','growingMediumReuseCycles','growingMediumPurchaseRequirements',
  ...CANONICAL_IRRIGATION_COLLECTIONS,
- 'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
+ 'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
 
 const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
-const FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS=new Set(['inventoryLots','inventoryMovements'])
+const FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS=new Set(['inventoryLots','inventoryMovements','currencies','costEntries'])
+const OWNED_ONLY_SYNC_COLLECTIONS=new Set(['currencies','costEntries'])
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -18,6 +19,7 @@ const text=value=>String(value??'').trim()
 const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
 const recordId=record=>text(record?.id||record?.commandId)
 const recordKey=record=>JSON.stringify([recordOrganizationId(record),recordId(record)])
+const syncItems=(collection,items)=>OWNED_ONLY_SYNC_COLLECTIONS.has(collection)?list(items).filter(item=>recordOrganizationId(item)):list(items)
 
 function assertCommandReceiptPayload(payload,recordIdValue,tenant){
  if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('El receipt MIPE remoto requiere payload válido')
@@ -45,7 +47,7 @@ function assertRemoteReceiptIntegrity(state,records,tenant){
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
  const changes=[]
  for(const collection of collections){
-  const beforeItems=list(prev?.[collection]),afterItems=list(next?.[collection])
+  const beforeItems=syncItems(collection,prev?.[collection]),afterItems=syncItems(collection,next?.[collection])
   if([...beforeItems,...afterItems].some(item=>!recordId(item)))throw new Error(`${collection} contiene un registro sin identidad sincronizable.`)
   const before=new Map(beforeItems.map(item=>[recordKey(item),item]))
   const after=new Map(afterItems.map(item=>[recordKey(item),item]))

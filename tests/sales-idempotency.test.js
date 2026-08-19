@@ -7,6 +7,7 @@ const baseState=()=>({
  currentContext:{companyId:'org-a'},
  companies:[{id:'org-a'}],
  sites:[{id:'site-a',organizationId:'org-a'}],
+ currencies:[{code:'COP',organizationId:'org-a',name:'Peso colombiano',symbol:'$',rateToBase:1,active:true}],
  finishedGoods:[{id:'stock-a',organizationId:'org-a',siteId:'site-a',lotId:'lot-a',classification:'A',availableGrams:500,reservedGrams:0,soldGrams:0}],
  sales:[],
  finishedGoodsMovements:[]
