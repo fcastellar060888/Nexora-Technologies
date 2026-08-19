@@ -66,6 +66,13 @@ export function financialViewForActiveOrganization(state){
  }
 }
 
+export function currencyForActiveOrganization(state,code,{requireActive=true}={}){
+ const organizationId=activeOrganizationId(state)
+ const{currency}=resolveScopedCurrency(state,code,organizationId)
+ if(requireActive&&currency.active===false)throw new Error('La moneda seleccionada está inactiva para la empresa actual.')
+ return currency.organizationId?currency:{...currency,organizationId}
+}
+
 export function createCurrency(state,input={}){
  const organizationId=activeOrganizationId(state)
  assertRequestedOrganization(input,organizationId,'La moneda')
