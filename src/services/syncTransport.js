@@ -125,8 +125,9 @@ export async function pullRemote(state,companyId){
   cursor=advancePullCursor(cursor,records)
   if(records.length<PULL_PAGE_SIZE)break
  }
+ const syncedAt=now()
  return{
-  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:now(),cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
+  state:{...next,syncMeta:{...(next.syncMeta||{}),lastSyncedAt:syncedAt,lastSyncedAtByCompany:{...(next.syncMeta?.lastSyncedAtByCompany||{}),[companyId]:syncedAt},cursorByCompany:{...(next.syncMeta?.cursorByCompany||{}),[companyId]:cursor}}},
   pulled
  }
 }
