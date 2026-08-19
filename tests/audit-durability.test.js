@@ -2,10 +2,11 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFileSync}from'node:fs'
 import{SYNCABLE_COLLECTIONS,collectionChanges,enqueueChanges,applyRemoteRecords}from'../src/services/syncEngine.js'
+import{hydrateAuthoritativeState}from'../src/services/remoteBootstrap.js'
 
 const base=()=>({
- currentContext:{companyId:'org-a'},companies:[{id:'org-a'},{id:'org-b'}],sites:[],
- auditLog:[],syncQueue:[],syncConflicts:[]
+ schemaVersion:16,currentContext:{companyId:'org-a'},companies:[{id:'org-a'},{id:'org-b'}],sites:[],
+ auditLog:[],syncQueue:[],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],userSessions:[],operationalLedgerEntries:[],timelineEntries:[],users:[],roles:[],memberships:[],entitlements:[]
 })
 
 test('M4.6 F005: generic audit log is an explicit syncable append-only domain collection',()=>{
@@ -35,16 +36,29 @@ test('M4.6 F005: remote audit hydration is tenant-aware and preserves foreign ho
  assert.equal(next.auditLog.find(x=>x.organizationId==='org-a').action,'A')
 })
 
-test('M4.6 F005: store appends audit before collectionChanges so generic audit enters the same sync boundary',()=>{
+test('M4.6 F005: authoritative bootstrap keeps foreign audit and replaces active partition with remote audit',()=>{
+ const local={...base(),auditLog:[
+  {id:'audit-b',organizationId:'org-b',action:'B local'},
+  {id:'audit-a-old',organizationId:'org-a',action:'A old'}
+ ]}
+ const rows=[{organization_id:'org-a',collection:'auditLog',record_id:'audit-a-remote',payload:{id:'audit-a-remote',organizationId:'org-a',action:'A remote'},version:3,updated_at:'2026-08-18T12:00:00.000Z'}]
+ const next=hydrateAuthoritativeState(local,rows,{companyId:'org-a',initialState:local,hydratedAt:'2026-08-18T12:01:00.000Z'})
+ assert.equal(next.auditLog.some(x=>x.id==='audit-a-old'),false)
+ assert.equal(next.auditLog.find(x=>x.id==='audit-a-remote')?.organizationId,'org-a')
+ assert.equal(next.auditLog.find(x=>x.id==='audit-b')?.organizationId,'org-b')
+})
+
+test('M4.6 F005: store appends audit before collectionChanges so generic audit enters the durable sync boundary',()=>{
  const source=readFileSync(new URL('../src/services/store.jsx',import.meta.url),'utf8')
  assert.match(source,/auditedCandidate/)
  const auditPosition=source.indexOf('auditedCandidate')
- const changesPosition=source.indexOf('collectionChanges(prev,auditedCandidate)')
+ const changesPosition=source.indexOf("collectionChanges(prev,auditedCandidate,['auditLog'])")
  assert.ok(auditPosition>=0&&changesPosition>auditPosition)
 })
 
-test('M4.6 F005: authoritative bootstrap no longer classifies auditLog as local-only',()=>{
+test('M4.6 F005: authoritative bootstrap no longer classifies or restores auditLog as local-only',()=>{
  const source=readFileSync(new URL('../src/services/remoteBootstrap.js',import.meta.url),'utf8')
  const localOnly=source.match(/LOCAL_ONLY_COLLECTIONS=new Set\(\[([\s\S]*?)\]\)/)?.[1]||''
  assert.doesNotMatch(localOnly,/['"]auditLog['"]/)
+ assert.doesNotMatch(source,/auditLog:list\(localState\.auditLog\)/)
 })
