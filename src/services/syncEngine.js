@@ -141,12 +141,15 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  return next
 }
 
-export function syncStatus(state){
- const queue=list(state.syncQueue)
+export function syncStatus(state,companyId=state?.currentContext?.companyId||''){
+ const tenant=text(companyId)
+ if(!tenant)return{pending:0,failed:0,conflicts:0,lastSyncedAt:''}
+ const queue=list(state.syncQueue).filter(item=>text(item?.companyId)===tenant)
+ const conflicts=list(state.syncConflicts).filter(item=>text(item?.companyId)===tenant&&item.status!=='resolved')
  return{
   pending:queue.filter(x=>x.status==='pending').length,
   failed:queue.filter(x=>x.status==='failed').length,
-  conflicts:list(state.syncConflicts).filter(x=>x.status!=='resolved').length,
+  conflicts:conflicts.length,
   lastSyncedAt:state.syncMeta?.lastSyncedAt||''
  }
 }
