@@ -40,28 +40,27 @@ function reducer(prev,action){
  const actorUser=(candidate.users||[]).find(u=>u.activeSession)
  const companyId=candidate.currentContext?.companyId||''
  const siteId=candidate.currentContext?.siteId||''
- const changes=action.meta.sync===false?[]:collectionChanges(prev,candidate)
- let next=enqueueChanges(candidate,changes,{companyId,userId:actorUser?.remoteId||actorUser?.id||'',deviceId:deviceId()})
+ const auditableCollections=changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
+ const shouldAudit=action.meta.audit!==false&&auditableCollections.length>0
+ if(shouldAudit&&!companyId)throw new Error('No se puede registrar auditoría sin empresa activa inequívoca')
 
- const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
- if(!shouldAudit)return next
- if(!companyId)throw new Error('No se puede registrar auditoría sin empresa activa inequívoca')
-
- return{
-  ...next,
-  auditLog:[...(next.auditLog||[]),{
-   id:action.audit.id,
-   organizationId:companyId,
-   siteId:siteId||null,
-   createdAt:action.audit.createdAt,
-   actor:actorUser?.name||'Usuario local',
-   actorId:actorUser?.remoteId||actorUser?.id||'',
-   action:action.meta.action||'Actualización de datos',
-   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k)).join(', ')||'Sistema',
-   detail:action.meta.detail||'',
-   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
-  }]
- }
+ const auditEntry=shouldAudit?{
+  id:action.audit.id,
+  organizationId:companyId,
+  siteId:siteId||null,
+  createdAt:action.audit.createdAt,
+  actor:actorUser?.name||'Usuario local',
+  actorId:actorUser?.remoteId||actorUser?.id||'',
+  action:action.meta.action||'Actualización de datos',
+  module:action.meta.module||auditableCollections.join(', ')||'Sistema',
+  detail:action.meta.detail||'',
+  collections:auditableCollections
+ }:null
+ const auditedCandidate=auditEntry?{...candidate,auditLog:[...(candidate.auditLog||[]),auditEntry]}:candidate
+ const domainChanges=action.meta.sync===false?[]:collectionChanges(prev,candidate)
+ const auditChanges=auditEntry?collectionChanges(prev,auditedCandidate,['auditLog']):[]
+ const changes=[...domainChanges,...auditChanges]
+ return enqueueChanges(auditedCandidate,changes,{companyId,userId:actorUser?.remoteId||actorUser?.id||'',deviceId:deviceId()})
 }
 
 export function StoreProvider({children}){
