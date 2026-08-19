@@ -6,7 +6,7 @@ const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
 const now=()=>new Date().toISOString()
 const recordId=record=>text(record?.id||record?.commandId)
-const recordOrganizationId=record=>text(record?.organizationId||record?.companyId||record?._organizationId)
+const recordOrganizationId=record=>text(record?.organizationId||record?.companyId)
 
 function singleCompanyId(state){const companies=list(state?.companies);return companies.length===1?text(companies[0]?.id):''}
 function canMaterializeOwnerless(state,companyId){const only=singleCompanyId(state);return Boolean(only&&only===text(companyId))}
@@ -40,7 +40,7 @@ export function validateMigrationState(state,companyId=state?.currentContext?.co
    const id=recordId(record),owner=recordOrganizationId(record)
    if(!id){errors.push(`${collection}: existe un registro sin identificador estable.`);continue}
    if(owner&&tenant&&owner!==tenant){warnings.push(`${collection}/${id}: pertenece a otra empresa y será excluido.`);continue}
-   if(!owner&&!allowOwnerless){errors.push(`${collection}/${id}: no tiene ownership inequívoco en un estado multiempresa; asigna organizationId antes de migrar.`);continue}
+   if(!owner&&!allowOwnerless){errors.push(`${collection}/${id}: no tiene ownership de dominio inequívoco en un estado multiempresa; asigna organizationId antes de migrar.`);continue}
    if(seen.has(id))errors.push(`${collection}: identificador duplicado ${id} dentro de la empresa seleccionada.`)
    seen.add(id)
   }
