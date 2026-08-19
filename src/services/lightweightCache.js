@@ -4,6 +4,7 @@ const PREFIX='nexora_cache_v3'
 const MANIFEST_KEY=`${PREFIX}:manifest`
 const IDENTITY_KEY=`${PREFIX}:identity`
 const COMPANY_PREFIX=`${PREFIX}:company:`
+const LEGACY_SEGMENTED_PREFIXES=['cannapa_cache_v2:','canapa_cache_v2:']
 const DEFAULT_TTL_MS=30*24*60*60*1000
 const MAX_COMPANIES=3
 const MAX_COLLECTION_RECORDS=1500
@@ -25,6 +26,16 @@ function boundedLedger(records,max=MAX_LEDGER_RECORDS,pendingIds=[]){
  const confirmed=ordered.filter(entry=>!pending.has(eventIdOf(entry))).slice(-max)
  const unconfirmed=ordered.filter(entry=>pending.has(eventIdOf(entry)))
  return[...confirmed,...unconfirmed]
+}
+
+export function purgeLegacyLightweightCache(storage=localStorage){
+ let removed=0
+ for(let index=Number(storage?.length||0)-1;index>=0;index--){
+  const key=storage.key(index)
+  if(!key||!LEGACY_SEGMENTED_PREFIXES.some(prefix=>key.startsWith(prefix)))continue
+  storage.removeItem(key);removed++
+ }
+ return{removed}
 }
 
 export function cacheCollections(state={}){
