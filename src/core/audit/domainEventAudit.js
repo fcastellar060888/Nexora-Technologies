@@ -46,7 +46,8 @@ export function auditTrailForActiveOrganization(state){
   byId.set(entry.id,{...entry,source:'operational-ledger',sequence:ledgerEntry.sequence,recordedAt:ledgerEntry.recordedAt})
  }
  return[...byId.values()].sort((a,b)=>{
-  const at=Date.parse(a.createdAt||a.recordedAt||0)||0,bт=Date.parse(b.createdAt||b.recordedAt||0)||0
-  return at-bт||String(a.id).localeCompare(String(b.id))
+  const at=Date.parse(a.createdAt||a.recordedAt||0)||0
+  const bt=Date.parse(b.createdAt||b.recordedAt||0)||0
+  return at-bt||String(a.id).localeCompare(String(b.id))
  })
 }
