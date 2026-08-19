@@ -20,7 +20,7 @@ export function resolveObservabilityOwner(state,collection,record,{seen=new Set(
  if(!record||typeof record!=='object'||depth>8)return''
  const explicit=domainOwner(record)
  if(explicit)return explicit
- const identity=`${collection}:${text(record.id||record.commandId)||'anonymous'}:${depth}`
+ const identity=`${collection}:${text(record.id||record.commandId)||'anonymous'}`
  if(seen.has(identity))return''
  seen.add(identity)
  for(const[key,targetCollection]of Object.entries(relationMap)){
@@ -40,7 +40,7 @@ function scoped(state,collection,organizationId){
 }
 
 const OBSERVABILITY_COLLECTIONS=[
- 'sites','houses','beds','plantPositions','auditLog','mirfeMonitoring','findings','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','operationalAreas','infrastructureElements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','treatments','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','waterAnalyses','nutrientObjectives','formulations','tankPreparations','workOrders','irrigationApplications','productionFlows','costEntries'
+ 'sites','houses','beds','plantPositions','auditLog','operationalLedgerEntries','mirfeMonitoring','findings','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','operationalAreas','infrastructureElements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','treatments','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','waterAnalyses','nutrientObjectives','formulations','tankPreparations','workOrders','irrigationApplications','productionFlows','costEntries'
 ]
 
 export function observabilityViewForActiveOrganization(state){
