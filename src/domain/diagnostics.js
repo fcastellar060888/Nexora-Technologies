@@ -2,6 +2,7 @@ import{CURRENT_SCHEMA_VERSION}from'../services/stateMigration.js'
 
 function duplicateIds(items){const seen=new Set(),dup=[];for(const x of items||[]){if(!x?.id)continue;if(seen.has(x.id))dup.push(x.id);seen.add(x.id)}return dup}
 const close=(a,b)=>Math.abs(Number(a||0)-Number(b||0))<0.0001
+const ledgerEntries=lot=>Object.values(lot?.productionLedger&&typeof lot.productionLedger==='object'&&!Array.isArray(lot.productionLedger)?lot.productionLedger:{})
 
 export function runDiagnostics(state){
  const checks=[]
@@ -28,7 +29,7 @@ export function runDiagnostics(state){
  const orphanSales=state.sales.filter(x=>x.stockId&&!state.finishedGoods.some(g=>g.id===x.stockId));add('Ventas con existencia válida',orphanSales.length===0,orphanSales.length?`${orphanSales.length} ventas huérfanas`:'Correcto',orphanSales.length?'error':'ok')
  const invalidReservations=state.sales.filter(x=>x.status==='Reservada'&&Number(x.grams)<=0);add('Reservas válidas',invalidReservations.length===0,invalidReservations.length?`${invalidReservations.length} reservas inválidas`:'Correcto',invalidReservations.length?'error':'ok')
  const orphanFinishedMoves=state.finishedGoodsMovements.filter(x=>x.finishedGoodId&&!state.finishedGoods.some(g=>g.id===x.finishedGoodId));add('Movimientos de producto terminado vinculados',orphanFinishedMoves.length===0,orphanFinishedMoves.length?`${orphanFinishedMoves.length} movimientos huérfanos`:'Correcto',orphanFinishedMoves.length?'error':'ok')
- const productionOverages=state.propagationBatches.flatMap(l=>(l.productionLedger||[]).filter(e=>Number(e.outputGrams)>Number(e.inputGrams)).map(e=>({lot:l,event:e})));add('Balance de masa productivo',productionOverages.length===0,productionOverages.length?`${productionOverages.length} etapas aumentan peso`:'Sin aumentos artificiales',productionOverages.length?'error':'ok')
+ const productionOverages=state.propagationBatches.flatMap(l=>ledgerEntries(l).filter(e=>Number(e.outputGrams)>Number(e.inputGrams)).map(e=>({lot:l,event:e})));add('Balance de masa productivo',productionOverages.length===0,productionOverages.length?`${productionOverages.length} etapas aumentan peso`:'Sin aumentos artificiales',productionOverages.length?'error':'ok')
  const unlinkedNutrients=state.nutrientProducts.filter(x=>!x.inventoryProductId);add('Productos nutricionales vinculados',unlinkedNutrients.length===0,unlinkedNutrients.length?`${unlinkedNutrients.length} productos sin vínculo de inventario`:'Todos vinculados',unlinkedNutrients.length?'warning':'ok')
  const invalidPreparations=state.tankPreparations.filter(x=>['Preparada','Aplicada'].includes(x.status)&&(x.items||[]).some(i=>!i.lotId||Number(i.consumedQuantity)<=0));add('Preparaciones ejecutadas trazables',invalidPreparations.length===0,invalidPreparations.length?`${invalidPreparations.length} preparaciones sin consumo completo`:'Correcto',invalidPreparations.length?'error':'ok')
  const sitesWithoutWater=state.sites.filter(s=>!state.waterAnalyses.some(a=>a.siteId===s.id&&a.status==='Vigente'));add('Análisis de agua vigentes',sitesWithoutWater.length===0,sitesWithoutWater.length?`${sitesWithoutWater.length} sedes sin análisis vigente`:'Todas las sedes cubiertas',sitesWithoutWater.length?'warning':'ok')
