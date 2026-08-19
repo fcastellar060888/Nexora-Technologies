@@ -6,12 +6,12 @@ export const SYNCABLE_COLLECTIONS=[
  'growingMediumProducts','growingMediumFormulas','growingMediumBatches','growingMediumAssignments','growingMediumReusePolicies','growingMediumReuseCycles','growingMediumPurchaseRequirements',
  ...CANONICAL_IRRIGATION_COLLECTIONS,
  'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
- 'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
+ 'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','auditLog'
 ]
 
-const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
-const FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS=new Set(['inventoryLots','inventoryMovements','currencies','costEntries'])
-const OWNED_ONLY_SYNC_COLLECTIONS=new Set(['currencies','costEntries'])
+const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts','auditLog'])
+const FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS=new Set(['inventoryLots','inventoryMovements','currencies','costEntries','auditLog'])
+const OWNED_ONLY_SYNC_COLLECTIONS=new Set(['currencies','costEntries','auditLog'])
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -140,7 +140,10 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
    if(receiptCollection||firstClassOwnershipCollection)return owner===tenant
    return owner===tenant||(!multiCompany&&!owner)
   }
-  if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
+  if(row.deletedAt){
+   if(APPEND_ONLY_SYNC_COLLECTIONS.has(row.collection))throw new Error(`${row.collection} es append-only y no admite tombstones remotos`)
+   next[row.collection]=items.filter(item=>!isTenantRecord(item));continue
+  }
   let record={...(row.payload||{}),id:row.recordId,organizationId:tenant,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
   if(receiptCollection)record={...record,commandId:row.recordId,organizationId:tenant}
   const index=items.findIndex(isTenantRecord)
