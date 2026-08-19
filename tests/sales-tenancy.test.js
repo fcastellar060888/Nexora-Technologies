@@ -10,6 +10,10 @@ const baseState=()=>({
   {id:'site-a',organizationId:'org-a'},
   {id:'site-b',organizationId:'org-b'}
  ],
+ currencies:[
+  {code:'COP',organizationId:'org-a',name:'Peso A',symbol:'$',rateToBase:1,active:true},
+  {code:'COP',organizationId:'org-b',name:'Peso B',symbol:'$',rateToBase:1,active:true}
+ ],
  finishedGoods:[
   {id:'stock-shared',organizationId:'org-b',siteId:'site-b',lotId:'lot-b',classification:'A',availableGrams:900,reservedGrams:0,soldGrams:0},
   {id:'stock-shared',organizationId:'org-a',siteId:'site-a',lotId:'lot-a',classification:'A',availableGrams:500,reservedGrams:0,soldGrams:0}
