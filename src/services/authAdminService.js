@@ -1,0 +1,29 @@
+import{authenticatedRequest,supabaseEnabled}from'./supabase.js'
+
+const text=value=>String(value??'').trim()
+
+async function adminRequest(action,payload={}){
+ if(!supabaseEnabled)return{skipped:true,action}
+ return authenticatedRequest('/functions/v1/admin-users',{method:'POST',body:{action,...payload}})
+}
+
+export function createRemoteUser({organizationId,name,email,password,roleId,siteIds=[]}={}){
+ const tenant=text(organizationId)
+ if(!tenant)throw new Error('Selecciona una empresa antes de crear el usuario.')
+ if(!text(email))throw new Error('El correo es obligatorio.')
+ if(!text(roleId))throw new Error('Selecciona un rol.')
+ return adminRequest('create_member',{organizationId:tenant,name:text(name),email:text(email).toLowerCase(),password:String(password||''),roleId:text(roleId),siteIds:[...new Set(siteIds.map(text).filter(Boolean))]})
+}
+
+export function updateRemoteMembershipStatus(userId,{organizationId,status}={}){
+ const tenant=text(organizationId),identity=text(userId)
+ if(!tenant||!identity)throw new Error('Falta la identidad organizacional del usuario.')
+ if(!['active','inactive'].includes(text(status)))throw new Error('Estado de membresía no válido.')
+ return adminRequest('set_membership_status',{organizationId:tenant,userId:identity,status:text(status)})
+}
+
+export function removeRemoteMembership(userId,{organizationId}={}){
+ const tenant=text(organizationId),identity=text(userId)
+ if(!tenant||!identity)throw new Error('Falta la identidad organizacional del usuario.')
+ return adminRequest('remove_membership',{organizationId:tenant,userId:identity})
+}
