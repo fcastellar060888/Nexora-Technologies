@@ -81,7 +81,7 @@ export function createCurrency(state,input={}){
  const rateToBase=positive(input.rateToBase,'La tasa a moneda base')
  const duplicates=list(state?.currencies).filter(currency=>codeOf(currency?.code)===code&&financialRecordOrganizationId(state,currency,{label:'moneda',allowSiteInference:false})===organizationId)
  if(duplicates.length)throw new Error('La moneda ya existe dentro de la empresa activa.')
- const id=text(input.id)||crypto.randomUUID()
+ const id=text(input.id)||`currency:${organizationId}:${code}`
  const currency={...input,id,code,organizationId,name:text(input.name),symbol:text(input.symbol),rateToBase,active:input.active!==false}
  return{...state,currencies:[...list(state?.currencies),currency]}
 }
