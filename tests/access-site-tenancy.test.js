@@ -12,7 +12,7 @@ const state=()=>({
  sites:[{id:'site-a',organizationId:'org-a'},{id:'site-b',organizationId:'org-b'}],houses:[],beds:[]
 })
 
-test('M4.7 F003: membership siteIds cannot grant access to a site owned by another organization',()=>{
+test('M4.7 F003: membership siteIds cannot grant access to a site owned only by another organization',()=>{
  assert.equal(canUserAccessSite(state(),'user-a','site-b'),false)
 })
 
@@ -22,8 +22,10 @@ test('M4.7 F003: legitimate site inside membership organization remains accessib
  assert.deepEqual(locationScopeForUser(s,'user-a').siteIds,['site-a'])
 })
 
-test('M4.7 F003: homonymous site IDs across tenants fail closed instead of resolving by raw ID',()=>{
+test('M4.7 F003: foreign homonym does not block a unique active-tenant site, but duplicate inside tenant fails closed',()=>{
  const s=state();s.sites.push({id:'site-a',organizationId:'org-b'});s.memberships[0].siteIds=['site-a']
+ assert.equal(canUserAccessSite(s,'user-a','site-a'),true)
+ s.sites.push({id:'site-a',organizationId:'org-a'})
  assert.equal(canUserAccessSite(s,'user-a','site-a'),false)
  assert.deepEqual(locationScopeForUser(s,'user-a').siteIds,[])
 })
