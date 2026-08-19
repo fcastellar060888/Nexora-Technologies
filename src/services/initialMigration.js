@@ -11,16 +11,18 @@ const recordOrganizationId=record=>text(record?.organizationId||record?.companyI
 function singleCompanyId(state){const companies=list(state?.companies);return companies.length===1?text(companies[0]?.id):''}
 function canMaterializeOwnerless(state,companyId){const only=singleCompanyId(state);return Boolean(only&&only===text(companyId))}
 function normalizedEligibleRecord(state,record,companyId){
+ const id=recordId(record)
+ if(!id)return null
  const owner=recordOrganizationId(record)
  if(owner&&owner!==companyId)return null
  if(!owner&&!canMaterializeOwnerless(state,companyId))return null
- return{...record,id:recordId(record),organizationId:companyId}
+ return{...record,id,organizationId:companyId}
 }
 
 export function migratableCollections(state={}){
  return Object.entries(state)
   .filter(([key,value])=>MIGRATABLE_COLLECTIONS.has(key)&&Array.isArray(value))
-  .map(([collection,records])=>({collection,records:list(records).filter(item=>item&&typeof item==='object'&&recordId(item))}))
+  .map(([collection,records])=>({collection,records:list(records).filter(item=>item&&typeof item==='object'&&!Array.isArray(item))}))
   .filter(item=>item.records.length>0)
 }
 
@@ -36,7 +38,7 @@ export function validateMigrationState(state,companyId=state?.currentContext?.co
   const seen=new Set()
   for(const record of records){
    const id=recordId(record),owner=recordOrganizationId(record)
-   if(!id){errors.push(`${collection}: existe un registro sin identificador.`);continue}
+   if(!id){errors.push(`${collection}: existe un registro sin identificador estable.`);continue}
    if(owner&&tenant&&owner!==tenant){warnings.push(`${collection}/${id}: pertenece a otra empresa y será excluido.`);continue}
    if(!owner&&!allowOwnerless){errors.push(`${collection}/${id}: no tiene ownership inequívoco en un estado multiempresa; asigna organizationId antes de migrar.`);continue}
    if(seen.has(id))errors.push(`${collection}: identificador duplicado ${id} dentro de la empresa seleccionada.`)
@@ -62,7 +64,7 @@ export function buildMigrationManifest(state,{companyId=state?.currentContext?.c
 
 export function createMigrationBackup(state,manifest){
  return{
-  format:'cannapa-initial-migration-backup',
+  format:'nexora-one-initial-migration-backup',
   version:1,
   migrationId:manifest.migrationId,
   organizationId:manifest.companyId,
@@ -102,7 +104,8 @@ export async function previewInitialMigration(manifest){
 
 export async function executeInitialMigration(manifest,{backupHash='',confirmationToken=''}={}){
  if(!manifest.validation.valid)throw new Error(manifest.validation.errors.join(' '))
- if(!confirmationToken)throw new Error('Confirma expresamente la migración antes de ejecutarla.')
+ if(confirmationToken!=='MIGRAR')throw new Error('La ejecución requiere la confirmación exacta MIGRAR.')
+ if(!/^[a-f0-9]{64}$/i.test(text(backupHash)))throw new Error('La ejecución requiere el SHA-256 válido del respaldo preparado.')
  const result=await authenticatedRequest('/rest/v1/rpc/execute_initial_migration',{method:'POST',body:{
   p_organization_id:manifest.companyId,
   p_migration_id:manifest.migrationId,
@@ -121,12 +124,8 @@ export async function rollbackInitialMigration({companyId,migrationId}){
 
 export async function hashBackup(backup){
  const value=JSON.stringify(backup)
- if(globalThis.crypto?.subtle){
-  const bytes=new TextEncoder().encode(value)
-  const digest=await crypto.subtle.digest('SHA-256',bytes)
-  return[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('')
- }
- let hash=0
- for(let index=0;index<value.length;index++)hash=(hash*31+value.charCodeAt(index))>>>0
- return hash.toString(16).padStart(8,'0')
+ if(!globalThis.crypto?.subtle)throw new Error('SHA-256 no está disponible en este entorno; no es seguro continuar con la migración.')
+ const bytes=new TextEncoder().encode(value)
+ const digest=await crypto.subtle.digest('SHA-256',bytes)
+ return[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('')
 }
