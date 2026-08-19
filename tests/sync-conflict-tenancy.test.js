@@ -15,14 +15,16 @@ const state=()=>({
  syncConflicts:[
   {id:'conflict-shared',companyId:'org-b',mutationId:'mutation-shared',collection:'products',recordId:'product-b',localPayload:{id:'product-b',organizationId:'org-b',name:'B local'},remotePayload:{id:'product-b',organizationId:'org-b',name:'B remote'},localVersion:1,remoteVersion:2,status:'open'},
   {id:'conflict-shared',companyId:'org-a',mutationId:'mutation-shared',collection:'products',recordId:'product-a',localPayload:{id:'product-a',organizationId:'org-a',name:'A local'},remotePayload:{id:'product-a',organizationId:'org-a',name:'A remote'},localVersion:1,remoteVersion:2,status:'open'}
- ]
+ ],
+ syncMeta:{lastSyncedAt:'2026-08-18T10:00:00.000Z',lastSyncedAtByCompany:{'org-a':'2026-08-18T11:00:00.000Z','org-b':'2026-08-18T12:00:00.000Z'}}
 })
 
-test('M4.5 F004: sync status counts only active-company queue and conflicts',()=>{
+test('M4.5 F004: sync status counts and timestamp are scoped to active company',()=>{
  const status=syncStatus(state(),'org-a')
  assert.equal(status.pending,0)
  assert.equal(status.failed,1)
  assert.equal(status.conflicts,1)
+ assert.equal(status.lastSyncedAt,'2026-08-18T11:00:00.000Z')
 })
 
 test('M4.5 F005: retryMutation changes exactly one active-tenant homonym',()=>{
