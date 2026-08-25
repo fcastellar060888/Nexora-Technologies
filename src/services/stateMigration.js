@@ -2,7 +2,7 @@ import{backfillIrrigationMirfeOwnership,CANONICAL_IRRIGATION_COLLECTIONS}from'..
 import{migrateLegacyMirfeWorkflowState}from'../domain/mirfeWorkflow.js'
 import{migrateLegacyEnvironmentState}from'../domain/environment.js'
 
-export const CURRENT_SCHEMA_VERSION=14
+export const CURRENT_SCHEMA_VERSION=15
 
 const arrays=['companies','farms','sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentDevices','environmentCalibrations','environmentSetpoints','environmentalReadings','environmentAlerts','genetics','incidents','findings','treatments','attachments','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',...CANONICAL_IRRIGATION_COLLECTIONS,'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','currencies','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory','productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries','users','roles','memberships','userSessions','auditLog','timelineEntries','operationalLedgerEntries','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth']
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback
@@ -24,6 +24,7 @@ function backfillLegacyOwnership(state){
  const activeCompanyId=text(state.currentContext?.companyId)
  const onlyCompanyId=state.companies.length===1?text(state.companies[0]?.id):''
  const fallbackCompanyId=activeCompanyId||onlyCompanyId
+ const explicitSiteCompany=new Map(state.sites.flatMap(site=>{const owner=explicitOrganizationOf(site);return owner?[[site.id,owner]]:[]}))
  const siteCompany=new Map(state.sites.map(site=>[site.id,explicitOrganizationOf(site)||fallbackCompanyId]))
  state.sites=state.sites.map(site=>{
   const explicit=explicitOrganizationOf(site)
@@ -39,6 +40,13 @@ function backfillLegacyOwnership(state){
   const explicit=explicitOrganizationOf(item)
   if(explicit)return item.organizationId?item:{...item,organizationId:explicit}
   const organizationId=companyForSite(item.siteId)
+  return organizationId?{...item,organizationId}:item
+ })
+ for(const key of ['inventoryLots','inventoryMovements'])state[key]=state[key].map(item=>{
+  const explicit=explicitOrganizationOf(item)
+  if(explicit)return item.organizationId?item:{...item,organizationId:explicit}
+  const siteOwner=explicitSiteCompany.get(item.siteId)||''
+  const organizationId=siteOwner||onlyCompanyId
   return organizationId?{...item,organizationId}:item
  })
  return state

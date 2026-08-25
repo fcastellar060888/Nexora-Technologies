@@ -10,6 +10,7 @@ export const SYNCABLE_COLLECTIONS=[
 ]
 
 const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
+const FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS=new Set(['inventoryLots','inventoryMovements'])
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -63,13 +64,16 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  const forbiddenDelete=list(changes).find(change=>APPEND_ONLY_SYNC_COLLECTIONS.has(change.collection)&&change.operation==='delete')
  if(forbiddenDelete)throw new Error(`${forbiddenDelete.collection} es append-only y no admite delete de sync`)
  const queued=changes.map(change=>{
+  const requiresFirstClassOwner=FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS.has(change.collection)
   const declaredOwner=text(change.organizationId)
+  if(requiresFirstClassOwner&&!declaredOwner)throw new Error(`${change.collection} requiere organizationId explícito antes de sincronizar`)
   if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
   if(!text(change.recordId))throw new Error('No se puede sincronizar un registro sin identidad estable')
   let payload=change.payload
   if(change.operation==='upsert'){
    if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Una mutación upsert requiere payload de dominio válido')
    const owner=recordOrganizationId(payload)
+   if(requiresFirstClassOwner&&!text(payload.organizationId))throw new Error(`${change.collection} requiere organizationId de dominio explícito antes de sincronizar`)
    if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
    if(change.collection==='mipeCommandReceipts')assertCommandReceiptPayload(payload,change.recordId,tenant)
    payload={...payload,id:recordId(payload),_organizationId:tenant}
@@ -116,9 +120,18 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
   const items=list(next[row.collection]),remoteId=text(row.recordId)
   if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
   const receiptCollection=row.collection==='mipeCommandReceipts'
-  const isTenantRecord=item=>recordId(item)===remoteId&&(receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
+  const firstClassOwnershipCollection=FIRST_CLASS_OWNERSHIP_SYNC_COLLECTIONS.has(row.collection)
+  const homonyms=items.filter(item=>recordId(item)===remoteId)
+  if(firstClassOwnershipCollection){
+   const legacy=homonyms.filter(item=>!recordOrganizationId(item))
+   const owned=homonyms.filter(item=>recordOrganizationId(item)===tenant)
+   if(legacy.length)throw new Error(`${row.collection} contiene un registro legacy sin organizationId; migra ownership antes de hidratar sync`)
+   if(owned.length>1)throw new Error(`${row.collection} contiene identidades duplicadas dentro de la empresa activa`)
+  }
+  const isTenantRecord=item=>recordId(item)===remoteId&&(firstClassOwnershipCollection?recordOrganizationId(item)===tenant:receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
   let record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
+  if(firstClassOwnershipCollection)record={...record,organizationId:tenant}
   if(receiptCollection)record={...record,commandId:row.recordId,organizationId:tenant}
   const index=items.findIndex(isTenantRecord)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
