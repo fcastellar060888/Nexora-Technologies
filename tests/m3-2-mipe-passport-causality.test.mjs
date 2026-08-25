@@ -52,6 +52,20 @@ test('F011 causality: una corrección posterior de Incident no invalida el snaps
  assert.ok(trace.relationships.some(item=>item.type==='classified_by_mipe_incident'&&item.targetId==='incident-b'))
 })
 
+test('F011 causality: una corrección de Incident conserva la clasificación anterior aun sin Interventions',()=>{
+ const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
+ state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
+  {id:'finding-a:workflow:legacy-import',type:'IMPORTED',from:null,to:'Seguimiento',occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'legacy',name:'Legacy'},metadata:{legacyImported:true}},
+  {id:'cmd-correct:correction',type:'CORRECTION',from:'Seguimiento',to:'Seguimiento',occurredAt:'2026-08-17T13:00:00.000Z',actor:{id:'user-a',name:'Agrónomo'},reason:'Reclasificación taxonómica',changes:{incidentId:{before:'incident-a',after:'incident-b'}}}
+ ],mipeHistoryVersion:2}
+ const trace=project(state),historical=trace.relationships.find(item=>item.type==='historically_classified_by_mipe_incident'&&item.targetId==='incident-a')
+ assert.ok(historical)
+ assert.deepEqual(historical.findingIds,['finding-a'])
+ assert.deepEqual(historical.interventionIds,[])
+ assert.deepEqual(historical.correctionEventIds,['cmd-correct:correction'])
+ assert.ok(trace.relationships.some(item=>item.type==='classified_by_mipe_incident'&&item.targetId==='incident-b'))
+})
+
 test('F011 causality: varias Interventions históricas del mismo Incident se agregan en una sola relación',()=>{
  const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
  state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
@@ -67,6 +81,7 @@ test('F011 causality: varias Interventions históricas del mismo Incident se agr
  assert.equal(historical.length,1)
  assert.deepEqual(historical[0].findingIds,['finding-a'])
  assert.deepEqual(historical[0].interventionIds,['followup-historical-1','followup-historical-2'])
+ assert.deepEqual(historical[0].correctionEventIds,['cmd-correct:correction'])
 })
 
 test('F011 causality: snapshot viejo después de corregir Incident falla cerrado',()=>{
