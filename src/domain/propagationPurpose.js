@@ -1,4 +1,6 @@
 import{MATERIAL_PLANT_TYPES,projectLotPlantUnits}from'./materialPlantIdentity.js'
+import{MIPE_RESTRICTED_OPERATIONS,blockersForMipeOperation}from'./mipeOperationalRestrictions.js'
+import{mipeRecordsForOrganization}from'./mipeTenancy.js'
 import{activeOrganizationId,assertActiveOrganization,explicitOrganizationId}from'./organizationOwnership.js'
 
 export const PROPAGATION_PURPOSES=Object.freeze({
@@ -22,6 +24,7 @@ export const PROPAGATION_SOURCE_AVAILABILITY='Disponible para corte'
 const allowedPurposes=new Set(Object.values(PROPAGATION_PURPOSES))
 const allowedSourceTypes=new Set(Object.values(MATERIAL_PLANT_TYPES))
 const retiredStatuses=new Set(['Retirada','Descartada','Fallecida'])
+const legacyMipeBlockedAvailability='Bloqueada por MIPE'
 
 export function propagationSourceEligibility(unit){
  if(!unit)return Object.freeze({eligible:false,reason:'No se encontró la planta de origen.'})
@@ -32,14 +35,40 @@ export function propagationSourceEligibility(unit){
  return Object.freeze({eligible:true,reason:'Disponible para corte.'})
 }
 
-export function propagationSourceUnits(state,{organizationId=activeOrganizationId(state),siteId='',activeOnly=true,eligibleOnly=true}={}){
+function historicalPropagationBlock(state,unit,organizationId){
+ return mipeRecordsForOrganization(state,'findings',organizationId).some(finding=>{
+  const targetId=String(finding?.materialPlantId||(finding?.targetType==='MATERIAL_PLANT'?finding?.targetId:'')||'')
+  return targetId===String(unit.id)&&finding?.restrictsPropagation===true
+ })
+}
+
+function projectedSource(state,unit,organizationId,at){
+ try{
+  const result=blockersForMipeOperation(state,{operation:MIPE_RESTRICTED_OPERATIONS.PROPAGATION_CUT,targetType:'MATERIAL_PLANT',targetId:unit.id,organizationId,at})
+  if(result.blockers.length)return null
+  if(unit.operationalAvailability===legacyMipeBlockedAvailability){
+   if(!historicalPropagationBlock(state,unit,organizationId))return null
+   return{...unit,operationalAvailability:PROPAGATION_SOURCE_AVAILABILITY}
+  }
+  return unit
+ }catch{return null}
+}
+
+export function propagationSourceUnits(state,{organizationId=activeOrganizationId(state),siteId='',activeOnly=true,eligibleOnly=true,at=new Date().toISOString()}={}){
  assertActiveOrganization(state,organizationId,{label:'La organización de propagación'})
  const overrides=state.materialPlantUnits||[]
  const lots=[
   ...(state.grandmotherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.GRANDMOTHER,overrides})),
   ...(state.motherPlants||[]).flatMap(lot=>projectLotPlantUnits(lot,{plantType:MATERIAL_PLANT_TYPES.MOTHER,overrides}))
  ]
- return lots.filter(unit=>explicitOrganizationId(unit)===organizationId&&(!siteId||unit.siteId===siteId)&&(!activeOnly||!retiredStatuses.has(unit.status))&&(!eligibleOnly||propagationSourceEligibility(unit).eligible))
+ const result=[]
+ for(const unit of lots){
+  if(explicitOrganizationId(unit)!==organizationId||Boolean(siteId&&unit.siteId!==siteId)||Boolean(activeOnly&&retiredStatuses.has(unit.status)))continue
+  if(!eligibleOnly){result.push(unit);continue}
+  const projected=projectedSource(state,unit,organizationId,at)
+  if(projected&&propagationSourceEligibility(projected).eligible)result.push(projected)
+ }
+ return result
 }
 
 export function validatePropagationIntent({sourcePlantId,sourcePlantType,purpose,productionLotId='',sourceUnit=null,organizationId=''}){

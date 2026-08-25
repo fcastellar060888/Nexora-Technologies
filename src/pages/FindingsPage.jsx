@@ -1,18 +1,24 @@
-import {useMemo,useState} from'react'
+import {useEffect,useMemo,useState} from'react'
 import Card from'../components/Card'
-import DateTimeFields from'../components/DateTimeFields'
 import Field from'../components/Field'
 import Modal from'../components/Modal'
 import PageHeader from'../components/PageHeader'
 import StateMessage from'../components/StateMessage'
 import {FormActions,ValidationMessage} from'../components/forms/FormKit.jsx'
-import {useStore} from'../services/store'
+import {scopeOperationalState} from'../domain/operationalContext.js'
+import {availableMipeFindingTransitions} from'../domain/mipeFindingWorkflow.js'
 import {findingLocation,findingStatuses,plantCode,severityLabels,formatDateTime,isFollowUpDue} from'../domain/mipe'
+import {MIPE_OPERATIONS} from'../services/mipeCommand.js'
+import {useMipeCommandStore} from'../services/mipeCommandStore.js'
 
 export default function FindingsPage(){
- const {state,update}=useStore()
+ const {state:tenantState,execute}=useMipeCommandStore()
+ const state=useMemo(()=>scopeOperationalState(tenantState,tenantState.currentContext),[tenantState])
+ const contextKey=['companyId','siteId','houseId','bedId','plantId'].map(key=>state.currentContext?.[key]||'').join(':')
  const [filters,setFilters]=useState({status:'Todos',incidentId:'Todos',houseId:'Todos',followUp:'Todos'})
  const [editing,setEditing]=useState(null)
+ const [transitioning,setTransitioning]=useState(null)
+ useEffect(()=>{setFilters(current=>({...current,houseId:'Todos'}));setEditing(null);setTransitioning(null)},[contextKey])
 
  const rows=useMemo(()=>state.findings.filter(f=>{
    const loc=findingLocation(state,f)
@@ -25,16 +31,28 @@ export default function FindingsPage(){
  const hasFindings=state.findings.length>0
  const overdueCount=rows.filter(isFollowUpDue).length
 
- function save(e){
-   e.preventDefault()
-   update(s=>({...s,findings:s.findings.map(f=>f.id===editing.id?{...editing,updatedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Editar hallazgo',detail:editing.id})
-   setEditing(null)
+ function startCorrection(finding){setEditing({...finding,correctionReason:''})}
+ function startTransition(finding){
+   const options=availableMipeFindingTransitions(finding)
+   setTransitioning({finding,transition:options[0]?.name||'',reason:'',options})
  }
- function remove(id){if(confirm('¿Eliminar definitivamente este hallazgo?'))update(s=>({...s,findings:s.findings.filter(f=>f.id!==id)}),{module:'MIPE',action:'Eliminar hallazgo',detail:id})}
- function close(id){update(s=>({...s,findings:s.findings.map(f=>f.id===id?{...f,status:'Resuelto',closedAt:new Date().toISOString()}:f)}),{module:'MIPE',action:'Cerrar hallazgo',detail:id})}
+ async function saveCorrection(e){
+   e.preventDefault()
+   try{
+    await execute({operation:MIPE_OPERATIONS.CORRECT_FINDING,entityId:editing.id,input:{incidentId:editing.incidentId,severity:editing.severity,responsible:editing.responsible,followUpDate:editing.followUpDate,action:editing.action,notes:editing.notes,correctionReason:editing.correctionReason}})
+    setEditing(null)
+   }catch(error){alert(error.message)}
+ }
+ async function applyTransition(e){
+   e.preventDefault()
+   try{
+    await execute({operation:MIPE_OPERATIONS.TRANSITION_FINDING,entityId:transitioning.finding.id,input:{transition:transitioning.transition,reason:transitioning.reason}})
+    setTransitioning(null)
+   }catch(error){alert(error.message)}
+ }
 
  return <>
-  <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución de cada caso."/>
+  <PageHeader title="Hallazgos MIPE" subtitle="Consulta el reporte original, seguimiento, responsable, ubicación y evolución auditable de cada caso dentro del contexto operativo activo."/>
   <Card title="Filtros">
    <div className="form-grid four">
     <Field label="Estado"><select value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option>Todos</option>{findingStatuses.map(x=><option key={x}>{x}</option>)}</select></Field>
@@ -55,34 +73,45 @@ export default function FindingsPage(){
 
   <Card title="Registros">
    {!hasFindings?<StateMessage title="No hay hallazgos MIPE" message="Los reportes sanitarios aparecerán aquí cuando se registre el primer hallazgo desde la operación o el mapa de cultivo."/>:
-   !rows.length?<StateMessage type="info" title="Sin coincidencias" message="Hay hallazgos registrados, pero ninguno coincide con los filtros seleccionados. Ajusta el estado, la incidencia, la nave o el seguimiento."/>:
+   !rows.length?<StateMessage type="info" title="Sin coincidencias" message="Hay hallazgos registrados, pero ninguno coincide con el contexto y los filtros seleccionados."/>:
    <div className="table-scroll">
     <table>
      <thead><tr><th>Fecha reporte</th><th>Próximo seguimiento</th><th>Ubicación</th><th>Genética</th><th>Incidencia</th><th>Severidad</th><th>Estado</th><th>Responsable</th><th>Acción/observación</th><th>Acciones</th></tr></thead>
-     <tbody>{rows.map(f=>{const loc=findingLocation(state,f),inc=state.incidents.find(i=>i.id===f.incidentId),gen=state.genetics.find(g=>g.id===loc.plant?.geneticId);return <tr key={f.id} className={isFollowUpDue(f)?'row-overdue':''}>
+     <tbody>{rows.map(f=>{const loc=findingLocation(state,f),inc=state.incidents.find(i=>i.id===f.incidentId),gen=state.genetics.find(g=>g.id===loc.plant?.geneticId),transitions=availableMipeFindingTransitions(f);return <tr key={f.id} className={isFollowUpDue(f)?'row-overdue':''}>
        <td>{formatDateTime(f.createdAt)}</td><td><span className={isFollowUpDue(f)?'tag danger-tag':'tag'}>{f.followUpDate||'Sin programar'}</span></td>
        <td>{loc.site?.name} · {loc.house?.name} · {loc.bed?.name}<small>{loc.plant?plantCode(state,loc.plant):''}</small></td>
        <td>{gen?.name||'Sin genética'}</td><td><span className="color-dot inline" style={{background:inc?.color}}/>{inc?.name||f.type||'Sin definir'}</td>
        <td>{severityLabels[f.severity]||f.severity}</td><td><span className={`tag ${f.status==='Resuelto'?'success':''}`}>{f.status}</span></td>
        <td>{f.responsible||'—'}</td><td><strong>{f.action||'—'}</strong><small>{f.notes||'Sin observación'}</small></td>
-       <td className="row-actions"><button onClick={()=>setEditing({...f})}>Editar</button><button onClick={()=>close(f.id)}>Cerrar</button><button className="danger-link" onClick={()=>remove(f.id)}>Eliminar</button></td>
+       <td className="row-actions"><button onClick={()=>startCorrection(f)}>Corregir</button><button disabled={!transitions.length} onClick={()=>startTransition(f)}>Cambiar estado</button></td>
       </tr>})}</tbody>
     </table>
    </div>}
   </Card>
 
-  <Modal open={Boolean(editing)} title="Editar hallazgo" onClose={()=>setEditing(null)}>
-   {editing&&<form id="mipe-finding-edit" data-module="Hallazgo MIPE" data-record-id={editing.id} className="form-grid modal-form" onSubmit={save}>
-    <ValidationMessage type="info">Los cambios se sincronizan automáticamente con los demás dispositivos de la empresa.</ValidationMessage>
-    <Field label="Fecha y hora del reporte"><DateTimeFields value={(editing.createdAt||'').slice(0,16)} onChange={createdAt=>setEditing({...editing,createdAt})}/></Field>
+  <Modal open={Boolean(editing)} title="Corrección auditable del hallazgo" onClose={()=>setEditing(null)}>
+   {editing&&<form id="mipe-finding-correction" data-module="Hallazgo MIPE" data-record-id={editing.id} className="form-grid modal-form" onSubmit={saveCorrection}>
+    <ValidationMessage type="info">La fecha original y el estado no se reescriben. La corrección conserva evidencia antes/después y exige un motivo.</ValidationMessage>
+    <Field label="Fecha original"><input value={formatDateTime(editing.createdAt)} disabled/></Field>
+    <Field label="Estado actual"><input value={editing.status||''} disabled/></Field>
     <Field label="Incidencia"><select value={editing.incidentId||''} onChange={e=>setEditing({...editing,incidentId:e.target.value})}>{state.incidents.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></Field>
     <Field label="Severidad"><select value={editing.severity} onChange={e=>setEditing({...editing,severity:Number(e.target.value)})}>{Object.entries(severityLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field>
-    <Field label="Estado"><select value={editing.status} onChange={e=>setEditing({...editing,status:e.target.value})}>{findingStatuses.map(x=><option key={x}>{x}</option>)}</select></Field>
     <Field label="Responsable"><input value={editing.responsible||''} onChange={e=>setEditing({...editing,responsible:e.target.value})}/></Field>
     <Field label="Fecha de seguimiento"><input type="date" value={editing.followUpDate||''} onChange={e=>setEditing({...editing,followUpDate:e.target.value})}/></Field>
     <Field label="Acción tomada"><input value={editing.action||''} onChange={e=>setEditing({...editing,action:e.target.value})}/></Field>
     <Field label="Observación técnica"><textarea value={editing.notes||''} onChange={e=>setEditing({...editing,notes:e.target.value})}/></Field>
-    <FormActions><button type="button" className="button secondary" onClick={()=>setEditing(null)}>Cancelar</button><button className="button primary">Guardar cambios</button></FormActions>
+    <Field label="Motivo de la corrección"><textarea required value={editing.correctionReason||''} onChange={e=>setEditing({...editing,correctionReason:e.target.value})}/></Field>
+    <FormActions><button type="button" className="button secondary" onClick={()=>setEditing(null)}>Cancelar</button><button className="button primary">Registrar corrección</button></FormActions>
+   </form>}
+  </Modal>
+
+  <Modal open={Boolean(transitioning)} title="Cambiar estado del hallazgo" onClose={()=>setTransitioning(null)}>
+   {transitioning&&<form id="mipe-finding-transition" data-module="Hallazgo MIPE" data-record-id={transitioning.finding.id} className="form-grid modal-form" onSubmit={applyTransition}>
+    <ValidationMessage type="info">Solo se muestran transiciones permitidas desde el estado actual. Cada cambio queda agregado al historial MIPE.</ValidationMessage>
+    <Field label="Estado actual"><input value={transitioning.finding.status||''} disabled/></Field>
+    <Field label="Transición"><select required value={transitioning.transition} onChange={e=>setTransitioning({...transitioning,transition:e.target.value})}>{transitioning.options.map(option=><option key={option.name} value={option.name}>{option.label} → {option.to}</option>)}</select></Field>
+    <Field label="Motivo / observación"><textarea value={transitioning.reason} onChange={e=>setTransitioning({...transitioning,reason:e.target.value})}/></Field>
+    <FormActions><button type="button" className="button secondary" onClick={()=>setTransitioning(null)}>Cancelar</button><button className="button primary">Aplicar transición</button></FormActions>
    </form>}
   </Modal>
  </>

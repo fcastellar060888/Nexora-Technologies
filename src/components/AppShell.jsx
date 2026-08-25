@@ -1,6 +1,7 @@
 import{NavLink,Outlet,useNavigate}from'react-router-dom'
 import{Activity,AlertTriangle,BarChart3,Boxes,Building2,Bug,ClipboardList,Dna,Factory,Gauge,History,Map,Menu,Droplets,FlaskConical,Leaf,ClipboardCheck,Layers3,CircleDollarSign,Users,LogIn,Route,ScanSearch,BookOpenCheck,ShieldCheck,GitBranch,Sprout,Settings,Target,TestTubes,X,ChevronDown,Search,ShoppingCart,PackageCheck,Coins,Wrench,RefreshCw,CloudOff,DatabaseBackup,Database,Radio,PenLine}from'lucide-react'
 import{useEffect,useMemo,useState}from'react'
+import ContextBar from'./ContextBar.jsx'
 import{useStore}from'../services/store'
 import{useRealtime}from'../services/realtimeContext.jsx'
 import{statusLabel}from'../services/autoSyncRuntime.js'
@@ -60,6 +61,6 @@ export default function AppShell(){
    </section>)}</nav>
    <div className="sidebar-footer">Nexora One · by Nexora Technologies</div>
   </aside>
-  <main className="main-content" id="contenido-principal"><Outlet/></main>
+  <main className="main-content" id="contenido-principal"><ContextBar/><Outlet/></main>
  </div>
 }

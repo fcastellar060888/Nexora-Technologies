@@ -1,5 +1,6 @@
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
+const organizationOf=value=>text(value?.organizationId||value?.companyId||value?._organizationId)
 
 export const MATERIAL_PLANT_AVAILABILITY=Object.freeze({
  AVAILABLE:'Disponible para corte',
@@ -17,13 +18,13 @@ function cleanPatch(patch={}){
 
 export function upsertMaterialPlantUnit(units=[],plant,patch={}){
  if(!plant?.id||!plant?.lotId||!plant?.plantType)throw new Error('La planta individual no tiene identidad completa.')
- const now=new Date().toISOString()
- const next={id:plant.id,lotId:plant.lotId,plantType:plant.plantType,unitIndex:plant.unitIndex,code:plant.code,siteId:plant.siteId||null,geneticId:plant.geneticId||null,parentPlantId:plant.parentPlantId||null,createdAt:plant.createdAt||now,updatedAt:now,...cleanPatch(patch)}
- const current=list(units)
- const idIndex=current.findIndex(item=>item.id===plant.id)
- const slotIndex=current.findIndex(item=>item.lotId===plant.lotId&&item.plantType===plant.plantType&&Number(item.unitIndex)===Number(plant.unitIndex))
- if(idIndex>=0&&slotIndex>=0&&idIndex!==slotIndex)throw new Error('La identidad de la planta colisiona con otra vida materializada.')
- if(slotIndex>=0&&current[slotIndex].id!==plant.id)throw new Error('No se puede reemplazar la identidad estable de una vida materializada.')
+ const now=new Date().toISOString(),organizationId=organizationOf(plant)
+ const next={id:plant.id,...(organizationId?{organizationId}:{}),lotId:plant.lotId,plantType:plant.plantType,unitIndex:plant.unitIndex,code:plant.code,siteId:plant.siteId||null,geneticId:plant.geneticId||null,parentPlantId:plant.parentPlantId||null,createdAt:plant.createdAt||now,updatedAt:now,...cleanPatch(patch)}
+ const current=list(units),sameTenant=item=>!organizationId||organizationOf(item)===organizationId
+ const idIndex=current.findIndex(item=>sameTenant(item)&&item.id===plant.id)
+ const slotIndex=current.findIndex(item=>sameTenant(item)&&item.lotId===plant.lotId&&item.plantType===plant.plantType&&Number(item.unitIndex)===Number(plant.unitIndex))
+ if(idIndex>=0&&slotIndex>=0&&idIndex!==slotIndex)throw new Error('La identidad de la planta colisiona con otra vida materializada dentro de la empresa.')
+ if(slotIndex>=0&&current[slotIndex].id!==plant.id)throw new Error('No se puede reemplazar la identidad estable de una vida materializada dentro de la empresa.')
  const index=idIndex>=0?idIndex:slotIndex
  if(index<0)return[...current,next]
  return current.map((item,itemIndex)=>itemIndex===index?{...item,...next,id:item.id,lotId:item.lotId,plantType:item.plantType,unitIndex:item.unitIndex,createdAt:item.createdAt||next.createdAt}:item)

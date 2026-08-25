@@ -1,30 +1,37 @@
 import{useLocation}from'react-router-dom'
+import{operationalContextOptions,transitionOperationalContext}from'../domain/operationalContext.js'
 import{useStore}from'../services/store'
+
 const rules=[
- [/^\/(companies|users|login|audit|diagnostics|settings)/,['company']],
+ [/^\/(companies|users|audit|diagnostics|settings)/,['company']],
  [/^\/sites/,['company','site']],
+ [/^\/infrastructure(?:-map|\/operations|$)/,['company','site']],
  [/^\/(inventory|costs)/,['company','site']],
  [/^\/irrigation\/(products|water)/,['company','site']],
  [/^\/irrigation\/(objectives|formulation)/,['company','site','genetic','stage']],
- [/^\/production/,['company','site','house','bed','genetic','stage']],
+ [/^\/production/,['company','site','house','bed','plant','genetic','stage']],
  [/^\/propagation\/mothers/,['company','site','genetic']],
- [/^\/propagation/,['company','site','house','bed','genetic','stage']],
- [/^\/mipe/,['company','site','house','bed','stage','week']],
- [/^\/mirfe/,['company','site','house','bed','genetic','stage','week']]
+ [/^\/propagation/,['company','site','house','bed','plant','genetic','stage']],
+ [/^\/material-plant\//,['company','site','genetic']],
+ [/^\/mipe\/incidents/,['company']],
+ [/^\/mipe/,['company','site','house','bed','plant','stage','week']],
+ [/^\/mirfe/,['company','site','house','bed','plant','genetic','stage','week']],
+ [/^\/(cultivation-map|plant\/)/,['company','site','house','bed','plant']]
 ]
+
 export default function ContextBar(){
- const{pathname}=useLocation();const{state,update}=useStore();const c=state.currentContext||{}
- const visible=(rules.find(([r])=>r.test(pathname))?.[1])||['company','site','house','bed','stage','week']
- const sites=state.sites.filter(x=>!c.companyId||x.companyId===c.companyId),houses=state.houses.filter(x=>!c.siteId||x.siteId===c.siteId),beds=state.beds.filter(x=>!c.houseId||x.houseId===c.houseId)
- function set(patch){update(s=>({...s,currentContext:{...s.currentContext,...patch}}),{audit:false})}
+ const{pathname}=useLocation(),{state,update}=useStore(),c=state.currentContext||{},options=operationalContextOptions(state,c)
+ const visible=(rules.find(([rule])=>rule.test(pathname))?.[1])||['company','site','house','bed','plant','stage','week']
+ function set(patch){update(current=>({...current,currentContext:transitionOperationalContext(current,patch)}),{audit:false,sync:false})}
  const field=(name,node)=>visible.includes(name)?node:null
- return <div className="context-bar compact">
-  {field('company',<label><span>Empresa</span><select value={c.companyId||''} onChange={e=>{const companyId=e.target.value,siteId=state.sites.find(x=>x.companyId===companyId)?.id||'',houseId=state.houses.find(x=>x.siteId===siteId)?.id||'',bedId=state.beds.find(x=>x.houseId===houseId)?.id||'';set({companyId,siteId,houseId,bedId,plantId:''})}}><option value="">Todas</option>{state.companies.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
-  {field('site',<label><span>Sede</span><select value={c.siteId||''} onChange={e=>{const siteId=e.target.value,houseId=state.houses.find(x=>x.siteId===siteId)?.id||'',bedId=state.beds.find(x=>x.houseId===houseId)?.id||'';set({siteId,houseId,bedId,plantId:''})}}><option value="">Todas</option>{sites.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
-  {field('house',<label><span>Nave</span><select value={c.houseId||''} onChange={e=>{const houseId=e.target.value,bedId=state.beds.find(x=>x.houseId===houseId)?.id||'';set({houseId,bedId,plantId:''})}}><option value="">Todas</option>{houses.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
-  {field('bed',<label><span>Cama</span><select value={c.bedId||''} onChange={e=>set({bedId:e.target.value,plantId:''})}><option value="">Todas</option>{beds.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
-  {field('genetic',<label><span>Genética</span><select value={c.geneticId||''} onChange={e=>set({geneticId:e.target.value})}><option value="">Todas</option>{state.genetics.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
-  {field('stage',<label><span>Etapa</span><select value={c.stage||''} onChange={e=>set({stage:e.target.value})}><option value="">Todas</option>{['Madre','Propagación','Vegetativo','Floración temprana','Floración media','Floración final','Cosecha','Poscosecha'].map(x=><option key={x}>{x}</option>)}</select></label>)}
-  {field('week',<label><span>Semana</span><input type="number" min="1" value={c.week||1} onChange={e=>set({week:Number(e.target.value)})}/></label>)}
+ return <div className="context-bar compact" aria-label="Contexto operativo">
+  {field('company',<label><span>Empresa</span><select aria-label="Empresa activa" value={c.companyId||''} onChange={event=>set({companyId:event.target.value})}><option value="" disabled={options.companies.length>0}>Seleccionar empresa</option>{options.companies.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}
+  {field('site',<label><span>Sede</span><select aria-label="Sede activa" value={c.siteId||''} onChange={event=>set({siteId:event.target.value})}><option value="">Todas las sedes</option>{options.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}
+  {field('house',<label><span>Nave</span><select aria-label="Nave activa" value={c.houseId||''} onChange={event=>set({houseId:event.target.value})} disabled={!c.siteId}><option value="">Todas las naves</option>{options.houses.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}
+  {field('bed',<label><span>Cama</span><select aria-label="Cama activa" value={c.bedId||''} onChange={event=>set({bedId:event.target.value})} disabled={!c.houseId}><option value="">Todas las camas</option>{options.beds.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}
+  {field('plant',<label><span>Planta</span><select aria-label="Planta activa" value={c.plantId||''} onChange={event=>set({plantId:event.target.value})} disabled={!c.bedId}><option value="">Todas las plantas</option>{options.plants.map(item=><option key={item.id} value={item.id}>{item.code||item.plantCode||item.id}</option>)}</select></label>)}
+  {field('genetic',<label><span>Genética</span><select aria-label="Genética activa" value={c.geneticId||''} onChange={event=>set({geneticId:event.target.value})}><option value="">Todas</option>{options.genetics.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}
+  {field('stage',<label><span>Etapa</span><select aria-label="Etapa activa" value={c.stage||''} onChange={event=>set({stage:event.target.value})}><option value="">Todas</option>{['Madre','Propagación','Vegetativo','Floración temprana','Floración media','Floración final','Cosecha','Poscosecha'].map(item=><option key={item}>{item}</option>)}</select></label>)}
+  {field('week',<label><span>Semana</span><input aria-label="Semana activa" type="number" min="1" value={c.week||1} onChange={event=>set({week:Number(event.target.value)})}/></label>)}
  </div>
 }
