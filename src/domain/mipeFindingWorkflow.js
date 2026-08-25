@@ -116,10 +116,25 @@ export function verifyMipeFindingHistory(finding){
    state=event.to
   }else if(event.type==='CORRECTION'){
    if(event.from!==state||event.to!==state)errors.push(`Corrección alteró estado en ${event.id}`)
+   const changes=event?.changes
+   if(!changes||typeof changes!=='object'||Array.isArray(changes)||!Object.keys(changes).length)errors.push(`Corrección sin cambios auditables en ${event.id}`)
+   else for(const[field,change]of Object.entries(changes)){
+    if(!CORRECTABLE_FIELDS.includes(field))errors.push(`Corrección contiene campo no permitido ${field} en ${event.id}`)
+    if(!change||typeof change!=='object'||Array.isArray(change)||!Object.prototype.hasOwnProperty.call(change,'before')||!Object.prototype.hasOwnProperty.call(change,'after'))errors.push(`Corrección contiene before/after inválido para ${field} en ${event.id}`)
+   }
   }else errors.push(`Tipo de evento MIPE desconocido en ${event.id}`)
  }
  if(state!==finding?.status)errors.push('El estado actual no coincide con el último evento MIPE.')
  if(Number(finding?.mipeHistoryVersion)!==history.length)errors.push('La versión de historial MIPE no coincide con su longitud.')
+ const reconstructed=Object.fromEntries(CORRECTABLE_FIELDS.map(field=>[field,clone(finding?.[field]??'')]))
+ for(let index=history.length-1;index>=0;index--){
+  const event=history[index];if(event?.type!=='CORRECTION'||!event?.changes||typeof event.changes!=='object'||Array.isArray(event.changes))continue
+  for(const[field,change]of Object.entries(event.changes)){
+   if(!CORRECTABLE_FIELDS.includes(field)||!change||typeof change!=='object'||Array.isArray(change)||!Object.prototype.hasOwnProperty.call(change,'before')||!Object.prototype.hasOwnProperty.call(change,'after'))continue
+   if(JSON.stringify(reconstructed[field])!==JSON.stringify(change.after))errors.push(`Cadena before/after contradictoria para ${field} en ${event.id}`)
+   reconstructed[field]=clone(change.before)
+  }
+ }
  return{valid:errors.length===0,errors}
 }
 
