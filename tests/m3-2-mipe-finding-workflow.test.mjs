@@ -74,3 +74,18 @@ test('M32-F005: workflow history rejects time regression and duplicate/tampered 
  assert.equal(verified.valid,false)
  assert.ok(verified.errors.some(item=>item.includes('estado actual')))
 })
+
+test('M32-F012: verification rejects tampered correction before/after chains',()=>{
+ const created=createMipeFindingWorkflow(base(),{commandId:'cmd-create-chain',actor,occurredAt:'2026-08-17T01:00:00.000Z'})
+ const once=correctMipeFinding(created,{incidentId:'incident-b'},{commandId:'cmd-correct-one',actor,occurredAt:'2026-08-17T02:00:00.000Z',reason:'Reclasificación 1'})
+ const forgedAfter=structuredClone(once);forgedAfter.mipeHistory[1].changes.incidentId.after='incident-hostile'
+ const afterVerification=verifyMipeFindingHistory(forgedAfter)
+ assert.equal(afterVerification.valid,false)
+ assert.ok(afterVerification.errors.some(item=>/before\/after contradictoria.*incidentId/i.test(item)))
+
+ const twice=correctMipeFinding(once,{incidentId:'incident-c'},{commandId:'cmd-correct-two',actor,occurredAt:'2026-08-17T03:00:00.000Z',reason:'Reclasificación 2'})
+ const forgedBefore=structuredClone(twice);forgedBefore.mipeHistory[2].changes.incidentId.before='incident-x'
+ const beforeVerification=verifyMipeFindingHistory(forgedBefore)
+ assert.equal(beforeVerification.valid,false)
+ assert.ok(beforeVerification.errors.some(item=>/before\/after contradictoria.*incidentId/i.test(item)))
+})
