@@ -96,6 +96,16 @@ function materializedFinding(finding){
  return{...finding,mipeHistory:history,mipeHistoryVersion:history.length}
 }
 function replaceFinding(state,finding){return{...state,findings:list(state.findings).map(item=>item.id===finding.id?finding:item)}}
+function findingTargetIdentity(finding){
+ const materialId=text(finding?.materialPlantId)||(text(finding?.targetType)==='MATERIAL_PLANT'?text(finding?.targetId):'')
+ if(materialId)return Object.freeze({targetType:'MATERIAL_PLANT',targetId:materialId})
+ const positionId=text(finding?.plantPositionId)||(text(finding?.targetType)==='POSITION'?text(finding?.targetId):'')
+ if(positionId)return Object.freeze({targetType:'POSITION',targetId:positionId})
+ return Object.freeze({targetType:text(finding?.targetType),targetId:text(finding?.targetId)})
+}
+function assertFindingTargetUnchanged(finding,plannedTarget){
+ if(stable(findingTargetIdentity(finding))!==stable(plannedTarget))throw new Error('La identidad causal del target del Finding cambió entre requested y commit.')
+}
 
 function planIncident(state,input,aggregateId,organizationId,occurredAt){
  const record=createMipeIncidentCatalogRecord({...input,id:aggregateId,organizationId,createdAt:occurredAt})
@@ -154,23 +164,23 @@ function correctionInput(input){
  return{patch,reason:required(correctionReason||reason,'El motivo de la corrección')}
 }
 function planCorrectFinding(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),correction=correctionInput(input)
+ const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),correction=correctionInput(input),findingTarget=findingTargetIdentity(finding)
  if(correction.patch.incidentId&&text(correction.patch.incidentId)!==text(finding.incidentId)){
   const incident=activeRecord(state,'incidents',correction.patch.incidentId,'incidencia',organizationId)
   assertMipeIncidentUsable(incident,{organizationId,at:occurredAt})
  }
  const preview=correctMipeFinding(finding,correction.patch,{commandId:input.commandId,actor:commandActor,occurredAt,reason:correction.reason})
- return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_CORRECTED,siteId,payload:{findingId:aggregateId,changedFields:Object.keys(preview.mipeHistory.at(-1)?.changes||{}),reason:correction.reason},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,findings:tenant.findings.map(item=>item.id===aggregateId?correctMipeFinding(item,correction.patch,{commandId:input.commandId,actor:commandActor,occurredAt,reason:correction.reason}):item)}))}
+ return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_CORRECTED,siteId,findingTarget,payload:{findingId:aggregateId,changedFields:Object.keys(preview.mipeHistory.at(-1)?.changes||{}),reason:correction.reason},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,findings:tenant.findings.map(item=>item.id===aggregateId?correctMipeFinding(item,correction.patch,{commandId:input.commandId,actor:commandActor,occurredAt,reason:correction.reason}):item)}))}
 }
 function planTransitionFinding(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),transition=required(input.transition,'transition'),notes=text(input.reason||input.notes)
+ const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),transition=required(input.transition,'transition'),notes=text(input.reason||input.notes),findingTarget=findingTargetIdentity(finding)
  const preview=transitionMipeFinding(finding,transition,{commandId:input.commandId,actor:commandActor,occurredAt,notes,metadata:{source:'mipe-command'}})
- return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_TRANSITIONED,siteId,payload:{findingId:aggregateId,transition,from:text(finding.status),to:text(preview.status),reason:notes},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,findings:tenant.findings.map(item=>item.id===aggregateId?transitionMipeFinding(item,transition,{commandId:input.commandId,actor:commandActor,occurredAt,notes,metadata:{source:'mipe-command'}}):item)}))}
+ return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_TRANSITIONED,siteId,findingTarget,payload:{findingId:aggregateId,transition,from:text(finding.status),to:text(preview.status),reason:notes},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,findings:tenant.findings.map(item=>item.id===aggregateId?transitionMipeFinding(item,transition,{commandId:input.commandId,actor:commandActor,occurredAt,notes,metadata:{source:'mipe-command'}}):item)}))}
 }
 function planResolveFinding(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),status=text(input.status)||MIPE_FINDING_STATES.RESOLVED,transition=transitionNameForResolution(status),notes=text(input.resolutionNotes||input.notes)
+ const finding=activeRecord(state,'findings',aggregateId,'hallazgo',organizationId),siteId=text(finding.siteId),status=text(input.status)||MIPE_FINDING_STATES.RESOLVED,transition=transitionNameForResolution(status),notes=text(input.resolutionNotes||input.notes),findingTarget=findingTargetIdentity(finding)
  const preview=transitionMipeFinding(finding,transition,{commandId:input.commandId,actor:commandActor,occurredAt,notes,metadata:{resolution:true}})
- return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_RESOLVED,siteId,payload:{findingId:aggregateId,status:preview.status,resolutionNotes:notes,releaseAvailability:input.releaseAvailability!==false},apply:current=>{
+ return{aggregateType:'mipe.finding',aggregateId,eventName:DomainEvents.MIPE_FINDING_RESOLVED,siteId,findingTarget,payload:{findingId:aggregateId,status:preview.status,resolutionNotes:notes,releaseAvailability:input.releaseAvailability!==false},apply:current=>{
   if(finding.materialPlantId){
    const tenant=scopeMipeState(current,organizationId),currentFinding=tenant.findings.find(item=>item.id===aggregateId),scopedCurrent={...current,findings:tenant.findings,mipeInterventions:tenant.mipeInterventions}
    const outcome=resolveMaterialPlantFinding(scopedCurrent,{findingId:aggregateId,status:preview.status,resolutionNotes:notes,resolvedAt:occurredAt,releaseAvailability:input.releaseAvailability!==false})
@@ -188,13 +198,13 @@ function planDeleteFinding(state,input,aggregateId,organizationId){
  throw new Error('El hard-delete de hallazgos MIPE está prohibido; usa una transición terminal o una corrección auditable.')
 }
 function planScheduleTreatment(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),product=activeRecord(state,'products',required(input.productId,'productId'),'producto',organizationId),siteId=text(finding.siteId||product.siteId)
+ const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),product=activeRecord(state,'products',required(input.productId,'productId'),'producto',organizationId),siteId=text(finding.siteId||product.siteId),findingTarget=findingTargetIdentity(finding)
  if(!siteId)throw new Error('No se pudo resolver la sede del tratamiento MIPE.')
  const scheduledAt=text(input.date)?`${text(input.date)}T00:00:00.000Z`:occurredAt,productSnapshot=createExecutableMipeProductSnapshot(product,{organizationId,siteId,at:scheduledAt,requestedDoseUnit:text(input.doseUnit)}),request={...input,id:aggregateId,createdAt:occurredAt,productSnapshot}
  let previewFinding=materializedFinding(finding)
  if(text(previewFinding.status)!==MIPE_FINDING_STATES.TREATMENT_APPROVED)previewFinding=transitionMipeFinding(previewFinding,MIPE_FINDING_TRANSITIONS.APPROVE_TREATMENT,{commandId:input.commandId,actor:commandActor,occurredAt,notes:text(input.notes),metadata:{treatmentId:aggregateId,productTechnicalRevision:productSnapshot.technicalRevision}})
  scheduleTreatment(scopeMipeState(state,organizationId),request)
- return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_SCHEDULED,siteId,payload:{treatmentId:aggregateId,findingId:finding.id,productId:product.id,dose:Number(input.dose),doseUnit:text(input.doseUnit),mixVolume:Number(input.mixVolume),productTechnicalRevision:productSnapshot.technicalRevision,productValidUntil:productSnapshot.validUntil},apply:current=>tenantMutation(current,organizationId,tenant=>{
+ return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_SCHEDULED,siteId,findingTarget,payload:{treatmentId:aggregateId,findingId:finding.id,productId:product.id,dose:Number(input.dose),doseUnit:text(input.doseUnit),mixVolume:Number(input.mixVolume),productTechnicalRevision:productSnapshot.technicalRevision,productValidUntil:productSnapshot.validUntil},apply:current=>tenantMutation(current,organizationId,tenant=>{
    const before=tenant.findings.find(item=>item.id===finding.id),scheduled=scheduleTreatment(tenant,request)
    let workflowFinding=materializedFinding(before)
    if(text(workflowFinding.status)!==MIPE_FINDING_STATES.TREATMENT_APPROVED)workflowFinding=transitionMipeFinding(workflowFinding,MIPE_FINDING_TRANSITIONS.APPROVE_TREATMENT,{commandId:input.commandId,actor:commandActor,occurredAt,notes:text(input.notes),metadata:{treatmentId:aggregateId,productTechnicalRevision:productSnapshot.technicalRevision}})
@@ -208,10 +218,10 @@ function treatmentWorkflowAfterExecution(finding,{commandId,commandActor,occurre
  return{...legacyFinding,...workflowFinding,lastTreatmentAt:legacyFinding?.lastTreatmentAt||occurredAt,reentryUntil:legacyFinding?.reentryUntil||'',harvestRestrictedUntil:legacyFinding?.harvestRestrictedUntil||''}
 }
 function planExecuteTreatment(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const treatment=activeRecord(state,'treatments',aggregateId,'tratamiento',organizationId),lot=activeRecord(state,'inventoryLots',required(input.lotId,'lotId'),'lote de inventario',organizationId),finding=activeRecord(state,'findings',treatment.findingId,'hallazgo',organizationId),siteId=text(treatment.siteId||finding.siteId||lot.siteId),commandId=required(input.commandId,'commandId')
+ const treatment=activeRecord(state,'treatments',aggregateId,'tratamiento',organizationId),lot=activeRecord(state,'inventoryLots',required(input.lotId,'lotId'),'lote de inventario',organizationId),finding=activeRecord(state,'findings',treatment.findingId,'hallazgo',organizationId),siteId=text(treatment.siteId||finding.siteId||lot.siteId),commandId=required(input.commandId,'commandId'),findingTarget=findingTargetIdentity(finding)
  if(!siteId)throw new Error('No se pudo resolver la sede de la ejecución MIPE.')
  treatmentWorkflowAfterExecution(finding,{commandId,commandActor,occurredAt,treatmentId:aggregateId,legacyFinding:finding})
- return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_EXECUTED,siteId,payload:{treatmentId:aggregateId,findingId:finding.id,lotId:lot.id,totalQuantity:Number(treatment.totalQuantity||0),productTechnicalRevision:treatment.productSnapshot?.technicalRevision||null},apply:current=>tenantMutation(current,organizationId,tenant=>{
+ return{aggregateType:'mipe.treatment',aggregateId,eventName:DomainEvents.MIPE_TREATMENT_EXECUTED,siteId,findingTarget,expectedFindingId:text(treatment.findingId),payload:{treatmentId:aggregateId,findingId:finding.id,lotId:lot.id,totalQuantity:Number(treatment.totalQuantity||0),productTechnicalRevision:treatment.productSnapshot?.technicalRevision||null},apply:current=>tenantMutation(current,organizationId,tenant=>{
    const beforeFinding=tenant.findings.find(item=>item.id===finding.id),executed=executeTreatment(tenant,{treatmentId:aggregateId,lotId:lot.id,responsible:text(input.responsible),executedAt:occurredAt,siteId,movementId:`${aggregateId}:${commandId}:movement`,costEntryId:text(input.costEntryId)||`${aggregateId}:${commandId}:cost`})
    const legacyFinding=executed.findings.find(item=>item.id===finding.id)
    const workflowFinding=treatmentWorkflowAfterExecution(beforeFinding,{commandId,commandActor,occurredAt,treatmentId:aggregateId,legacyFinding})
@@ -225,9 +235,9 @@ function materialInterventionPlantEvent(finding,record,organizationId){
  return Object.freeze({id:`${organizationId}:${record.id}:plant-event`,organizationId,siteId:record.siteId||null,plantId:materialPlantId,entityId:materialPlantId,type:'MIPE',title:record.type==='Tratamiento'?'Tratamiento MIPE registrado':'Seguimiento MIPE registrado',detail,date:record.performedAt,createdAt:record.performedAt,source:'mipe-intervention-authority',findingId:finding.id,interventionId:record.id})
 }
 function planRecordIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId),treatmentId=text(input.treatmentId),treatment=treatmentId?activeRecord(state,'treatments',treatmentId,'tratamiento',organizationId):null
+ const finding=activeRecord(state,'findings',required(input.findingId,'findingId'),'hallazgo',organizationId),siteId=text(finding.siteId),treatmentId=text(input.treatmentId),treatment=treatmentId?activeRecord(state,'treatments',treatmentId,'tratamiento',organizationId):null,findingTarget=findingTargetIdentity(finding)
  const record=createCanonicalMipeIntervention({finding,treatment,input,organizationId,commandId:aggregateId,actor:commandActor,occurredAt}),plantEvent=materialInterventionPlantEvent(finding,record,organizationId)
- return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_RECORDED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,treatmentId:record.treatmentId,type:record.type,responsible:record.responsible,nextReviewAt:record.nextReviewAt,targetType:record.findingSnapshot.targetType,targetId:record.findingSnapshot.targetId},apply:current=>{
+ return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_RECORDED,siteId,findingTarget,payload:{interventionId:aggregateId,findingId:finding.id,treatmentId:record.treatmentId,type:record.type,responsible:record.responsible,nextReviewAt:record.nextReviewAt,targetType:record.findingSnapshot.targetType,targetId:record.findingSnapshot.targetId},apply:current=>{
    const merged=tenantMutation(current,organizationId,tenant=>{
     if(tenant.mipeInterventions.some(item=>item.id===aggregateId))throw new Error('La intervención MIPE ya existe en la empresa activa.')
     return{...tenant,mipeInterventions:[...tenant.mipeInterventions,record]}
@@ -238,9 +248,9 @@ function planRecordIntervention(state,input,aggregateId,organizationId,occurredA
  }}
 }
 function planReassignIntervention(state,input,aggregateId,organizationId,occurredAt,commandActor){
- const intervention=activeRecord(state,'mipeInterventions',aggregateId,'intervención',organizationId),finding=activeRecord(state,'findings',intervention.findingId,'hallazgo',organizationId),siteId=text(intervention.siteId||finding.siteId),responsible=required(input.responsible,'responsible')
+ const intervention=activeRecord(state,'mipeInterventions',aggregateId,'intervención',organizationId),finding=activeRecord(state,'findings',intervention.findingId,'hallazgo',organizationId),siteId=text(intervention.siteId||finding.siteId),responsible=required(input.responsible,'responsible'),findingTarget=findingTargetIdentity(finding)
  const preview=reassignCanonicalMipeIntervention(intervention,{responsible,commandId:input.commandId,actor:commandActor,occurredAt})
- return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_REASSIGNED,siteId,payload:{interventionId:aggregateId,findingId:finding.id,previousResponsible:text(intervention.responsible),responsible:preview.responsible},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,mipeInterventions:tenant.mipeInterventions.map(item=>item.id===aggregateId?reassignCanonicalMipeIntervention(item,{responsible,commandId:input.commandId,actor:commandActor,occurredAt}):item)}))}
+ return{aggregateType:'mipe.intervention',aggregateId,eventName:DomainEvents.MIPE_INTERVENTION_REASSIGNED,siteId,findingTarget,expectedFindingId:text(intervention.findingId),payload:{interventionId:aggregateId,findingId:finding.id,previousResponsible:text(intervention.responsible),responsible:preview.responsible},apply:current=>tenantMutation(current,organizationId,tenant=>({...tenant,mipeInterventions:tenant.mipeInterventions.map(item=>item.id===aggregateId?reassignCanonicalMipeIntervention(item,{responsible,commandId:input.commandId,actor:commandActor,occurredAt}):item)}))}
 }
 
 function plan(state,{operation,input,aggregateId,organizationId,occurredAt,commandActor}){
@@ -264,6 +274,11 @@ function assertSameCommitSite(actualSiteId,plannedSiteId,label){
  if(actual!==planned)throw new Error(`${label} cambió de sede entre requested y commit.`)
  return actual
 }
+function assertPlannedFinding(current,planned,organizationId,findingId){
+ const finding=activeRecord(current,'findings',findingId,'hallazgo',organizationId)
+ if(planned.findingTarget)assertFindingTargetUnchanged(finding,planned.findingTarget)
+ return finding
+}
 function assertMipeCommitScope(current,{operation,aggregateId,organizationId,planned}){
  if(activeOrganizationId(current)!==organizationId)throw new Error('La empresa activa cambió antes de confirmar la operación MIPE.')
  const plannedSite=text(planned.siteId)
@@ -275,11 +290,11 @@ function assertMipeCommitScope(current,{operation,aggregateId,organizationId,pla
  }
  let actualSite=plannedSite
  if(operation===MIPE_OPERATIONS.CREATE_FINDING){const plant=activeRecord(current,'plantPositions',planned.payload.plantPositionId,'planta/Position',organizationId);actualSite=siteForPosition(current,plant)}
- else if([MIPE_OPERATIONS.UPDATE_FINDING,MIPE_OPERATIONS.CORRECT_FINDING,MIPE_OPERATIONS.TRANSITION_FINDING,MIPE_OPERATIONS.RESOLVE_FINDING].includes(operation))actualSite=text(activeRecord(current,'findings',aggregateId,'hallazgo',organizationId).siteId)
- else if(operation===MIPE_OPERATIONS.SCHEDULE_TREATMENT){const finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId),product=activeRecord(current,'products',planned.payload.productId,'producto',organizationId);actualSite=text(finding.siteId||product.siteId)}
- else if(operation===MIPE_OPERATIONS.EXECUTE_TREATMENT){const treatment=activeRecord(current,'treatments',aggregateId,'tratamiento',organizationId),finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId),lot=activeRecord(current,'inventoryLots',planned.payload.lotId,'lote de inventario',organizationId);actualSite=text(treatment.siteId||finding.siteId||lot.siteId)}
- else if(operation===MIPE_OPERATIONS.RECORD_INTERVENTION)actualSite=text(activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId).siteId)
- else if(operation===MIPE_OPERATIONS.REASSIGN_INTERVENTION){const intervention=activeRecord(current,'mipeInterventions',aggregateId,'intervención',organizationId),finding=activeRecord(current,'findings',planned.payload.findingId,'hallazgo',organizationId);actualSite=text(intervention.siteId||finding.siteId)}
+ else if([MIPE_OPERATIONS.UPDATE_FINDING,MIPE_OPERATIONS.CORRECT_FINDING,MIPE_OPERATIONS.TRANSITION_FINDING,MIPE_OPERATIONS.RESOLVE_FINDING].includes(operation)){const finding=assertPlannedFinding(current,planned,organizationId,aggregateId);actualSite=text(finding.siteId)}
+ else if(operation===MIPE_OPERATIONS.SCHEDULE_TREATMENT){const finding=assertPlannedFinding(current,planned,organizationId,planned.payload.findingId),product=activeRecord(current,'products',planned.payload.productId,'producto',organizationId);actualSite=text(finding.siteId||product.siteId)}
+ else if(operation===MIPE_OPERATIONS.EXECUTE_TREATMENT){const treatment=activeRecord(current,'treatments',aggregateId,'tratamiento',organizationId);if(text(treatment.findingId)!==text(planned.expectedFindingId))throw new Error('La causalidad Treatment→Finding cambió entre requested y commit.');const finding=assertPlannedFinding(current,planned,organizationId,planned.payload.findingId),lot=activeRecord(current,'inventoryLots',planned.payload.lotId,'lote de inventario',organizationId);actualSite=text(treatment.siteId||finding.siteId||lot.siteId)}
+ else if(operation===MIPE_OPERATIONS.RECORD_INTERVENTION){const finding=assertPlannedFinding(current,planned,organizationId,planned.payload.findingId);actualSite=text(finding.siteId)}
+ else if(operation===MIPE_OPERATIONS.REASSIGN_INTERVENTION){const intervention=activeRecord(current,'mipeInterventions',aggregateId,'intervención',organizationId);if(text(intervention.findingId)!==text(planned.expectedFindingId))throw new Error('La causalidad Intervention→Finding cambió entre requested y commit.');const finding=assertPlannedFinding(current,planned,organizationId,planned.payload.findingId);actualSite=text(intervention.siteId||finding.siteId)}
  assertSameCommitSite(actualSite,plannedSite,'La sede real del target MIPE')
  authorize(current,operation,organizationId,actualSite||null)
 }
