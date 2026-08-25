@@ -28,13 +28,23 @@ function relation(type,targetType,targetId,label,organizationId,extra={}){return
 function findingTargets(state,{organizationId,targetType,targetId}){return uniqueById(mipeForOrganization(state,'findings',organizationId).filter(item=>{const target=targetOf(item);return target.targetType===targetType&&target.targetId===targetId}),'Finding')}
 function historyFor(finding){if(list(finding?.mipeHistory).length){const verification=verifyMipeFindingHistory(finding);if(!verification.valid)throw new Error(`El historial MIPE de Finding ${text(finding?.id)} no es íntegro: ${verification.errors.join(' ')}`)}return mipeFindingHistory(finding)}
 function resolutionEvents(finding){return historyFor(finding).filter(event=>TERMINAL.has(text(event?.to)))}
+function findingFieldAt(finding,field,at){
+ const when=iso(at);let value=finding?.[field]
+ if(!when)return text(value)
+ const targetTime=Date.parse(when),history=historyFor(finding)
+ for(let index=history.length-1;index>=0;index--){
+  const event=history[index],change=event?.type==='CORRECTION'?event?.changes?.[field]:null,eventTime=Date.parse(event?.occurredAt||'')
+  if(change&&Number.isFinite(eventTime)&&eventTime>targetTime)value=change.before
+ }
+ return text(value)
+}
 function currentProductLabel(state,treatment,organizationId){const product=sharedById(state,'products',treatment?.productId,organizationId,'Product');return text(treatment?.productSnapshot?.name)||text(product?.name)||text(treatment?.productId)||'Producto MIPE'}
 function lotLabel(state,treatment,organizationId){const lot=sharedById(state,'inventoryLots',treatment?.lotId,organizationId,'Lote de inventario');return text(lot?.lotNumber||lot?.code)||text(treatment?.lotId)||'Lote de inventario'}
 function assertFindingSnapshot(intervention,finding){
  const snapshot=intervention?.findingSnapshot;if(!snapshot)return
- const findingId=text(intervention?.findingId),target=targetOf(finding)
+ const findingId=text(intervention?.findingId),target=targetOf(finding),snapshotAt=intervention?.performedAt||intervention?.createdAt,incidentAt=findingFieldAt(finding,'incidentId',snapshotAt)
  if(text(snapshot.id)&&text(snapshot.id)!==findingId)throw new Error(`Intervention ${text(intervention?.id)} contiene un findingSnapshot de otro Finding.`)
- if(text(snapshot.incidentId)&&text(snapshot.incidentId)!==text(finding?.incidentId))throw new Error(`Intervention ${text(intervention?.id)} contradice el Incident de su Finding.`)
+ if(text(snapshot.incidentId)&&text(snapshot.incidentId)!==incidentAt)throw new Error(`Intervention ${text(intervention?.id)} contradice el Incident histórico de su Finding.`)
  if(text(snapshot.targetType)&&text(snapshot.targetType)!==target.targetType)throw new Error(`Intervention ${text(intervention?.id)} contradice el targetType de su Finding.`)
  if(text(snapshot.targetId)&&text(snapshot.targetId)!==target.targetId)throw new Error(`Intervention ${text(intervention?.id)} contradice el targetId de su Finding.`)
 }
@@ -79,13 +89,18 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
   if(!finding)throw new Error(`Intervention ${interventionId} no tiene un Finding causal dentro del Passport.`)
   if(text(intervention.siteId)&&text(finding.siteId)&&text(intervention.siteId)!==text(finding.siteId))throw new Error(`Intervention ${interventionId} pertenece a otra sede que su Finding.`)
   assertFindingSnapshot(intervention,finding)
+  const interventionAt=intervention.performedAt||intervention.createdAt,historicalIncidentId=findingFieldAt(finding,'incidentId',interventionAt)
+  if(historicalIncidentId&&historicalIncidentId!==text(finding.incidentId)){
+   const historicalIncident=mipeById(state,'incidents',historicalIncidentId,owner,'Incident histórico')
+   relationships.push(relation('historically_classified_by_mipe_incident','mipe.incident',historicalIncidentId,text(historicalIncident?.name)||historicalIncidentId,owner,{findingIds:[findingId],interventionIds:[interventionId],active:historicalIncident?historicalIncident.active!==false:null,catalogPresent:Boolean(historicalIncident),historical:true}))
+  }
   const treatmentId=text(intervention.treatmentId)
   if(treatmentId){const treatment=treatmentsById.get(treatmentId);if(!treatment)throw new Error(`Intervention ${interventionId} referencia un Treatment ajeno a su cadena causal.`);if(text(treatment.findingId)!==findingId)throw new Error(`Intervention ${interventionId} referencia un Treatment de otro Finding.`);assertTreatmentSnapshot(intervention,treatment)}else{
    if(intervention.treatmentSnapshot)throw new Error(`Intervention ${interventionId} contiene treatmentSnapshot sin treatmentId.`)
    if(TREATMENT_INTERVENTION_TYPES.has(text(intervention.type)))throw new Error(`Intervention ${interventionId} de tipo Tratamiento requiere un Treatment canónico.`)
   }
-  relationships.push(relation('has_mipe_intervention','mipe.intervention',interventionId,text(intervention.type)||`Intervention ${interventionId}`,owner,{findingId,treatmentId,performedAt:iso(intervention.performedAt),outcome:text(intervention.outcome),responsible:text(intervention.responsible||intervention.responsibleId)}))
-  const occurredAt=iso(intervention.performedAt||intervention.createdAt);if(occurredAt)timeline.push({id:`mipekg:intervention:${interventionId}`,sourceId:interventionId,occurredAt,category:'MIPE intervention',type:text(intervention.type),title:text(intervention.type)||'Intervención MIPE',summary:text(intervention.outcome||intervention.notes),status:text(intervention.outcome),findingId,treatmentId})
+  relationships.push(relation('has_mipe_intervention','mipe.intervention',interventionId,text(intervention.type)||`Intervention ${interventionId}`,owner,{findingId,treatmentId,incidentId:historicalIncidentId,performedAt:iso(intervention.performedAt),outcome:text(intervention.outcome),responsible:text(intervention.responsible||intervention.responsibleId)}))
+  const occurredAt=iso(intervention.performedAt||intervention.createdAt);if(occurredAt)timeline.push({id:`mipekg:intervention:${interventionId}`,sourceId:interventionId,occurredAt,category:'MIPE intervention',type:text(intervention.type),title:text(intervention.type)||'Intervención MIPE',summary:text(intervention.outcome||intervention.notes),status:text(intervention.outcome),findingId,treatmentId,incidentId:historicalIncidentId})
  }
  for(const treatment of allTreatments){
   const treatmentId=text(treatment.id),findingId=text(treatment.findingId),finding=findingsById.get(findingId),productId=text(treatment.productId),lotId=text(treatment.lotId),productLabel=currentProductLabel(state,treatment,owner)
