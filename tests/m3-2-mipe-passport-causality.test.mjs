@@ -39,6 +39,29 @@ test('F011 causality: snapshots contradictorios fallan cerrado',()=>{
  assert.throws(()=>project(treatmentSnapshot),/treatmentSnapshot contradictorio/i)
 })
 
+test('F011 causality: una corrección posterior de Incident no invalida el snapshot histórico de una Intervention previa',()=>{
+ const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
+ state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
+  {id:'finding-a:workflow:legacy-import',type:'IMPORTED',from:null,to:'Seguimiento',occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'legacy',name:'Legacy'},metadata:{legacyImported:true}},
+  {id:'cmd-correct:correction',type:'CORRECTION',from:'Seguimiento',to:'Seguimiento',occurredAt:'2026-08-17T13:00:00.000Z',actor:{id:'user-a',name:'Agrónomo'},reason:'Reclasificación taxonómica',changes:{incidentId:{before:'incident-a',after:'incident-b'}}}
+ ],mipeHistoryVersion:2}
+ state.mipeInterventions=[{id:'followup-before-correction',organizationId:'org-a',siteId:'site-a',findingId:'finding-a',type:'Seguimiento',performedAt:'2026-08-17T12:00:00.000Z',outcome:'Observación previa',findingSnapshot:{id:'finding-a',incidentId:'incident-a',targetType:'POSITION',targetId:'plant-a'}}]
+ const trace=project(state),intervention=trace.relationships.find(item=>item.targetType==='mipe.intervention'&&item.targetId==='followup-before-correction')
+ assert.equal(intervention.incidentId,'incident-a')
+ assert.ok(trace.relationships.some(item=>item.type==='historically_classified_by_mipe_incident'&&item.targetId==='incident-a'&&item.historical===true))
+ assert.ok(trace.relationships.some(item=>item.type==='classified_by_mipe_incident'&&item.targetId==='incident-b'))
+})
+
+test('F011 causality: snapshot viejo después de corregir Incident falla cerrado',()=>{
+ const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
+ state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
+  {id:'finding-a:workflow:legacy-import',type:'IMPORTED',from:null,to:'Seguimiento',occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'legacy',name:'Legacy'},metadata:{legacyImported:true}},
+  {id:'cmd-correct:correction',type:'CORRECTION',from:'Seguimiento',to:'Seguimiento',occurredAt:'2026-08-17T13:00:00.000Z',actor:{id:'user-a',name:'Agrónomo'},reason:'Reclasificación taxonómica',changes:{incidentId:{before:'incident-a',after:'incident-b'}}}
+ ],mipeHistoryVersion:2}
+ state.mipeInterventions=[{id:'followup-after-correction',organizationId:'org-a',siteId:'site-a',findingId:'finding-a',type:'Seguimiento',performedAt:'2026-08-17T14:00:00.000Z',outcome:'Observación posterior',findingSnapshot:{id:'finding-a',incidentId:'incident-a',targetType:'POSITION',targetId:'plant-a'}}]
+ assert.throws(()=>project(state),/Incident histórico|contradice el Incident/i)
+})
+
 test('F011 causality: ventanas de restricción no pueden terminar antes o al inicio de la ejecución',()=>{
  const state=baseState();state.treatments[0].reentryUntil='2026-08-17T10:59:59.000Z'
  assert.throws(()=>project(state),/restricción|reentrada|ventana/i)
