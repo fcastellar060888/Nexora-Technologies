@@ -52,6 +52,23 @@ test('F011 causality: una corrección posterior de Incident no invalida el snaps
  assert.ok(trace.relationships.some(item=>item.type==='classified_by_mipe_incident'&&item.targetId==='incident-b'))
 })
 
+test('F011 causality: varias Interventions históricas del mismo Incident se agregan en una sola relación',()=>{
+ const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
+ state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
+  {id:'finding-a:workflow:legacy-import',type:'IMPORTED',from:null,to:'Seguimiento',occurredAt:'2026-08-17T10:00:00.000Z',actor:{id:'legacy',name:'Legacy'},metadata:{legacyImported:true}},
+  {id:'cmd-correct:correction',type:'CORRECTION',from:'Seguimiento',to:'Seguimiento',occurredAt:'2026-08-17T13:00:00.000Z',actor:{id:'user-a',name:'Agrónomo'},reason:'Reclasificación taxonómica',changes:{incidentId:{before:'incident-a',after:'incident-b'}}}
+ ],mipeHistoryVersion:2}
+ const snapshot={id:'finding-a',incidentId:'incident-a',targetType:'POSITION',targetId:'plant-a'}
+ state.mipeInterventions=[
+  {id:'followup-historical-2',organizationId:'org-a',siteId:'site-a',findingId:'finding-a',type:'Seguimiento',performedAt:'2026-08-17T12:00:00.000Z',outcome:'Segunda observación',findingSnapshot:snapshot},
+  {id:'followup-historical-1',organizationId:'org-a',siteId:'site-a',findingId:'finding-a',type:'Seguimiento',performedAt:'2026-08-17T11:00:00.000Z',outcome:'Primera observación',findingSnapshot:snapshot}
+ ]
+ const trace=project(state),historical=trace.relationships.filter(item=>item.type==='historically_classified_by_mipe_incident'&&item.targetId==='incident-a')
+ assert.equal(historical.length,1)
+ assert.deepEqual(historical[0].findingIds,['finding-a'])
+ assert.deepEqual(historical[0].interventionIds,['followup-historical-1','followup-historical-2'])
+})
+
 test('F011 causality: snapshot viejo después de corregir Incident falla cerrado',()=>{
  const state=baseState();state.incidents.push({id:'incident-b',organizationId:'org-a',name:'Trips',active:true})
  state.findings[0]={...state.findings[0],incidentId:'incident-b',mipeHistory:[
