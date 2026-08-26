@@ -40,6 +40,7 @@ function bootstrapLegacyLedger(state,lot,movementCreatedAt){
   id:`inventory-opening:${organizationId}:${lot.id}`,organizationId,
   lotId:lot.id,productId:lot.productId,siteId:lot.siteId,
   type:'Saldo inicial',quantity:openingBalance,signedQuantity:openingBalance,balanceBefore:0,balanceAfter:openingBalance,
+  ledgerSequence:1,previousMovementId:'',
   date:createdAt.slice(0,10),createdAt,sourceType:'LegacyInventoryBootstrap',sourceId:lot.id,supplier:'',reference:text(lot.lotNumber),responsible:'system',notes:'Materialización determinista de saldo legacy previo al kardex append-only'
  }
  const next={...state,inventoryMovements:[...list(state.inventoryMovements),movement]}
@@ -72,6 +73,7 @@ export function transactInventory(state,input){
   id:input.id||crypto.randomUUID(),organizationId,
   lotId:lot.id,productId:lot.productId,siteId:lot.siteId,
   type:input.type,quantity,signedQuantity,balanceBefore:currentBalance,balanceAfter,
+  ledgerSequence:ledger.movementCount+1,previousMovementId:ledger.lastMovementId,
   date:input.date||createdAt.slice(0,10),createdAt,
   sourceType:input.sourceType||'Manual',sourceId:input.sourceId||'',supplier:input.supplier||'',reference:input.reference||'',responsible:input.responsible||'',notes:input.notes||''
  }
