@@ -1,5 +1,6 @@
 import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
 import{assertInventoryLotMatchesLedger,inventoryLedgerForLot}from'./inventoryLedger.js'
+import{assertInventoryLotProductCausality,inventoryLotUnitFromProduct}from'./inventoryProductCausality.js'
 
 const POSITIVE_TYPES=new Set(['Entrada','Ajuste positivo','Saldo inicial','Devolución'])
 const NEGATIVE_TYPES=new Set(['Salida','Ajuste negativo','Consumo','Baja','Vencimiento'])
@@ -62,6 +63,7 @@ export function transactInventory(state,input){
  const product=tenantRecord(state,'products',lot.productId,organizationId,'El producto de inventario')
  assertSite(state,lot.siteId,organizationId)
  if(explicitOrganizationId(product)&&ownerOf(state,product,'el producto de inventario')!==organizationId)throw new Error('El producto de inventario pertenece a otra empresa.')
+ if(text(lot.unit))assertInventoryLotProductCausality(product,lot)
 
  const createdAt=input.createdAt||new Date().toISOString(),working=bootstrapLegacyLedger(state,lot,createdAt),ledger=assertInventoryLotMatchesLedger(working,lot)
  const quantity=asPositiveNumber(input.quantity)
@@ -93,6 +95,7 @@ export function createInventoryLot(state,input){
  const product=tenantRecord(state,'products',input.productId,organizationId,'El producto de inventario')
  assertSite(state,input.siteId,organizationId)
  if(input.organizationId&&text(input.organizationId)!==organizationId)throw new Error('El lote de inventario no puede crearse para otra empresa.')
+ const unit=inventoryLotUnitFromProduct(product,input.unit)
  const lotNumber=text(input.lotNumber)
  if(!lotNumber)throw new Error('El número de lote es obligatorio.')
  if(list(state.inventoryLots).some(l=>ownerOf(state,l,'el lote de inventario')===organizationId&&l.productId===product.id&&l.siteId===input.siteId&&text(l.lotNumber).toLowerCase()===lotNumber.toLowerCase()))throw new Error('Ya existe ese lote para el producto y la sede seleccionados.')
@@ -103,7 +106,7 @@ export function createInventoryLot(state,input){
  if(!Number.isFinite(minimum)||minimum<0)throw new Error('El stock mínimo no puede ser negativo.')
 
  const createdAt=input.createdAt||new Date().toISOString()
- const lot={id:input.id||crypto.randomUUID(),organizationId,productId:product.id,siteId:input.siteId,quantity:0,lotNumber,expiryDate:input.expiryDate||'',minimum,createdAt,updatedAt:createdAt}
+ const lot={id:input.id||crypto.randomUUID(),organizationId,productId:product.id,siteId:input.siteId,unit,quantity:0,lotNumber,expiryDate:input.expiryDate||'',minimum,createdAt,updatedAt:createdAt}
  let next={...state,inventoryLots:[...list(state.inventoryLots),lot]}
  if(openingQuantity>0)next=transactInventory(next,{lotId:lot.id,type:'Saldo inicial',quantity:openingQuantity,date:input.date,createdAt,sourceType:'InventoryLot',sourceId:lot.id,reference:lotNumber,responsible:input.responsible,notes:'Registro de existencia inicial'})
  return next
