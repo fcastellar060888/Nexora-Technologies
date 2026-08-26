@@ -6,7 +6,7 @@ import{verifyInventoryLedger}from'../src/domain/inventoryLedger.js'
 function base(){return{
  currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a'}],
  sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a',name:'A'}],
- products:[{id:'product-a',organizationId:'org-a',siteId:'site-a',name:'Producto A'}],
+ products:[{id:'product-a',organizationId:'org-a',siteId:'site-a',name:'Producto A',category:'General',unit:'unidad'}],
  inventoryLots:[{id:'lot-a',organizationId:'org-a',productId:'product-a',siteId:'site-a',lotNumber:'LOT-A',quantity:10,createdAt:'2026-08-20T08:00:00.000Z'}],
  inventoryMovements:[]
 }}
@@ -45,7 +45,7 @@ test('F004 write authority: movimiento con id duplicado same-tenant falla antes 
 test('F004 write authority: lote nuevo con existencia inicial genera un único movimiento canónico, no bootstrap legacy',()=>{
  const state=base();state.inventoryLots=[]
  const next=createInventoryLot(state,{id:'lot-new',productId:'product-a',siteId:'site-a',lotNumber:'LOT-NEW',quantity:6,createdAt:'2026-08-22T08:00:00.000Z'})
- const rows=next.inventoryMovements.filter(item=>item.lotId==='lot-new')
+ const rows=next.inventoryMovements.filter(item=>item.lotId==='lot-new'),lot=next.inventoryLots.find(item=>item.id==='lot-new')
  assert.equal(rows.length,1)
  assert.equal(rows[0].type,'Saldo inicial')
  assert.notEqual(rows[0].sourceType,'LegacyInventoryBootstrap')
@@ -53,7 +53,8 @@ test('F004 write authority: lote nuevo con existencia inicial genera un único m
  assert.equal(rows[0].previousMovementId,'')
  assert.equal(rows[0].balanceBefore,0)
  assert.equal(rows[0].balanceAfter,6)
- assert.equal(next.inventoryLots.find(item=>item.id==='lot-new').quantity,6)
+ assert.equal(lot.quantity,6)
+ assert.equal(lot.unit,'unidad')
 })
 
 test('F004 write authority: un kardex válido existente determina balanceBefore y cadena causal del siguiente movimiento',()=>{
