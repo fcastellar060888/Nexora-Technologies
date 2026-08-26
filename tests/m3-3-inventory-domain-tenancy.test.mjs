@@ -5,7 +5,7 @@ import{createInventoryLot,transactInventory}from'../src/domain/inventory.js'
 const base=()=>({
  currentContext:{companyId:'org-a',siteId:'site-a'},companies:[{id:'org-a'},{id:'org-b'}],
  sites:[{id:'site-a',organizationId:'org-a'},{id:'site-b',organizationId:'org-b'}],
- products:[{id:'product-shared',organizationId:'org-a',name:'A'},{id:'product-shared',organizationId:'org-b',name:'B'}],
+ products:[{id:'product-shared',organizationId:'org-a',name:'A',category:'General',unit:'unidad'},{id:'product-shared',organizationId:'org-b',name:'B',category:'General',unit:'unidad'}],
  inventoryLots:[{id:'lot-shared',organizationId:'org-a',productId:'product-shared',siteId:'site-a',lotNumber:'A-1',quantity:10},{id:'lot-shared',organizationId:'org-b',productId:'product-shared',siteId:'site-b',lotNumber:'B-1',quantity:50}],inventoryMovements:[]
 })
 
@@ -24,6 +24,7 @@ test('F001 inventario: lote nuevo congela organizationId y no puede apuntar a se
  const next=createInventoryLot(state,{id:'lot-new',productId:'product-shared',siteId:'site-a',lotNumber:'A-2',quantity:4,createdAt:'2026-08-26T03:31:00.000Z'})
  const lot=next.inventoryLots.find(item=>item.id==='lot-new')
  assert.equal(lot.organizationId,'org-a')
+ assert.equal(lot.unit,'unidad')
  assert.equal(lot.quantity,4)
  const opening=next.inventoryMovements.find(item=>item.lotId==='lot-new')
  assert.equal(opening.organizationId,'org-a')
