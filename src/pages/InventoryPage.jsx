@@ -3,30 +3,27 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
-import{useStore}from'../services/store'
-import{createInventoryLot}from'../domain/inventory'
-import{scopeInventoryState}from'../domain/inventoryTenancy'
+import{INVENTORY_OPERATIONS}from'../services/inventoryCommand.js'
+import{useInventoryCommandStore}from'../services/inventoryCommandStore.js'
 
 const emptyProduct={name:'',category:'MIPE',activeIngredient:'',manufacturer:'',registrationNumber:'',unit:'mL',doseMin:0,doseMax:0,doseUnit:'mL/L',reentryHours:0,withdrawalDays:0,cost:0,validFrom:'',validUntil:'',technicalRevision:1}
 const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].includes(category)
 const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
- const{state,update}=useStore(),inventory=scopeInventoryState(state)
+ const{state:inventory,execute}=useInventoryCommandStore()
  const[p,setP]=useState(emptyProduct)
  const[lot,setLot]=useState({productId:inventory.products[0]?.id||'',siteId:inventory.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
- function addP(e){
+ async function addP(e){
   e.preventDefault();if(!p.name.trim())return alert('El nombre comercial es obligatorio.')
   if(Number(p.doseMin)<0||Number(p.doseMax)<0||Number(p.cost)<0||Number(p.reentryHours)<0||Number(p.withdrawalDays)<0)return alert('Dosis, restricciones y costos no pueden ser negativos.')
   if(Number(p.doseMax)>0&&Number(p.doseMin)>Number(p.doseMax))return alert('La dosis mínima no puede superar la máxima.')
   if(!Number.isSafeInteger(Number(p.technicalRevision))||Number(p.technicalRevision)<1)return alert('La revisión técnica debe ser un entero positivo.')
   if(p.validFrom&&p.validUntil&&Date.parse(p.validUntil)<Date.parse(p.validFrom))return alert('La vigencia final no puede ser anterior a la inicial.')
   if(executableMipeCategory(p.category)){const expected=expectedInventoryUnit(p.doseUnit);if(!expected||p.unit!==expected)return alert(`La unidad de inventario debe ser ${expected||'compatible'} para ${p.doseUnit}.`)}
-  const organizationId=state.currentContext?.companyId||'';if(!organizationId)return alert('Selecciona una empresa antes de crear el insumo.')
-  const id=crypto.randomUUID(),record={id,organizationId,...p,name:p.name.trim(),active:true}
-  update(s=>({...s,products:[...s.products,record]}),{module:'Inventario',action:'Crear insumo',detail:p.name.trim()});setLot(current=>({...current,productId:id}));setP(emptyProduct)
+  try{const result=await execute({operation:INVENTORY_OPERATIONS.CREATE_PRODUCT,input:{...p,name:p.name.trim(),active:true}});setLot(current=>({...current,productId:result.aggregateId}));setP(emptyProduct)}catch(error){alert(error.message)}
  }
- function addL(e){e.preventDefault();try{update(s=>createInventoryLot(s,lot),{module:'Inventario',action:'Crear lote de inventario',detail:lot.lotNumber});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
+ async function addL(e){e.preventDefault();try{await execute({operation:INVENTORY_OPERATIONS.CREATE_LOT,input:lot});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
  return <>
   <PageHeader title="Inventario MIPE / MIRFE" subtitle="Insumos, perfiles técnicos, lotes, vencimientos y existencias respaldadas por kardex."/>
   <ValidationMessage type="info">Los formularios están separados para permitir trabajo simultáneo sin bloquear operaciones distintas.</ValidationMessage>
