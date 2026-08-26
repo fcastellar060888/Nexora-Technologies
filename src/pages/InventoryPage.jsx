@@ -5,15 +5,16 @@ import PageHeader from'../components/PageHeader'
 import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
 import{useStore}from'../services/store'
 import{createInventoryLot}from'../domain/inventory'
+import{scopeInventoryState}from'../domain/inventoryTenancy'
 
 const emptyProduct={name:'',category:'MIPE',activeIngredient:'',manufacturer:'',registrationNumber:'',unit:'mL',doseMin:0,doseMax:0,doseUnit:'mL/L',reentryHours:0,withdrawalDays:0,cost:0,validFrom:'',validUntil:'',technicalRevision:1}
 const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].includes(category)
 const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
- const{state,update}=useStore()
+ const{state,update}=useStore(),inventory=scopeInventoryState(state)
  const[p,setP]=useState(emptyProduct)
- const[lot,setLot]=useState({productId:state.products[0]?.id||'',siteId:state.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
+ const[lot,setLot]=useState({productId:inventory.products[0]?.id||'',siteId:inventory.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
  function addP(e){
   e.preventDefault();if(!p.name.trim())return alert('El nombre comercial es obligatorio.')
   if(Number(p.doseMin)<0||Number(p.doseMax)<0||Number(p.cost)<0||Number(p.reentryHours)<0||Number(p.withdrawalDays)<0)return alert('Dosis, restricciones y costos no pueden ser negativos.')
@@ -50,8 +51,8 @@ export default function InventoryPage(){
     <FormActions><button className="button primary">Guardar insumo</button></FormActions>
    </form></Card>
    <Card title="Registrar lote"><form id="inventory-lot-new" data-module="Nuevo lote de inventario" data-record-id="new-lot" className="form-grid one" onSubmit={addL}>
-    <Field label="Producto"><select required value={lot.productId} onChange={e=>setLot({...lot,productId:e.target.value})}><option value="">Selecciona</option>{state.products.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></Field>
-    <Field label="Sede"><select required value={lot.siteId} onChange={e=>setLot({...lot,siteId:e.target.value})}><option value="">Selecciona</option>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
+    <Field label="Producto"><select required value={lot.productId} onChange={e=>setLot({...lot,productId:e.target.value})}><option value="">Selecciona</option>{inventory.products.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></Field>
+    <Field label="Sede"><select required value={lot.siteId} onChange={e=>setLot({...lot,siteId:e.target.value})}><option value="">Selecciona</option>{inventory.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
     <Field label="Cantidad inicial"><input min="0" type="number" step=".01" value={lot.quantity} onChange={e=>setLot({...lot,quantity:+e.target.value})}/></Field>
     <Field label="Lote"><input required value={lot.lotNumber} onChange={e=>setLot({...lot,lotNumber:e.target.value})}/></Field>
     <Field label="Vencimiento"><input type="date" value={lot.expiryDate} onChange={e=>setLot({...lot,expiryDate:e.target.value})}/></Field>
@@ -60,6 +61,6 @@ export default function InventoryPage(){
     <FormActions><button className="button primary">Guardar lote y movimiento inicial</button></FormActions>
    </form></Card>
   </div>
-  <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{state.inventoryLots.map(l=>{const product=state.products.find(x=>x.id===l.productId),site=state.sites.find(x=>x.id===l.siteId);return <tr key={l.id}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
+  <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{inventory.inventoryLots.map(l=>{const product=inventory.products.find(x=>x.id===l.productId),site=inventory.sites.find(x=>x.id===l.siteId);return <tr key={`${l.organizationId}:${l.id}`}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
  </>
 }
