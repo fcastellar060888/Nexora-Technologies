@@ -10,19 +10,25 @@ function ownerOf(state,record,label){
  if(explicit)return explicit
  try{return resolveOrganizationId(state,{record,siteId:record?.siteId,label})}catch{return''}
 }
+function uniqueOwnedReference(state,collection,id,owner,resolver){
+ const matches=list(state?.[collection]).filter(item=>text(item?.id)===text(id)&&resolver(item)===owner)
+ return matches.length===1?matches[0]:null
+}
 function causalOwner(state,collection,record){
  const direct=ownerOf(state,record,`el registro ${collection}`)
  if(collection==='products')return direct
  if(collection==='inventoryLots'){
-  const productOwners=[...new Set(list(state?.products).filter(item=>text(item?.id)===text(record?.productId)).map(item=>ownerOf(state,item,'el producto de inventario')).filter(Boolean))]
-  const evidence=[direct,...productOwners].filter(Boolean)
-  return evidence.length&&new Set(evidence).size===1?evidence[0]:''
+  if(!direct)return''
+  const product=uniqueOwnedReference(state,'products',record?.productId,direct,item=>ownerOf(state,item,'el producto de inventario'))
+  return product?direct:''
  }
  if(collection==='inventoryMovements'){
-  const lotOwners=[...new Set(list(state?.inventoryLots).filter(item=>text(item?.id)===text(record?.lotId)).map(item=>causalOwner(state,'inventoryLots',item)).filter(Boolean))]
-  const productOwners=[...new Set(list(state?.products).filter(item=>text(item?.id)===text(record?.productId)).map(item=>ownerOf(state,item,'el producto de inventario')).filter(Boolean))]
-  const evidence=[direct,...lotOwners,...productOwners].filter(Boolean)
-  return evidence.length&&new Set(evidence).size===1?evidence[0]:''
+  if(!direct)return''
+  const lot=uniqueOwnedReference(state,'inventoryLots',record?.lotId,direct,item=>causalOwner(state,'inventoryLots',item))
+  const product=uniqueOwnedReference(state,'products',record?.productId,direct,item=>ownerOf(state,item,'el producto de inventario'))
+  if(!lot||!product||text(lot.productId)!==text(product.id))return''
+  if(text(record?.siteId)&&text(lot.siteId)&&text(record.siteId)!==text(lot.siteId))return''
+  return direct
  }
  return''
 }
@@ -41,10 +47,10 @@ export function scopeInventoryState(state,organizationId=activeOrganizationId(st
  return scoped
 }
 export function mergeInventoryState(current,incoming,organizationId=activeOrganizationId(current)){
- const owner=text(organizationId),next={...current}
+ const owner=text(organizationId),next={...current},candidate={...current,...incoming}
  for(const collection of INVENTORY_SCOPED_COLLECTIONS){
   const foreign=list(current?.[collection]).filter(record=>inventoryRecordOrganizationId(current,collection,record)!==owner)
-  const local=list(incoming?.[collection]).filter(record=>inventoryRecordOrganizationId({...current,...incoming},collection,record)===owner)
+  const local=list(incoming?.[collection]).filter(record=>inventoryRecordOrganizationId(candidate,collection,record)===owner)
   const ids=new Set();for(const record of local){const id=text(record?.id);if(!id||ids.has(id))throw new Error(`${collection} contiene identidad duplicada dentro de la empresa activa.`);ids.add(id)}
   next[collection]=[...foreign,...local]
  }
