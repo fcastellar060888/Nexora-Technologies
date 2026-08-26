@@ -15,7 +15,7 @@ Inventario se audita como autoridad transversal para MIPE, MIRFE y operación: P
 | M33-F001 | P0 | **Ready for Quality** | Domain authority | Lot/Movement ahora llevan ownership explícito; resolución tenant-aware y fail-closed ante homónimos/duplicados. Falta Quality real. |
 | M33-F002 | P0 | **Ready for Quality** | Tenancy | Product/Lot/Movement tienen scope/merge tenant-aware; UI de Inventario consume exclusivamente la partición activa. Falta Quality real. |
 | M33-F003 | P0 | **Ready for Quality** | Command boundary / permissions | Product/Lot pasan por command boundary explícito, `manage_inventory`, receipts tenant-aware y revalidación requested→commit; UI sin writes directos. Falta Quality real. |
-| M33-F004 | P0 | **Open** | Ledger invariants | Saldo sigue materializado en `lot.quantity`; falta demostrar kardex append-only como autoridad verificable. |
+| M33-F004 | P0 | **Ready for Quality** | Ledger invariants | Kardex append-only es autoridad verificable del saldo; writes validan continuidad/cadena causal y lotes legacy materializan saldo inicial determinista una sola vez. Falta Quality real. |
 | M33-F005 | P0 | **Open** | Concurrency | Fuera del RPC MIPE, dos clientes pueden competir sobre el mismo saldo. |
 | M33-F006 | P1 | **Open** | Product/Lot causality | Falta cerrar compatibilidad de unidad y autoridad técnica Product→Lot. |
 | M33-F007 | P1 | **Open** | Movement causality | Falta snapshot costo/unidad y causalidad verificable sourceType/sourceId. |
@@ -89,8 +89,31 @@ La superficie productiva principal de creación de Product/Lot quedó sin write 
 ### Quality
 **Pendiente por indisponibilidad de runner.** Estado correcto: Ready for Quality, no Verified.
 
+## M33-F004 — Ready for Quality
+### Audit
+Aunque Movement ya congelaba `balanceBefore`, `signedQuantity` y `balanceAfter`, `transactInventory()` seguía tomando `lot.quantity` como saldo fuente. Un saldo materializado adulterado podía por tanto convertirse en autoridad del siguiente write. Además, ordenar solo por timestamp/ID no demostraba causalidad append-only ante empates o reordenamientos.
+
+### Fix
+- `src/domain/inventoryLedger.js` proyecta únicamente movimientos `(organizationId, lotId)` y exige IDs únicos dentro del tenant/lote.
+- `verifyInventoryLedger()` reconstruye saldo desde cero y valida continuidad `balanceBefore`, aritmética `signedQuantity`, `balanceAfter` y no-negatividad.
+- Movimientos nuevos llevan `ledgerSequence` y `previousMovementId`; la verificación falla cerrado si la secuencia o la cadena causal se adulteran.
+- `assertInventoryLotMatchesLedger()` exige que `lot.quantity` sea solo una materialización del saldo verificable, nunca su autoridad.
+- `transactInventory()` valida el kardex antes del write, deriva `currentBalance` del ledger, agrega el movimiento y vuelve a verificar el estado completo antes de devolverlo.
+- Lotes legacy sin movimientos y saldo positivo generan una única evidencia determinista `inventory-opening:<organizationId>:<lotId>` antes del primer write; no se reescribe evidencia histórica.
+- Lotes nuevos con saldo inicial siguen generando un único `Saldo inicial` canónico y no pasan por bootstrap legacy.
+
+### Test
+- `tests/m3-3-inventory-ledger-invariants.test.mjs`: aislamiento tenant/lot, discontinuidad, `balanceAfter` adulterado, divergencia Lot↔ledger y movimiento duplicado.
+- `tests/m3-3-inventory-ledger-write-authority.test.mjs`: bootstrap legacy determinista, rechazo de saldo materializado adulterado, ID duplicado, saldo inicial nuevo, autoridad del ledger en el siguiente write y adulteración de `ledgerSequence`/`previousMovementId`.
+
+### Re-Audit
+`executeTreatment()` de MIPE consume inventario a través de `transactInventory()`, por lo que hereda el ledger sin modificar el contrato F004 de M3.2 de exactamente cinco consecuencias. La carrera entre dos clientes con snapshots válidos simultáneos no queda resuelta por esta autoridad local y permanece explícitamente en M33-F005.
+
+### Quality
+**Pendiente por indisponibilidad de runner.** Estado correcto: Ready for Quality, no Verified.
+
 ## Orden siguiente
-1. F004/F005 — ledger append-only y concurrencia atómica.
+1. F005 — concurrencia atómica/remota sobre saldo.
 2. F006–F009 — causalidad/unidades/vencimiento/costos.
 3. F010/F011 — persistencia/sync/context/UI.
 4. F012 — adversarial transversal + Passport/KG.
