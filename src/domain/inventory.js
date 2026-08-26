@@ -1,4 +1,5 @@
 import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
+import{assertInventoryLotMatchesLedger,inventoryLedgerForLot}from'./inventoryLedger.js'
 
 const POSITIVE_TYPES=new Set(['Entrada','Ajuste positivo','Saldo inicial','Devolución'])
 const NEGATIVE_TYPES=new Set(['Salida','Ajuste negativo','Consumo','Baja','Vencimiento'])
@@ -22,6 +23,29 @@ function assertSite(state,siteId,organizationId){
  if(matches.length!==1)throw new Error(matches.length?'La sede de inventario es ambigua dentro de la empresa activa.':'La sede de inventario no pertenece a la empresa activa.')
  return matches[0]
 }
+function validIso(value){const time=Date.parse(value||'');return Number.isFinite(time)?new Date(time).toISOString():null}
+function openingTimestamp(lot,movementCreatedAt){
+ const movement=Date.parse(movementCreatedAt||''),lotCreated=Date.parse(lot?.createdAt||'')
+ if(Number.isFinite(lotCreated)&&(!Number.isFinite(movement)||lotCreated<movement))return new Date(lotCreated).toISOString()
+ if(Number.isFinite(movement))return new Date(Math.max(0,movement-1)).toISOString()
+ return validIso(lot?.createdAt)||'1970-01-01T00:00:00.000Z'
+}
+function bootstrapLegacyLedger(state,lot,movementCreatedAt){
+ const organizationId=text(lot?.organizationId),rows=inventoryLedgerForLot(state,{organizationId,lotId:lot?.id})
+ if(rows.length)return state
+ const openingBalance=Number(lot?.quantity||0)
+ if(!Number.isFinite(openingBalance)||openingBalance<0)throw new Error('El saldo legacy del lote no es válido para materializar el kardex.')
+ if(openingBalance===0)return state
+ const createdAt=openingTimestamp(lot,movementCreatedAt),movement={
+  id:`inventory-opening:${organizationId}:${lot.id}`,organizationId,
+  lotId:lot.id,productId:lot.productId,siteId:lot.siteId,
+  type:'Saldo inicial',quantity:openingBalance,signedQuantity:openingBalance,balanceBefore:0,balanceAfter:openingBalance,
+  date:createdAt.slice(0,10),createdAt,sourceType:'LegacyInventoryBootstrap',sourceId:lot.id,supplier:'',reference:text(lot.lotNumber),responsible:'system',notes:'Materialización determinista de saldo legacy previo al kardex append-only'
+ }
+ const next={...state,inventoryMovements:[...list(state.inventoryMovements),movement]}
+ assertInventoryLotMatchesLedger(next,lot)
+ return next
+}
 
 export function movementSign(type){
  if(POSITIVE_TYPES.has(type))return 1
@@ -38,25 +62,26 @@ export function transactInventory(state,input){
  assertSite(state,lot.siteId,organizationId)
  if(explicitOrganizationId(product)&&ownerOf(state,product,'el producto de inventario')!==organizationId)throw new Error('El producto de inventario pertenece a otra empresa.')
 
+ const createdAt=input.createdAt||new Date().toISOString(),working=bootstrapLegacyLedger(state,lot,createdAt),ledger=assertInventoryLotMatchesLedger(working,lot)
  const quantity=asPositiveNumber(input.quantity)
  const signedQuantity=movementSign(input.type)*quantity
- const currentBalance=Number(lot.quantity||0)
- const balanceAfter=currentBalance+signedQuantity
+ const currentBalance=ledger.balance,balanceAfter=currentBalance+signedQuantity
  if(balanceAfter<0)throw new Error('El movimiento supera la existencia disponible.')
 
  const movement={
   id:input.id||crypto.randomUUID(),organizationId,
   lotId:lot.id,productId:lot.productId,siteId:lot.siteId,
   type:input.type,quantity,signedQuantity,balanceBefore:currentBalance,balanceAfter,
-  date:input.date||new Date().toISOString().slice(0,10),createdAt:input.createdAt||new Date().toISOString(),
+  date:input.date||createdAt.slice(0,10),createdAt,
   sourceType:input.sourceType||'Manual',sourceId:input.sourceId||'',supplier:input.supplier||'',reference:input.reference||'',responsible:input.responsible||'',notes:input.notes||''
  }
-
- return{
-  ...state,
-  inventoryLots:list(state.inventoryLots).map(item=>item===lot?{...item,organizationId,quantity:balanceAfter,updatedAt:movement.createdAt}:item),
-  inventoryMovements:[...list(state.inventoryMovements),movement]
+ const updatedLot={...lot,organizationId,quantity:balanceAfter,updatedAt:movement.createdAt},next={
+  ...working,
+  inventoryLots:list(working.inventoryLots).map(item=>item===lot?updatedLot:item),
+  inventoryMovements:[...list(working.inventoryMovements),movement]
  }
+ assertInventoryLotMatchesLedger(next,updatedLot)
+ return next
 }
 
 export function createInventoryLot(state,input){
