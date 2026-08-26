@@ -3,6 +3,8 @@ const text=value=>String(value??'').trim()
 const number=(value,label)=>{const n=Number(value);if(!Number.isFinite(n))throw new Error(`${label} no es numérico.`);return n}
 
 function orderKey(movement){return `${text(movement?.createdAt||movement?.date)}\u0000${text(movement?.id)}`}
+function sequenceOf(movement){const value=Number(movement?.ledgerSequence);return Number.isInteger(value)&&value>0?value:null}
+function compareLedgerOrder(a,b){const aSequence=sequenceOf(a),bSequence=sequenceOf(b);if(aSequence!==null&&bSequence!==null)return aSequence-bSequence||text(a?.id).localeCompare(text(b?.id));if(aSequence!==null)return 1;if(bSequence!==null)return-1;return orderKey(a).localeCompare(orderKey(b))}
 
 export function inventoryLedgerForLot(state,{organizationId,lotId}={}){
  const owner=text(organizationId),id=text(lotId)
@@ -11,7 +13,7 @@ export function inventoryLedgerForLot(state,{organizationId,lotId}={}){
  const rows=list(state?.inventoryMovements).filter(item=>text(item?.organizationId)===owner&&text(item?.lotId)===id)
  const ids=new Set()
  for(const row of rows){const movementId=text(row?.id);if(!movementId)throw new Error('El movimiento de inventario no tiene identidad estable.');if(ids.has(movementId))throw new Error('El kardex contiene un movimiento duplicado.');ids.add(movementId)}
- return [...rows].sort((a,b)=>orderKey(a).localeCompare(orderKey(b)))
+ return [...rows].sort(compareLedgerOrder)
 }
 
 export function verifyInventoryLedger(state,{organizationId,lotId}={}){
