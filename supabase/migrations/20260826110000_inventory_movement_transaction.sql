@@ -55,7 +55,6 @@ begin
     raise exception 'invalid inventory movement mutation set';
   end if;
 
-  -- Serialize every command touching the same tenant/lot, not merely identical commandIds.
   perform pg_advisory_xact_lock(hashtext(p_organization_id::text),hashtext(p_lot_id));
 
   select * into v_existing from public.inventory_movement_executions
@@ -150,6 +149,16 @@ begin
       or (v_first->>'ledgerSequence')::bigint<>1 or nullif(v_first->>'previousMovementId','') is not null
       or (v_first->>'balanceBefore')::numeric<>0 or (v_first->>'balanceAfter')::numeric<>(v_lot.payload->>'quantity')::numeric
     then raise exception 'INVENTORY_MOVEMENT_LEDGER_CONFLICT:%:legacy',p_lot_id using errcode='40001'; end if;
+
+    -- A legacy transaction carries exactly bootstrap + manual movement. Verify the
+    -- causal edge server-side; final-balance equality alone cannot prove continuity.
+    if (select count(*) from jsonb_array_elements(p_mutations) m where m->>'collection'='inventoryMovements')<>2
+      or v_last->>'id' is not distinct from v_first->>'id'
+      or v_last->>'sourceType' is distinct from 'Manual'
+      or (v_last->>'previousMovementId') is distinct from (v_first->>'id')
+      or (v_last->>'ledgerSequence')::bigint<>(v_first->>'ledgerSequence')::bigint+1
+      or (v_last->>'balanceBefore')::numeric<>(v_first->>'balanceAfter')::numeric
+    then raise exception 'INVENTORY_MOVEMENT_LEDGER_CONFLICT:%:legacy-chain',p_lot_id using errcode='40001'; end if;
   else
     if v_remote_head_id is null then
       if (v_lot.payload->>'quantity')::numeric<>0 or (v_first->>'ledgerSequence')::bigint<>1 or nullif(v_first->>'previousMovementId','') is not null or (v_first->>'balanceBefore')::numeric<>0 then
