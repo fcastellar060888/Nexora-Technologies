@@ -1,4 +1,5 @@
 import{transactInventory}from'./inventory.js'
+import{movementBackedCostEntry}from'./inventoryCostAuthority.js'
 import{assertExecutableMipeProductSnapshot}from'./mipeCatalogAuthority.js'
 import{projectMipeOperationalRestrictions}from'./mipeOperationalRestrictions.js'
 import{activeOrganizationId}from'./organizationOwnership.js'
@@ -114,10 +115,13 @@ export function executeTreatment(state,input){
  if(snapshot)assertExecutableMipeProductSnapshot(snapshot,{at:executedAt,dose:treatment.dose,doseUnit:treatment.doseUnit})
  const quantity=Number(treatment.totalQuantity)
  let next=transactInventory(state,{id:input.movementId,lotId:lot.id,type:'Consumo',quantity,date:executedAt.slice(0,10),createdAt:executedAt,sourceType:'MipeTreatment',sourceId:treatment.id,reference:`Tratamiento ${treatment.id}`,responsible:input.responsible||treatment.responsible,notes:input.notes||treatment.notes})
- const cost=quantity*Number(profile.cost||0)
+ const movement=(next.inventoryMovements||[]).find(x=>String(x.id)===String(input.movementId))
+ if(!movement)throw new Error('El movimiento de inventario del Treatment no quedó materializado de forma inequívoca.')
+ const costEntry=movementBackedCostEntry(movement,{id:input.costEntryId||crypto.randomUUID(),date:executedAt.slice(0,10),createdAt:executedAt,module:'MIPE',category:'Tratamiento',quantity,unit:movement.unit,productId:treatment.productId,inventoryLotId:lot.id,findingId:finding.id,treatmentId:treatment.id,sourceType:'MipeTreatment',sourceId:treatment.id,siteId:input.siteId||lot.siteId,responsible:input.responsible||treatment.responsible,notes:input.notes||''})
+ const cost=costEntry.amount
  const reentryUntil=addHours(executedAt,profile.reentryHours||0)
  const harvestRestrictedUntil=addDays(executedAt,profile.withdrawalDays||0)
- next={...next,treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',siteId:input.siteId||x.siteId||finding.siteId||lot.siteId,lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),costEntries:[...(next.costEntries||[]),{id:input.costEntryId||crypto.randomUUID(),date:executedAt.slice(0,10),createdAt:executedAt,module:'MIPE',category:'Tratamiento',amount:cost,quantity,unit:profile.unit,productId:treatment.productId,inventoryLotId:lot.id,findingId:finding.id,treatmentId:treatment.id,siteId:input.siteId||lot.siteId,responsible:input.responsible||treatment.responsible,notes:input.notes||''}]}
+ next={...next,treatments:(next.treatments||[]).map(x=>x.id===treatment.id?{...x,status:'Ejecutado',siteId:input.siteId||x.siteId||finding.siteId||lot.siteId,lotId:lot.id,executedAt,executedBy:input.responsible||treatment.responsible,cost,reentryUntil,harvestRestrictedUntil,executionNotes:input.notes||''}:x),findings:(next.findings||[]).map(x=>x.id===finding.id?{...x,status:'Seguimiento',lastTreatmentAt:executedAt,reentryUntil,harvestRestrictedUntil,updatedAt:executedAt}:x),costEntries:[...(next.costEntries||[]),costEntry]}
  return next
 }
 
