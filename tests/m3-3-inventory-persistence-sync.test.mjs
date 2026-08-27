@@ -1,11 +1,12 @@
 import test from'node:test'
 import assert from'node:assert/strict'
-import{collectionChanges,enqueueChanges,applyRemoteRecords}from'../src/services/syncEngine.js'
+import{SYNCABLE_COLLECTIONS,collectionChanges,enqueueChanges,applyRemoteRecords}from'../src/services/syncEngine.js'
 
 const tenant='org-a'
 const movement={
  id:'mov-1',organizationId:tenant,lotId:'lot-1',productId:'product-1',type:'Consumo',quantity:2,signedQuantity:-2,balanceBefore:10,balanceAfter:8,ledgerSequence:1,previousMovementId:'',date:'2026-08-27'
 }
+const receipt=(overrides={})=>({id:'cmd-1',commandId:'cmd-1',organizationId:tenant,signature:'sig-1',operation:'CREATE_LOT',aggregateId:'lot-1',occurredAt:'2026-08-27T20:00:00.000Z',...overrides})
 
 test('inventoryMovements cannot be deleted through outbound sync',()=>{
  const changes=collectionChanges({inventoryMovements:[movement]},{inventoryMovements:[]},['inventoryMovements'])
@@ -34,4 +35,35 @@ test('normal tenant-owned inventory movement upserts remain syncable',()=>{
  assert.equal(next.syncQueue[0].collection,'inventoryMovements')
  assert.equal(next.syncQueue[0].operation,'upsert')
  assert.equal(next.syncQueue[0].companyId,tenant)
+})
+
+test('inventory command receipts are durable sync records and remain append-only',()=>{
+ assert.equal(SYNCABLE_COLLECTIONS.includes('inventoryCommandReceipts'),true)
+ const changes=collectionChanges({inventoryCommandReceipts:[]},{inventoryCommandReceipts:[receipt()]},['inventoryCommandReceipts'])
+ const next=enqueueChanges({syncQueue:[]},changes,{companyId:tenant,userId:'u1',deviceId:'d1'})
+ assert.equal(next.syncQueue.length,1)
+ assert.equal(next.syncQueue[0].collection,'inventoryCommandReceipts')
+ assert.equal(next.syncQueue[0].payload.commandId,'cmd-1')
+ const deletes=collectionChanges({inventoryCommandReceipts:[receipt()]},{inventoryCommandReceipts:[]},['inventoryCommandReceipts'])
+ assert.throws(()=>enqueueChanges({syncQueue:[]},deletes,{companyId:tenant}),/inventoryCommandReceipts es append-only/)
+})
+
+test('inventory command receipt hydrates idempotently after restart and preserves foreign homonyms',()=>{
+ const foreign=receipt({organizationId:'org-b',signature:'sig-b',aggregateId:'lot-b'})
+ const state={currentContext:{companyId:tenant},inventoryCommandReceipts:[foreign]}
+ const records=[{companyId:tenant,collection:'inventoryCommandReceipts',recordId:'cmd-1',version:3,updatedAt:'2026-08-27T21:00:00.000Z',payload:receipt()}]
+ const hydrated=applyRemoteRecords(state,records,{companyId:tenant})
+ assert.equal(hydrated.inventoryCommandReceipts.length,2)
+ assert.equal(hydrated.inventoryCommandReceipts.find(item=>item.organizationId===tenant).signature,'sig-1')
+ assert.equal(hydrated.inventoryCommandReceipts.find(item=>item.organizationId==='org-b').signature,'sig-b')
+ const replayed=applyRemoteRecords(hydrated,records,{companyId:tenant})
+ assert.equal(replayed.inventoryCommandReceipts.length,2)
+})
+
+test('remote inventory receipt contradiction and tombstone fail closed',()=>{
+ const state={currentContext:{companyId:tenant},inventoryCommandReceipts:[receipt()]}
+ const hostile=[{companyId:tenant,collection:'inventoryCommandReceipts',recordId:'cmd-1',version:4,payload:receipt({signature:'sig-hostile'})}]
+ assert.throws(()=>applyRemoteRecords(state,hostile,{companyId:tenant}),/contradice la firma durable local/)
+ const tombstone=[{companyId:tenant,collection:'inventoryCommandReceipts',recordId:'cmd-1',deletedAt:'2026-08-27T22:00:00.000Z'}]
+ assert.throws(()=>applyRemoteRecords(state,tombstone,{companyId:tenant}),/append-only/)
 })
