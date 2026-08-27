@@ -9,7 +9,7 @@ export const SYNCABLE_COLLECTIONS=[
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
 
-const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
+const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts','inventoryMovements'])
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -39,6 +39,10 @@ function assertRemoteReceiptIntegrity(state,records,tenant){
   if(existing.length>1)throw new Error('El estado local contiene receipts MIPE duplicados antes de hidratar sync')
   if(existing.length===1&&text(existing[0].signature)!==validated.signature)throw new Error('El receipt MIPE remoto contradice la firma durable local')
  }
+}
+function assertAppendOnlyRemoteIntegrity(records){
+ const forbidden=list(records).find(row=>APPEND_ONLY_SYNC_COLLECTIONS.has(row?.collection)&&row?.deletedAt)
+ if(forbidden)throw new Error(`${forbidden.collection} es append-only y no admite tombstones remotos`)
 }
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
@@ -109,6 +113,7 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
  const foreignPayload=list(records).find(row=>{const owner=recordOrganizationId(row.payload);return owner&&owner!==tenant})
  if(foreignPayload)throw new Error('No se puede hidratar un payload perteneciente a otra empresa')
+ assertAppendOnlyRemoteIntegrity(records)
  assertRemoteReceiptIntegrity(state,records,tenant)
  const next={...state}
  for(const row of records){
