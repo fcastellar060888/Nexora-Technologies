@@ -14,6 +14,7 @@ declare
   v_expected numeric;
   v_source_type text;
   v_source_id text;
+  v_inventory_backed boolean := coalesce(v_payload->>'module','') in ('MIPE','MIRFE');
 begin
   if new.collection <> 'costEntries' or new.deleted_at is not null then
     return null;
@@ -25,6 +26,8 @@ begin
     from jsonb_array_elements_text(v_payload->'inventoryMovementIds') with ordinality as item(value, ordinality);
   elsif nullif(btrim(v_payload->>'inventoryMovementId'),'') is not null then
     v_ids := array[v_payload->>'inventoryMovementId'];
+  elsif v_inventory_backed then
+    raise exception 'INVENTORY_COST_EVIDENCE_INVALID:no-movements' using errcode='23514';
   else
     return null;
   end if;
