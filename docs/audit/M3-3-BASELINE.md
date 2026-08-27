@@ -18,7 +18,7 @@ Inventario se audita como autoridad transversal para MIPE, MIRFE y operación: P
 | M33-F004 | P0 | **Ready for Quality** | Ledger invariants | Kardex append-only es autoridad verificable del saldo y los writes validan continuidad/cadena causal. Falta Quality real. |
 | M33-F005 | P0 | **Ready for Quality** | Concurrency | Movimiento manual usa commit remoto atómico por tenant+lote, versión/cabeza/saldo y winner/loser. Falta Quality real. |
 | M33-F006 | P1 | **Ready for Quality** | Product/Lot causality | Product gobierna unidad técnica; Product inválido no entra por command y Lot nuevo congela unidad derivada. Contradicciones fallan cerrado. Falta Quality real. |
-| M33-F007 | P1 | **Open** | Movement causality | Falta snapshot costo/unidad y causalidad verificable sourceType/sourceId. |
+| M33-F007 | P1 | **Ready for Quality** | Movement causality | Movement congela unidad/costo y origen causal; PostgreSQL revalida INSERT e impide reescribir evidencia histórica. Falta Quality real. |
 | M33-F008 | P1 | **Open** | Expiry / restrictions | Falta bloqueo de consumo vencido y baja/vencimiento append-only. |
 | M33-F009 | P1 | **Open** | Cost integration | Falta consecuencia de costo auditable por movimientos operativos. |
 | M33-F010 | P1 | **Open** | Persistence / sync | Falta ownership/merge/tombstones/idempotencia durable bajo sync. |
@@ -68,27 +68,30 @@ La compatibilidad `doseUnit → inventory unit` vivía solo en `InventoryPage`; 
 - Compatibilidad legacy: un Lot histórico sin `unit` puede seguir operando sin inventar evidencia retroactiva; ningún Lot nuevo puede nacer sin unidad. La migración durable/backfill de registros históricos permanece dentro del alcance de F010 y no se confunde con la autoridad de nuevos writes de F006.
 
 ### Test
-`tests/m3-3-inventory-product-lot-causality.test.mjs` cubre:
-- Product MIPE/Biológico incompatible;
-- override hostil de unidad de Lot;
-- contradicción Product↔Lot persistida;
-- rechazo desde `CREATE_PRODUCT` antes de efectos;
-- creación Product→Lot por command con unidad congelada;
-- rechazo de Lot hostil por command;
-- fallo de movimiento ante Lot contradictorio;
-- autoridad directa de `createInventoryLot()` fuera de UI.
+`tests/m3-3-inventory-product-lot-causality.test.mjs` cubre Product inválido, override hostil de unidad, contradicción Product↔Lot, command boundary y autoridad directa fuera de UI.
 
-Fixtures anteriores de F001/F003/F004 fueron actualizados para aportar unidades técnicamente válidas sin debilitar sus adversariales.
+### Quality
+**Pendiente por indisponibilidad de runner. Ready for Quality, no Verified.**
 
-### Re-Audit
-La validación ya no depende de UI: Product y Lot tienen autoridad de dominio/command. La excepción legacy es explícita y no permite crear nueva deuda; su backfill/persistencia se auditará en F010. F006 no absorbe todavía snapshots de costo/unidad en cada Movement, que pertenecen a F007.
+## M33-F007 — Ready for Quality
+### Audit
+Los movimientos no congelaban unidad/costo como evidencia histórica y `sourceType/sourceId` no estaba respaldado por una autoridad persistente. Una validación únicamente cliente no era suficiente porque MIPE/MIRFE y sync también escriben `inventoryMovements`.
+
+### Fix
+- `src/domain/inventoryMovementCausality.js` deriva `unit` desde Product/Lot, congela `unitCost` desde Product y exige `sourceId` para orígenes operativos.
+- `transactInventory()` aplica ese snapshot a todo movimiento nuevo, incluido el bootstrap legacy.
+- `20260826173000_inventory_movement_causality_guard.sql` instala un trigger global sobre `erp_records`: en INSERT vuelve a resolver Lot/Product dentro del mismo tenant, verifica Lot→Product, unidad, costo y origen; en UPDATE hace inmutables `lotId/productId/unit/unitCost/sourceType/sourceId` sin revalorizar movimientos históricos cuando cambia Product.
+- Las rutas MIPE y MIRFE ya presentan `sourceType/sourceId` causales y escriben sus consecuencias dentro de transacciones remotas; el trigger global constituye la última autoridad para cualquier INSERT de `inventoryMovements`, independientemente de la ruta de entrada.
+
+### Test / Re-Audit
+`tests/m3-3-inventory-movement-causality.test.mjs` cubre snapshot, costo inválido, unidad contradictoria, origen operativo sin `sourceId`, intento de inyección desde caller, evidencia persistida contradictoria y presencia contractual del guard server-side. La reauditoría confirmó que MIPE exige `MipeTreatment + treatmentId` y MIRFE `MirfePreparation + preparationId` antes de persistir; el trigger se ejecuta sobre sus INSERT igual que sobre movimiento manual.
 
 ### Quality
 **Pendiente por indisponibilidad de runner. Ready for Quality, no Verified.**
 
 ## Orden siguiente
-1. F007 — snapshot costo/unidad y causalidad `sourceType/sourceId` por Movement.
-2. F008–F009 — vencimiento/restricciones y costos.
+1. F008 — vencimiento/restricciones y baja/vencimiento append-only.
+2. F009 — consecuencia de costo auditable.
 3. F010/F011 — persistencia/sync/backfill legacy/context/UI.
 4. F012 — adversarial transversal + Passport/KG.
 
