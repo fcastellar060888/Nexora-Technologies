@@ -29,7 +29,6 @@ test('F009 both operational costs declare causal source identities enforced by t
 })
 
 test('F009 PostgreSQL fails closed when MIPE or MIRFE omit movement evidence',()=>{
- assert.match(guard,/MIPE/i)
- assert.match(guard,/MIRFE/i)
- assert.match(guard,/movement-evidence-required/i)
+ assert.match(guard,/in \('MIPE','MIRFE'\)/)
+ assert.match(guard,/INVENTORY_COST_EVIDENCE_INVALID:no-movements/)
 })
