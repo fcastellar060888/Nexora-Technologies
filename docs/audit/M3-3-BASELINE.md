@@ -19,7 +19,7 @@ Inventario se audita como autoridad transversal para MIPE, MIRFE y operación: P
 | M33-F005 | P0 | **Ready for Quality** | Concurrency | Movimiento manual usa commit remoto atómico por tenant+lote, versión/cabeza/saldo y winner/loser. Falta Quality real. |
 | M33-F006 | P1 | **Ready for Quality** | Product/Lot causality | Product gobierna unidad técnica; Product inválido no entra por command y Lot nuevo congela unidad derivada. Contradicciones fallan cerrado. Falta Quality real. |
 | M33-F007 | P1 | **Ready for Quality** | Movement causality | Movement congela unidad/costo y origen causal; PostgreSQL revalida INSERT e impide reescribir evidencia histórica. Falta Quality real. |
-| M33-F008 | P1 | **Open** | Expiry / restrictions | Falta bloqueo de consumo vencido y baja/vencimiento append-only. |
+| M33-F008 | P1 | **Ready for Quality** | Expiry / restrictions | Consumo/salida vencidos fallan en dominio y PostgreSQL; Baja/Vencimiento permanecen append-only y fecha causal queda inmutable. Falta Quality real. |
 | M33-F009 | P1 | **Open** | Cost integration | Falta consecuencia de costo auditable por movimientos operativos. |
 | M33-F010 | P1 | **Open** | Persistence / sync | Falta ownership/merge/tombstones/idempotencia durable bajo sync. |
 | M33-F011 | P1 | **Open** | UI / context | Falta reauditar contexto membership-aware transversal. |
@@ -89,10 +89,26 @@ Los movimientos no congelaban unidad/costo como evidencia histórica y `sourceTy
 ### Quality
 **Pendiente por indisponibilidad de runner. Ready for Quality, no Verified.**
 
+## M33-F008 — Ready for Quality
+### Audit
+`InventoryLot.expiryDate` existía, pero `transactInventory()` solo validaba saldo: un lote vencido podía consumirse desde movimiento manual, MIPE o MIRFE. Resolverlo solo en UI habría dejado abiertas las rutas remotas y sync.
+
+### Fix
+- `src/domain/inventoryLotRestrictions.js` exige fecha operacional explícita `YYYY-MM-DD` y bloquea `Salida` / `Consumo` únicamente cuando `date > expiryDate`; el día exacto de vencimiento sigue permitido.
+- `Baja` y `Vencimiento` permanecen permitidos después de expiración para retirar el remanente mediante kardex append-only; no se altera `lot.quantity` silenciosamente.
+- `transactInventory()` ejecuta la restricción antes de agregar consecuencias.
+- `20260826230000_inventory_expiry_restrictions_guard.sql` instala un trigger global sobre `erp_records` para todo `inventoryMovements`: vuelve a resolver el Lot en el mismo tenant, valida formato de fecha y revalida vencimiento server-side.
+- En UPDATE son inmutables `organizationId`, `lotId`, `type` y `date`, por lo que sync no puede reinterpretar retroactivamente la decisión de vencimiento. Tombstones/append-only durable quedan expresamente dentro del alcance F010.
+
+### Test / Re-Audit
+`tests/m3-3-inventory-expiry-restrictions.test.mjs` cubre consumo vencido sin mutación, límite exacto, Baja/Vencimiento posterior, fechas inválidas, presencia contractual del guard PostgreSQL e integración de fechas operacionales. La reauditoría transversal confirmó que MIPE genera `date=executedAt.slice(0,10)` y MIRFE `date=input.date || executedAt.slice(0,10)`, por lo que ambas rutas atraviesan el mismo guard sin incompatibilidad de formato.
+
+### Quality
+**Pendiente por indisponibilidad de runner. Ready for Quality, no Verified.**
+
 ## Orden siguiente
-1. F008 — vencimiento/restricciones y baja/vencimiento append-only.
-2. F009 — consecuencia de costo auditable.
-3. F010/F011 — persistencia/sync/backfill legacy/context/UI.
-4. F012 — adversarial transversal + Passport/KG.
+1. F009 — consecuencia de costo auditable.
+2. F010/F011 — persistencia/sync/backfill legacy/context/UI.
+3. F012 — adversarial transversal + Passport/KG.
 
 No modificar `main`. No certificar M3.3 ni alterar el estado de M3.2 hasta disponer de GitHub Actions funcional.
