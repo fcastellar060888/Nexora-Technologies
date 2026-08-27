@@ -1,5 +1,6 @@
 import test from'node:test'
 import assert from'node:assert/strict'
+import fs from'node:fs'
 import{assertInventoryLotMovementAllowed}from'../src/domain/inventoryLotRestrictions.js'
 import{transactInventory}from'../src/domain/inventory.js'
 
@@ -25,4 +26,23 @@ test('F008: baja y vencimiento siguen permitidos después de expiry para retirar
 test('F008: fecha operacional inválida falla cerrado y no depende del reloj implícito',()=>{
  assert.throws(()=>assertInventoryLotMovementAllowed({expiryDate:'2026-08-25'},{type:'Consumo',date:'26/08/2026'}),/fecha operacional/i)
  assert.throws(()=>assertInventoryLotMovementAllowed({expiryDate:'2026-02-30'},{type:'Consumo',date:'2026-02-28'}),/fecha de vencimiento/i)
+})
+
+test('F008: PostgreSQL revalida vencimiento para todo inventory movement y congela la decisión histórica',()=>{
+ const sql=fs.readFileSync(new URL('../supabase/migrations/20260826230000_inventory_expiry_restrictions_guard.sql',import.meta.url),'utf8')
+ assert.match(sql,/before insert or update on public\.erp_records/i)
+ assert.match(sql,/new\.collection='inventoryMovements'/)
+ assert.match(sql,/collection='inventoryLots'/)
+ assert.match(sql,/v_type in \('Salida','Consumo'\) and v_date>v_expiry/)
+ assert.match(sql,/old\.payload->>'lotId' is distinct from new\.payload->>'lotId'/)
+ assert.match(sql,/old\.payload->>'type' is distinct from new\.payload->>'type'/)
+ assert.match(sql,/old\.payload->>'date' is distinct from new\.payload->>'date'/)
+ assert.match(sql,/INVENTORY_MOVEMENT_EXPIRY_CONFLICT:immutable/)
+})
+
+test('F008: MIPE y MIRFE entregan fechas operacionales YYYY-MM-DD al movimiento de consumo',()=>{
+ const mipe=fs.readFileSync(new URL('../src/domain/mipe.js',import.meta.url),'utf8')
+ const mirfe=fs.readFileSync(new URL('../src/domain/irrigationExecution.js',import.meta.url),'utf8')
+ assert.match(mipe,/type:'Consumo',quantity,date:executedAt\.slice\(0,10\)/)
+ assert.match(mirfe,/type:'Consumo',quantity,date:input\.date\|\|executedAt\.slice\(0,10\)/)
 })
