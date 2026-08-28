@@ -3,12 +3,15 @@ import{activeAuthorizationScope,activeUser,hasPermission,isInstallationMode}from
 
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
+const denied=(scope,userId='')=>({userId,companyId:scope.companyId,siteId:scope.siteId,canView:false,canManage:false,canManageProduct:false})
 
 export function inventoryUiAccess(state){
- const scope=activeAuthorizationScope(state),user=activeUser(state),installationMode=isInstallationMode(state)
+ const scope=activeAuthorizationScope(state),installationMode=isInstallationMode(state)
  if(installationMode)return{userId:'local-installation',companyId:scope.companyId,siteId:scope.siteId,canView:true,canManage:true,canManageProduct:true}
- const userId=text(user?.id)
- if(!userId||!scope.companyId)return{userId,companyId:scope.companyId,siteId:scope.siteId,canView:false,canManage:false,canManageProduct:false}
+ const active=list(state?.users).filter(user=>user?.activeSession&&user?.active!==false)
+ if(active.length!==1)return denied(scope)
+ const user=activeUser(state),userId=text(user?.id)
+ if(!userId||!scope.companyId)return denied(scope,userId)
  return{
   userId,companyId:scope.companyId,siteId:scope.siteId,
   canView:hasPermission(state,'view_inventory',{companyId:scope.companyId,siteId:scope.siteId}),
