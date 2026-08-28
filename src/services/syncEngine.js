@@ -1,5 +1,6 @@
 import{CANONICAL_IRRIGATION_COLLECTIONS}from'../domain/irrigationMirfeTenancy.js'
 import{assertInventoryCommandReceipt,mergeInventoryCommandReceipts}from'../domain/inventoryReceiptPersistence.js'
+import{assertInventoryHydrationRows}from'../domain/inventoryHydrationAuthority.js'
 
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentDevices','environmentCalibrations','environmentSetpoints','environmentalReadings','environmentAlerts',
@@ -121,6 +122,7 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  if(foreignPayload)throw new Error('No se puede hidratar un payload perteneciente a otra empresa')
  assertAppendOnlyRemoteIntegrity(records)
  assertRemoteReceiptIntegrity(state,records,tenant)
+ assertInventoryHydrationRows(state,records,{organizationId:tenant})
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
