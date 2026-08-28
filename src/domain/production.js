@@ -1,13 +1,30 @@
 import{nextPhase}from'./lifecycle.js'
-import{activeOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
+import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
 
 const WEIGHT_PHASES=new Set(['Cosecha','Secado','Manicura','Selección','Empaque','Finalizado'])
 const SOURCE_PHASE={Cosecha:null,Secado:'Cosecha',Manicura:'Secado',Selección:'Manicura',Empaque:'Selección',Finalizado:'Empaque'}
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
+const plainObject=value=>value&&typeof value==='object'&&!Array.isArray(value)?value:{}
 
 function nonNegative(value,label){const n=Number(value);if(!Number.isFinite(n)||n<0)throw new Error(`${label} no puede ser negativo.`);return n}
 function positive(value,label){const n=nonNegative(value,label);if(n<=0)throw new Error(`${label} debe ser mayor que cero.`);return n}
+function explicitSiteOwners(state,siteId){const id=text(siteId);return[...new Set(list(state?.sites).filter(site=>text(site?.id)===id).map(explicitOrganizationId).filter(Boolean))]}
+function postharvestRecordOrganizationId(state,record){
+ const explicit=explicitOrganizationId(record)
+ const siteId=text(record?.siteId)
+ if(explicit){
+  const owners=explicitSiteOwners(state,siteId)
+  if(owners.length&&!owners.includes(explicit))return''
+  return explicit
+ }
+ if(siteId){const owners=explicitSiteOwners(state,siteId);if(owners.length===1)return owners[0];if(owners.length>1)return''}
+ const companies=list(state?.companies)
+ if(companies.length===1)return text(companies[0]?.id)
+ if(companies.length===0)return'local-installation'
+ return''
+}
+function scopedRecords(state,collection,organizationId){return list(state?.[collection]).flatMap(record=>postharvestRecordOrganizationId(state,record)===organizationId?[record.organizationId?record:{...record,organizationId}]:[])}
 function lotOrganizationId(state,lot){try{return resolveOrganizationId(state,{record:lot,siteId:lot?.siteId,label:'lote productivo'})}catch{return''}}
 function resolveScopedProductionLot(state,lotId,organizationId){
  const id=text(lotId)
@@ -30,6 +47,61 @@ function scopedFinishedGoodsForLot(state,lot,organizationId){
  }
  return matches
 }
+function eventOrganizationId(state,event){return postharvestRecordOrganizationId(state,event)}
+function transitionIntentSignature(input={}){
+ const details=plainObject(input.details)
+ return JSON.stringify({
+  lotId:text(input.lotId),phase:text(input.phase),
+  quantity:input.quantity==null?null:Number(input.quantity),
+  discarded:Number(input.discarded||0),
+  inputWeight:input.inputWeight==null||input.inputWeight===''?null:Number(input.inputWeight),
+  outputWeight:input.outputWeight==null||input.outputWeight===''?null:Number(input.outputWeight),
+  date:text(input.date),responsible:text(input.responsible),notes:text(input.notes),details
+ })
+}
+function existingTransitionEvent(state,eventId,organizationId){
+ const id=text(eventId)
+ if(!id)return null
+ const matches=list(state?.lotEvents).filter(event=>text(event?.id)===id&&eventOrganizationId(state,event)===organizationId)
+ if(matches.length>1)throw new Error('La identidad del evento postcosecha está duplicada o es ambigua dentro de la empresa activa.')
+ return matches[0]||null
+}
+
+export function postharvestViewForActiveOrganization(state){
+ const organizationId=activeOrganizationId(state)
+ return{
+  organizationId,
+  sites:scopedRecords(state,'sites',organizationId),
+  productionBatches:scopedRecords(state,'productionBatches',organizationId),
+  dryingBatches:scopedRecords(state,'dryingBatches',organizationId),
+  trimmingBatches:scopedRecords(state,'trimmingBatches',organizationId),
+  selectionBatches:scopedRecords(state,'selectionBatches',organizationId),
+  packingBatches:scopedRecords(state,'packingBatches',organizationId),
+  productionFlows:scopedRecords(state,'productionFlows',organizationId),
+  propagationBatches:scopedRecords(state,'propagationBatches',organizationId),
+  finishedGoods:scopedRecords(state,'finishedGoods',organizationId)
+ }
+}
+
+export function canonicalPostharvestLotsForPhase(state,targetPhase){
+ const organizationId=activeOrganizationId(state),phase=text(targetPhase)
+ return scopedRecords(state,'propagationBatches',organizationId).filter(lot=>lot.phase!=='Finalizado'&&nextPhase(lot.phase)===phase)
+}
+
+export function canonicalPostharvestHistory(state,targetPhase){
+ const organizationId=activeOrganizationId(state),phase=text(targetPhase)
+ return list(state?.lotEvents).filter(event=>eventOrganizationId(state,event)===organizationId&&text(event.toPhase||String(event.title||'').split('→').at(-1))===phase)
+}
+
+export function canonicalPostharvestLot(state,lotId){
+ const organizationId=activeOrganizationId(state)
+ return resolveScopedProductionLot(state,lotId,organizationId).lot
+}
+
+// Legacy stage arrays and productionFlows remain readable for historical compatibility only.
+// New operational writes must use advanceProductionLot() so phase, mass and causality have one authority.
+export function appendPostharvestRecord(){throw new Error('Los registros postcosecha legacy son de solo lectura; usa el lote productivo canónico.')}
+export function advanceProductionFlow(){throw new Error('El flujo productivo legacy es de solo lectura; usa advanceProductionLot() sobre el lote canónico.')}
 
 export function pctLoss(input,output){const i=Number(input||0),o=Number(output||0);return i>0?(i-o)/i*100:0}
 export function unitCost(totalCost,grams){return Number(grams||0)>0?Number(totalCost||0)/Number(grams||0):0}
@@ -44,31 +116,48 @@ export function packedAvailableGrams(state,lotId,options={}){
  return Math.max(0,packed-entered)
 }
 
-export function advanceProductionLot(state,input){
+export function advanceProductionLot(state,input={}){
  const organizationId=activeOrganizationId(state)
- const requestedOrganizationId=text(input?.organizationId)
+ const requestedOrganizationId=text(input.organizationId)
  if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('El avance de producción pertenece a otra empresa.')
- const{lot,index:lotIndex}=resolveScopedProductionLot(state,input?.lotId,organizationId)
- const requestedSiteId=text(input?.siteId)
+ const{lot,index:lotIndex}=resolveScopedProductionLot(state,input.lotId,organizationId)
+ const requestedSiteId=text(input.siteId)
  if(requestedSiteId&&requestedSiteId!==text(lot.siteId))throw new Error('El lote productivo pertenece a otra sede.')
- if(input.phase!==nextPhase(lot.phase))throw new Error(`El lote debe avanzar de ${lot.phase} a ${nextPhase(lot.phase)}.`)
- const quantity=nonNegative(input.quantity??lot.activeQuantity??0,'La cantidad que avanza')
+
+ const eventId=text(input.eventId)
+ const intentSignature=transitionIntentSignature({...input,lotId:lot.id})
+ const existing=existingTransitionEvent(state,eventId,organizationId)
+ if(existing){
+  if(text(existing.lotId)!==text(lot.id)||text(existing.commandSignature)!==intentSignature)throw new Error('El eventId postcosecha fue reutilizado con un comando contradictorio; replay rechazado.')
+  return state
+ }
+
+ if(lot.phase==='Finalizado')throw new Error('El lote está Finalizado; la fase terminal no puede avanzar nuevamente.')
+ const expectedPhase=nextPhase(lot.phase)
+ if(input.phase!==expectedPhase)throw new Error(`El lote debe avanzar de ${lot.phase} a ${expectedPhase}.`)
+ const availableQuantity=nonNegative(lot.activeQuantity??lot.quantity??0,'La cantidad activa del lote')
+ const quantity=nonNegative(input.quantity??availableQuantity,'La cantidad que avanza')
+ if(quantity>availableQuantity)throw new Error(`La cantidad que avanza no puede superar la cantidad activa disponible (${availableQuantity}).`)
  const discarded=nonNegative(input.discarded||0,'Los descartes')
  if(discarded>quantity)throw new Error('Los descartes no pueden superar la cantidad que avanza.')
  const activeQuantity=quantity-discarded
  let ledger={...(lot.productionLedger||{})},outputGrams=0,inputGrams=0,lossGrams=0,yieldPct=0
+ const details=plainObject(input.details)
  if(WEIGHT_PHASES.has(input.phase)){
   outputGrams=positive(input.outputWeight,'El peso de salida')
   const source=SOURCE_PHASE[input.phase]
-  inputGrams=source?phaseOutput(lot,source):outputGrams
-  if(source&&inputGrams<=0)throw new Error(`Falta registrar el peso de salida de ${source}.`)
-  if(source&&outputGrams>inputGrams)throw new Error(`El peso de ${input.phase} no puede superar el peso disponible de ${source}.`)
+  if(source){
+   inputGrams=phaseOutput(lot,source)
+   if(inputGrams<=0)throw new Error(`Falta registrar el peso de salida de ${source}.`)
+  }else inputGrams=input.inputWeight==null||input.inputWeight===''?outputGrams:positive(input.inputWeight,'El peso de entrada')
+  if(outputGrams>inputGrams)throw new Error(`El peso de ${input.phase} no puede superar el peso disponible de entrada.`)
   lossGrams=Math.max(0,inputGrams-outputGrams)
   yieldPct=inputGrams?Math.round(outputGrams/inputGrams*1000)/10:100
-  ledger[input.phase]={inputGrams,outputGrams,lossGrams,yieldPct,date:input.date,responsible:input.responsible||'',notes:input.notes||''}
+  ledger[input.phase]={inputGrams,outputGrams,lossGrams,yieldPct,date:input.date,responsible:input.responsible||'',notes:input.notes||'',details}
  }
  const createdAt=input.createdAt||new Date().toISOString()
- const event={id:input.eventId||crypto.randomUUID(),organizationId,siteId:lot.siteId||null,lotId:lot.id,type:'Cambio de fase',date:input.date,title:`${lot.phase} → ${input.phase}`,quantity:activeQuantity,discarded,outputWeight:outputGrams,inputWeight:inputGrams,lossWeight:lossGrams,yieldPct,responsible:input.responsible||'',notes:input.notes||'',createdAt}
+ const id=eventId||crypto.randomUUID()
+ const event={id,organizationId,siteId:lot.siteId||null,lotId:lot.id,type:'Cambio de fase',fromPhase:lot.phase,toPhase:input.phase,date:input.date,title:`${lot.phase} → ${input.phase}`,requestedQuantity:quantity,quantity:activeQuantity,discarded,outputWeight:outputGrams,inputWeight:inputGrams,lossWeight:lossGrams,yieldPct,responsible:input.responsible||'',notes:input.notes||'',details,commandSignature:intentSignature,createdAt}
  return{...state,propagationBatches:list(state?.propagationBatches).map((item,index)=>index===lotIndex?{...item,organizationId,phase:input.phase,phaseStartedAt:input.date,activeQuantity,lastOutputWeight:outputGrams||item.lastOutputWeight||0,productionLedger:ledger,updatedAt:createdAt}:item),lotEvents:[...list(state?.lotEvents),event]}
 }
 
