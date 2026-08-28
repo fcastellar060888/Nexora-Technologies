@@ -6,13 +6,14 @@ const text=value=>String(value??'').trim()
 
 export function inventoryUiAccess(state){
  const scope=activeAuthorizationScope(state),user=activeUser(state),installationMode=isInstallationMode(state)
- if(installationMode)return{userId:'local-installation',companyId:scope.companyId,siteId:scope.siteId,canView:true,canManage:true}
+ if(installationMode)return{userId:'local-installation',companyId:scope.companyId,siteId:scope.siteId,canView:true,canManage:true,canManageProduct:true}
  const userId=text(user?.id)
- if(!userId||!scope.companyId)return{userId,companyId:scope.companyId,siteId:scope.siteId,canView:false,canManage:false}
+ if(!userId||!scope.companyId)return{userId,companyId:scope.companyId,siteId:scope.siteId,canView:false,canManage:false,canManageProduct:false}
  return{
   userId,companyId:scope.companyId,siteId:scope.siteId,
   canView:hasPermission(state,'view_inventory',{companyId:scope.companyId,siteId:scope.siteId}),
-  canManage:hasPermission(state,'manage_inventory',{companyId:scope.companyId,siteId:scope.siteId})
+  canManage:hasPermission(state,'manage_inventory',{companyId:scope.companyId,siteId:scope.siteId}),
+  canManageProduct:hasPermission(state,'manage_inventory',{companyId:scope.companyId,siteId:''})
  }
 }
 
