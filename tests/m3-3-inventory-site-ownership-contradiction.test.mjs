@@ -34,3 +34,16 @@ test('ownership explícito consistente con la sede conserva causalidad válida',
  assert.equal(inventoryRecordOrganizationId(state,'inventoryLots',lot),'org-a')
  assert.equal(inventoryRecordOrganizationId(state,'inventoryMovements',movement),'org-a')
 })
+
+test('siteId homónimo entre tenants falla cerrado aunque organizationId explícito coincida con uno',()=>{
+ const lot={id:'l1',organizationId:'org-a',productId:'p1',siteId:'site-shared'}
+ const state={...base,sites:[{id:'site-shared',organizationId:'org-a'},{id:'site-shared',organizationId:'org-b'}],inventoryLots:[lot],inventoryMovements:[]}
+ assert.equal(inventoryRecordOrganizationId(state,'inventoryLots',lot),'')
+ assert.deepEqual(inventoryRecordsForOrganization(state,'inventoryLots','org-a'),[])
+})
+
+test('siteId homónimo entre tenants falla cerrado también sin organizationId explícito',()=>{
+ const lot={id:'l1',productId:'p1',siteId:'site-shared'}
+ const state={...base,sites:[{id:'site-shared',organizationId:'org-a'},{id:'site-shared',organizationId:'org-b'}],inventoryLots:[lot],inventoryMovements:[]}
+ assert.equal(inventoryRecordOrganizationId(state,'inventoryLots',lot),'')
+})
