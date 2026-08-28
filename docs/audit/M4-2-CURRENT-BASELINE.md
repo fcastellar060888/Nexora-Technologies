@@ -16,31 +16,34 @@ This branch does not modify `main` and is not authorized for merge.
 
 Finding: `advanceProductionLot()` resolved `propagationBatches` by raw `lotId` and updated every matching raw ID. Homonymous lot identities across organizations therefore allowed a phase transition requested under the active tenant to mutate another tenant's lot.
 
-Current-base evidence confirmed the defect was present again in `src/domain/production.js`.
+Correction: active-tenant resolution via `resolveOrganizationId()`, fail-closed foreign/ambiguous/duplicate identity handling, single-index mutation, and explicit tenant/site event stamps.
+
+Evidence: `tests/m4-2-postharvest-tenancy.test.js`.
+
+Status: **Ready for Quality — not Verified**.
+
+## F002 — High — Ready for Quality
+
+Finding re-confirmed on the current baseline: `packedAvailableGrams()` and `receiveFinishedGoods()` still resolved production lots, consumed mass and classification globally by raw `lotId`. A foreign homonymous lot/receipt could therefore distort available packed mass, block a legitimate classification, or cause a receipt to target the wrong tenant.
 
 Correction:
-- resolve the active organization before lot selection;
-- resolve lot ownership through `resolveOrganizationId()` including site/organization contradiction checks;
-- reject foreign, ownerless/ambiguous, and duplicate same-tenant lot identities;
-- update only the resolved array position instead of every row sharing the raw ID;
-- stamp the resulting `lotEvent` with `organizationId` and `siteId`;
-- reject caller-supplied organization/site context that contradicts the resolved lot.
+- resolve the packed production lot only inside the active organization;
+- calculate consumed packed mass only from Finished Goods whose ownership resolves to that organization;
+- fail closed for ownerless/ambiguous legacy Finished Goods participating in the same lot identity;
+- scope classification uniqueness to the active tenant;
+- reject caller-supplied organization/site context contradicting the resolved lot;
+- materialize `organizationId`, `siteId` and canonical `lotId` on both Finished Good and movement;
+- preserve tenant-local mass conservation.
 
-Evidence:
-- `tests/m4-2-postharvest-tenancy.test.js`
-- homonymous cross-tenant lot mutation isolation;
-- foreign-only lot rejection;
-- duplicate same-tenant lot identity rejection;
-- explicit organization/site contradiction rejection.
+Evidence: `tests/m4-2-postharvest-finished-goods-tenancy.test.js`, covering foreign homonyms, foreign-only lot, duplicate same-tenant lot identity, classification isolation, mass conservation and spoofed context.
 
-Implementation commit: `1be1453770476d1de991a897295a3ed1359da642`.
-Adversarial evidence commit: `01f1a16edc03a4ccf24702565feb3fc330fb7cbc`.
+Implementation commit: `093712a61d92c0bc944cee02c76b541c3739bf60`.
+Adversarial evidence commit: `53c644d5148387e43996b71cd91b9ce45bf02c35`.
 
 Status: **Ready for Quality — not Verified**.
 
 ## Remaining historical findings to re-audit
 
-- F002 — Finished Goods mass/classification tenancy.
 - F003 — Direct Postharvest UI ownership and legacy write paths.
 - F004 — Canonical Postharvest authority, monotonic mass/quantity, terminality and durable replay.
 - F005 — Lot detail / genealogy / timeline tenant-aware joins.
