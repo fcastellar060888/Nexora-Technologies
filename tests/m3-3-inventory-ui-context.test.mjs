@@ -35,6 +35,7 @@ test('site-scoped membership sees only Lot and Movement evidence from the active
  const access=inventoryUiAccess(state)
  assert.equal(access.canView,true)
  assert.equal(access.canManage,false)
+ assert.equal(access.canManageProduct,false)
  const scoped=scopeInventoryUiState(state)
  assert.deepEqual(scoped.sites.map(x=>x.id),['s1'])
  assert.deepEqual(scoped.inventoryLots.map(x=>x.id),['l1'])
@@ -47,6 +48,7 @@ test('membership for another site cannot read inventory through an unauthorized 
  const access=inventoryUiAccess(state)
  assert.equal(access.canView,false)
  assert.equal(access.canManage,false)
+ assert.equal(access.canManageProduct,false)
  const scoped=scopeInventoryUiState(state)
  assert.deepEqual(scoped.products,[])
  assert.deepEqual(scoped.inventoryLots,[])
@@ -54,19 +56,28 @@ test('membership for another site cannot read inventory through an unauthorized 
  assert.deepEqual(scoped.sites,[])
 })
 
-test('manage permission controls write surfaces independently from read-only inventory access',()=>{
- assert.equal(inventoryUiAccess(baseState({permissions:['view_inventory','manage_inventory']})).canManage,true)
- assert.equal(inventoryUiAccess(baseState({permissions:['view_inventory']})).canManage,false)
+test('site manage permission can operate Lots and Movements but cannot create organization-wide Product',()=>{
+ const access=inventoryUiAccess(baseState({permissions:['view_inventory','manage_inventory'],membershipSites:['s1']}))
+ assert.equal(access.canManage,true)
+ assert.equal(access.canManageProduct,false)
 })
 
-test('Inventory pages consume access.canManage rather than exposing unconditional write forms',async()=>{
+test('organization-wide manage permission can create Product and operate the active site',()=>{
+ const access=inventoryUiAccess(baseState({permissions:['view_inventory','manage_inventory'],membershipSites:[]}))
+ assert.equal(access.canView,true)
+ assert.equal(access.canManage,true)
+ assert.equal(access.canManageProduct,true)
+})
+
+test('Inventory pages consume explicit access authority rather than exposing unconditional write forms',async()=>{
  const inventory=await readFile(new URL('../src/pages/InventoryPage.jsx',import.meta.url),'utf8')
  const movements=await readFile(new URL('../src/pages/InventoryMovementsPage.jsx',import.meta.url),'utf8')
  const store=await readFile(new URL('../src/services/inventoryCommandStore.js',import.meta.url),'utf8')
  assert.match(inventory,/state:inventory,access,execute/)
+ assert.match(inventory,/access\.canManageProduct\?/)
  assert.match(inventory,/access\.canManage\?/)
  assert.match(movements,/state,access,execute/)
  assert.match(movements,/access\.canManage\?/)
  assert.match(store,/scopeInventoryUiState\(store\.state\)/)
- assert.match(store,/inventoryUiAccess\(store\.state\)\.canManage/)
+ assert.match(store,/CREATE_PRODUCT\?currentAccess\.canManageProduct:currentAccess\.canManage/)
 })
