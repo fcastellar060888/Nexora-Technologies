@@ -8,7 +8,7 @@ export const ROLE_PERMISSIONS={
  'Encargado de riego':['view_irrigation','execute_orders','record_irrigation','view_inventory'],
  'Encargado MIPE':['manage_mipe','execute_treatments','view_inventory'],
  'Operario':['execute_orders','record_observations','manage_production'],
- 'Inventario':['manage_inventory','view_costs']
+ 'Inventario':['view_inventory','manage_inventory','view_costs']
 }
 
 const text=value=>String(value??'').trim()
