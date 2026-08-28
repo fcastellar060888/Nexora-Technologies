@@ -19,11 +19,30 @@ function resolveScopedProductionLot(state,lotId,organizationId){
  if(matches.length===0)throw new Error('El lote productivo pertenece a otra empresa o no tiene ownership inequívoco.')
  return matches[0]
 }
+function finishedGoodOrganizationId(state,item){return resolveOrganizationId(state,{record:item,siteId:item?.siteId,label:'producto terminado'})}
+function scopedFinishedGoodsForLot(state,lot,organizationId){
+ const lotId=text(lot?.id),matches=[]
+ for(const item of list(state?.finishedGoods).filter(candidate=>text(candidate?.lotId)===lotId)){
+  let owner=''
+  try{owner=finishedGoodOrganizationId(state,item)}catch{throw new Error('Existe producto terminado legacy con ownership ambiguo; migra organizationId/siteId antes de continuar.')}
+  if(!owner)throw new Error('Existe producto terminado sin ownership inequívoco.')
+  if(owner===organizationId)matches.push(item)
+ }
+ return matches
+}
 
 export function pctLoss(input,output){const i=Number(input||0),o=Number(output||0);return i>0?(i-o)/i*100:0}
 export function unitCost(totalCost,grams){return Number(grams||0)>0?Number(totalCost||0)/Number(grams||0):0}
 export function phaseOutput(lot,phase){return Number(lot?.productionLedger?.[phase]?.outputGrams||0)}
-export function packedAvailableGrams(state,lotId){const lot=(state.propagationBatches||[]).find(x=>x.id===lotId);const packed=phaseOutput(lot,'Empaque');const entered=(state.finishedGoods||[]).filter(x=>x.lotId===lotId).reduce((sum,x)=>sum+Number(x.initialGrams??x.packedGrams??x.availableGrams??0),0);return Math.max(0,packed-entered)}
+export function packedAvailableGrams(state,lotId,options={}){
+ const organizationId=activeOrganizationId(state)
+ const requestedOrganizationId=text(options?.organizationId)
+ if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('El cálculo de producto terminado pertenece a otra empresa.')
+ const{lot}=resolveScopedProductionLot(state,lotId,organizationId)
+ const packed=phaseOutput(lot,'Empaque')
+ const entered=scopedFinishedGoodsForLot(state,lot,organizationId).reduce((sum,item)=>sum+Number(item.initialGrams??item.packedGrams??item.availableGrams??0),0)
+ return Math.max(0,packed-entered)
+}
 
 export function advanceProductionLot(state,input){
  const organizationId=activeOrganizationId(state)
@@ -54,15 +73,21 @@ export function advanceProductionLot(state,input){
 }
 
 export function receiveFinishedGoods(state,input){
- const lot=(state.propagationBatches||[]).find(x=>x.id===input.lotId)
- if(!lot||!['Empaque','Finalizado'].includes(lot.phase))throw new Error('Selecciona un lote empacado válido.')
+ const organizationId=activeOrganizationId(state)
+ const requestedOrganizationId=text(input?.organizationId)
+ if(requestedOrganizationId&&requestedOrganizationId!==organizationId)throw new Error('El ingreso de producto terminado pertenece a otra empresa.')
+ const{lot}=resolveScopedProductionLot(state,input?.lotId,organizationId)
+ if(!['Empaque','Finalizado'].includes(lot.phase))throw new Error('Selecciona un lote empacado válido.')
+ const requestedSiteId=text(input?.siteId)
+ if(requestedSiteId&&requestedSiteId!==text(lot.siteId))throw new Error('El lote empacado pertenece a otra sede.')
  const grams=positive(input.packedGrams,'Los gramos empacados')
- const available=packedAvailableGrams(state,lot.id)
+ const available=packedAvailableGrams(state,lot.id,{organizationId})
  if(grams>available)throw new Error(`Solo quedan ${available} g empacados disponibles para ingresar.`)
- const classification=String(input.classification||'').trim();if(!classification)throw new Error('Selecciona una clasificación.')
- if((state.finishedGoods||[]).some(x=>x.lotId===lot.id&&x.classification===classification))throw new Error('Ya existe inventario de esa clasificación para el lote.')
+ const classification=text(input.classification);if(!classification)throw new Error('Selecciona una clasificación.')
+ const scopedFinishedGoods=scopedFinishedGoodsForLot(state,lot,organizationId)
+ if(scopedFinishedGoods.some(item=>text(item.classification)===classification))throw new Error('Ya existe inventario de esa clasificación para el lote en la empresa activa.')
  const createdAt=input.createdAt||new Date().toISOString(),id=input.id||crypto.randomUUID()
- const item={id,createdAt,geneticId:lot.geneticId,availableGrams:grams,initialGrams:grams,reservedGrams:0,soldGrams:0,...input,packedGrams:grams}
- const movement={id:input.movementId||crypto.randomUUID(),finishedGoodId:id,lotId:lot.id,type:'Entrada por empaque',grams,date:input.packedAt||createdAt.slice(0,10),balanceAfter:grams,sourceType:'ProductionLot',sourceId:lot.id,createdAt}
- return{...state,finishedGoods:[...(state.finishedGoods||[]),item],finishedGoodsMovements:[...(state.finishedGoodsMovements||[]),movement]}
+ const item={...input,id,organizationId,siteId:lot.siteId||null,lotId:lot.id,geneticId:lot.geneticId,classification,createdAt,availableGrams:grams,initialGrams:grams,reservedGrams:0,soldGrams:0,packedGrams:grams}
+ const movement={id:input.movementId||crypto.randomUUID(),organizationId,siteId:lot.siteId||null,finishedGoodId:id,lotId:lot.id,type:'Entrada por empaque',grams,date:input.packedAt||createdAt.slice(0,10),balanceAfter:grams,sourceType:'ProductionLot',sourceId:lot.id,createdAt}
+ return{...state,finishedGoods:[...list(state?.finishedGoods),item],finishedGoodsMovements:[...list(state?.finishedGoodsMovements),movement]}
 }
