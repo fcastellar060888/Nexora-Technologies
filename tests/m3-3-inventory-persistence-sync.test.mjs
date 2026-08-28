@@ -93,3 +93,35 @@ test('sync hydration rejects Movement that contradicts Lot -> Product chain',()=
  const rows=[remote('inventoryMovements','m1',{id:'m1',organizationId:tenant,lotId:'l1',productId:'p2'})]
  assert.throws(()=>applyRemoteRecords(state,rows,{companyId:tenant}),/causalidad tenant-aware/)
 })
+
+test('outbound Product delete fails closed while a tenant Lot still depends on it',()=>{
+ const product={id:'product-1',organizationId:tenant}
+ const lot={id:'lot-1',organizationId:tenant,productId:'product-1',siteId:'s1'}
+ const changes=[{collection:'products',recordId:'product-1',organizationId:tenant,operation:'delete',payload:null,previousPayload:product}]
+ const state={syncQueue:[],products:[],inventoryLots:[lot],inventoryMovements:[]}
+ assert.throws(()=>enqueueChanges(state,changes,{companyId:tenant}),/Lot sin Product causal/)
+})
+
+test('remote Lot tombstone fails closed while append-only Movement evidence still depends on it',()=>{
+ const product={id:'product-1',organizationId:tenant}
+ const lot={id:'lot-1',organizationId:tenant,productId:'product-1',siteId:'s1'}
+ const state={currentContext:{companyId:tenant},sites:[{id:'s1',organizationId:tenant}],products:[product],inventoryLots:[lot],inventoryMovements:[movement]}
+ const rows=[{companyId:tenant,collection:'inventoryLots',recordId:'lot-1',deletedAt:'2026-08-27T22:00:00.000Z'}]
+ assert.throws(()=>applyRemoteRecords(state,rows,{companyId:tenant}),/Movement sin Lot\/Product causal/)
+})
+
+test('remote Product and unused Lot may be deleted atomically without leaving causal orphans',()=>{
+ const product={id:'product-1',organizationId:tenant}
+ const lot={id:'lot-1',organizationId:tenant,productId:'product-1',siteId:'s1'}
+ const foreignProduct={id:'product-1',organizationId:'org-b'}
+ const state={currentContext:{companyId:tenant},sites:[{id:'s1',organizationId:tenant}],products:[product,foreignProduct],inventoryLots:[lot],inventoryMovements:[]}
+ const deletedAt='2026-08-27T22:00:00.000Z'
+ const rows=[
+  {companyId:tenant,collection:'products',recordId:'product-1',deletedAt},
+  {companyId:tenant,collection:'inventoryLots',recordId:'lot-1',deletedAt}
+ ]
+ const next=applyRemoteRecords(state,rows,{companyId:tenant})
+ assert.equal(next.inventoryLots.length,0)
+ assert.equal(next.products.length,1)
+ assert.equal(next.products[0].organizationId,'org-b')
+})
