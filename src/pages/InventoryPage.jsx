@@ -11,7 +11,7 @@ const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].include
 const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
- const{state:inventory,execute}=useInventoryCommandStore()
+ const{state:inventory,access,execute}=useInventoryCommandStore()
  const[p,setP]=useState(emptyProduct)
  const[lot,setLot]=useState({productId:inventory.products[0]?.id||'',siteId:inventory.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
  async function addP(e){
@@ -26,7 +26,7 @@ export default function InventoryPage(){
  async function addL(e){e.preventDefault();try{await execute({operation:INVENTORY_OPERATIONS.CREATE_LOT,input:lot});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
  return <>
   <PageHeader title="Inventario MIPE / MIRFE" subtitle="Insumos, perfiles técnicos, lotes, vencimientos y existencias respaldadas por kardex."/>
-  <ValidationMessage type="info">Los formularios están separados para permitir trabajo simultáneo sin bloquear operaciones distintas.</ValidationMessage>
+  {access.canManage?<><ValidationMessage type="info">Los formularios están separados para permitir trabajo simultáneo sin bloquear operaciones distintas.</ValidationMessage>
   <div className="content-grid two">
    <Card title="Nuevo insumo"><form id="inventory-product-new" data-module="Nuevo insumo" data-record-id="new-product" className="form-grid one" onSubmit={addP}>
     <Field label="Nombre comercial"><input required value={p.name} onChange={e=>setP({...p,name:e.target.value})}/></Field>
@@ -57,7 +57,7 @@ export default function InventoryPage(){
     <Field label="Responsable"><input value={lot.responsible} onChange={e=>setLot({...lot,responsible:e.target.value})}/></Field>
     <FormActions><button className="button primary">Guardar lote y movimiento inicial</button></FormActions>
    </form></Card>
-  </div>
+  </div></>:<ValidationMessage type="info">Tienes acceso de consulta. Crear insumos o lotes requiere permiso para administrar inventario en el contexto activo.</ValidationMessage>}
   <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{inventory.inventoryLots.map(l=>{const product=inventory.products.find(x=>x.id===l.productId),site=inventory.sites.find(x=>x.id===l.siteId);return <tr key={`${l.organizationId}:${l.id}`}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
  </>
 }
