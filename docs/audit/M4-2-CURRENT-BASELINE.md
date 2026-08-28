@@ -35,16 +35,30 @@ Correction:
 - materialize `organizationId`, `siteId` and canonical `lotId` on both Finished Good and movement;
 - preserve tenant-local mass conservation.
 
-Evidence: `tests/m4-2-postharvest-finished-goods-tenancy.test.js`, covering foreign homonyms, foreign-only lot, duplicate same-tenant lot identity, classification isolation, mass conservation and spoofed context.
+Evidence: `tests/m4-2-postharvest-finished-goods-tenancy.test.js`.
 
-Implementation commit: `093712a61d92c0bc944cee02c76b541c3739bf60`.
-Adversarial evidence commit: `53c644d5148387e43996b71cd91b9ce45bf02c35`.
+Status: **Ready for Quality — not Verified**.
+
+## F003 — High — Ready for Quality
+
+Finding re-confirmed on the current baseline: direct Postharvest stage pages (`ProductionPage`, `DryingPage`, `TrimmingPage`, `SelectionPage`, `PackingPage`) still wrote legacy stage arrays directly and read global collections. This bypassed the tenant-aware production authority and could persist ownerless records or expose cross-tenant history.
+
+Correction:
+- all direct operational stage pages now route through the shared `CanonicalPostharvestStage` boundary;
+- canonical stage selection/history is scoped to the active organization;
+- legacy stage arrays and `productionFlows` are explicitly read-only and their write APIs fail closed;
+- operational transitions use `advanceProductionLot()` with organization/site/event identity;
+- tenant-scoped postharvest views remain available for compatible historical reads.
+
+Evidence: `tests/m4-2-postharvest-ui-tenancy.test.js`, covering active-tenant projection, legacy write rejection and static UI authority boundaries.
+
+Implementation commit: `835aa727f91ed1238c8715f6ae0475be42e86237`.
+Authority/evidence commit: `e348aa5e6c468ab85736169ec07eaf87fafc2173`.
 
 Status: **Ready for Quality — not Verified**.
 
 ## Remaining historical findings to re-audit
 
-- F003 — Direct Postharvest UI ownership and legacy write paths.
 - F004 — Canonical Postharvest authority, monotonic mass/quantity, terminality and durable replay.
 - F005 — Lot detail / genealogy / timeline tenant-aware joins.
 
