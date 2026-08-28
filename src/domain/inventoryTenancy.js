@@ -1,4 +1,4 @@
-import{activeOrganizationId,explicitOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
+import{activeOrganizationId,resolveOrganizationId}from'./organizationOwnership.js'
 
 const list=value=>Array.isArray(value)?value:[]
 const text=value=>String(value??'').trim()
@@ -6,8 +6,6 @@ export const INVENTORY_SCOPED_COLLECTIONS=Object.freeze(['products','inventoryLo
 
 function ownerOf(state,record,label){
  if(!record||typeof record!=='object')return''
- const explicit=explicitOrganizationId(record)
- if(explicit)return explicit
  try{return resolveOrganizationId(state,{record,siteId:record?.siteId,label})}catch{return''}
 }
 function uniqueOwnedReference(state,collection,id,owner,resolver){

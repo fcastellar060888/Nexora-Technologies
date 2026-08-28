@@ -6,6 +6,7 @@ import{useStore}from'../services/store'
 import{useRealtime}from'../services/realtimeContext.jsx'
 import{statusLabel}from'../services/autoSyncRuntime.js'
 import{capabilityForPath,hasEntitlement}from'../domain/entitlements.js'
+import{hasPermission}from'../services/permissions.js'
 
 const groups=[
  {label:'Operación',links:[['/dashboard','Centro de operaciones',BarChart3],['/operations','Agenda operativa',ClipboardCheck],['/cultivation-map','Mapa del cultivo',Map],['/infrastructure-map','Mapa de áreas',Layers3],['/infrastructure/operations','Activos y ambiente',Wrench]]},
@@ -15,6 +16,8 @@ const groups=[
  {label:'Configuración',links:[['/companies','Empresas',Building2],['/sites','Sedes',Map],['/infrastructure','Áreas e infraestructura',Layers3],['/houses','Naves y camas (legado)',Factory],['/genetics','Genéticas',Dna],['/users','Usuarios y roles',Users],['/login','Acceso con Supabase',LogIn],['/sync','Centro de sincronización',RefreshCw],['/migration','Migración a PostgreSQL',DatabaseBackup],['/audit','Auditoría',BookOpenCheck],['/insights','Inteligencia',ScanSearch],['/diagnostics','Diagnóstico',ShieldCheck],['/settings','Configuración',Settings]]}
 ]
 
+const inventoryPath=path=>path==='/inventory'||path.startsWith('/inventory/')
+
 export default function AppShell(){
  const[open,setOpen]=useState(false)
  const[collapsed,setCollapsed]=useState(()=>Object.fromEntries(groups.map((g,i)=>[g.label,i>0])))
@@ -22,7 +25,7 @@ export default function AppShell(){
  const{state,synchronize,syncRuntime,dataRuntime,hydrateFromPostgres}=useStore()
  const{runtime:realtimeRuntime,onlineUsers,currentEditors}=useRealtime()
  const navigate=useNavigate()
- const visibleGroups=useMemo(()=>groups.map(group=>({...group,links:group.links.filter(([path])=>hasEntitlement(state,capabilityForPath(path)))})).filter(group=>group.links.length>0),[state])
+ const visibleGroups=useMemo(()=>groups.map(group=>({...group,links:group.links.filter(([path])=>hasEntitlement(state,capabilityForPath(path))&&(!inventoryPath(path)||hasPermission(state,'view_inventory')))})).filter(group=>group.links.length>0),[state])
  const matches=useMemo(()=>query.trim()?visibleGroups.flatMap(g=>g.links).filter(x=>x[1].toLowerCase().includes(query.toLowerCase())).slice(0,8):[],[query,visibleGroups])
  const SyncIcon=syncRuntime.online===false?CloudOff:RefreshCw
  const syncLabel=statusLabel(syncRuntime,state)

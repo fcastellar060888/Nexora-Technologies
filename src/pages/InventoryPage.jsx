@@ -11,7 +11,7 @@ const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].include
 const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
- const{state:inventory,execute}=useInventoryCommandStore()
+ const{state:inventory,access,execute}=useInventoryCommandStore()
  const[p,setP]=useState(emptyProduct)
  const[lot,setLot]=useState({productId:inventory.products[0]?.id||'',siteId:inventory.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
  async function addP(e){
@@ -26,9 +26,9 @@ export default function InventoryPage(){
  async function addL(e){e.preventDefault();try{await execute({operation:INVENTORY_OPERATIONS.CREATE_LOT,input:lot});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
  return <>
   <PageHeader title="Inventario MIPE / MIRFE" subtitle="Insumos, perfiles técnicos, lotes, vencimientos y existencias respaldadas por kardex."/>
-  <ValidationMessage type="info">Los formularios están separados para permitir trabajo simultáneo sin bloquear operaciones distintas.</ValidationMessage>
+  {(access.canManageProduct||access.canManage)?<><ValidationMessage type="info">Los controles visibles respetan el alcance autorizado: insumos son organizacionales y lotes/movimientos siguen el contexto de sede.</ValidationMessage>
   <div className="content-grid two">
-   <Card title="Nuevo insumo"><form id="inventory-product-new" data-module="Nuevo insumo" data-record-id="new-product" className="form-grid one" onSubmit={addP}>
+   {access.canManageProduct?<Card title="Nuevo insumo"><form id="inventory-product-new" data-module="Nuevo insumo" data-record-id="new-product" className="form-grid one" onSubmit={addP}>
     <Field label="Nombre comercial"><input required value={p.name} onChange={e=>setP({...p,name:e.target.value})}/></Field>
     <Field label="Categoría"><select value={p.category} onChange={e=>setP({...p,category:e.target.value})}><option>MIPE</option><option>MIRFE</option><option>Fertilizante</option><option>Adyuvante</option><option>Corrector pH</option><option>Biológico</option><option>Monitoreo</option><option>EPP</option><option>Otro</option></select></Field>
     <Field label="Ingrediente activo"><input value={p.activeIngredient} onChange={e=>setP({...p,activeIngredient:e.target.value})}/></Field>
@@ -46,8 +46,8 @@ export default function InventoryPage(){
     <Field label="Costo por unidad"><input min="0" type="number" step=".01" value={p.cost} onChange={e=>setP({...p,cost:+e.target.value})}/></Field>
     {executableMipeCategory(p.category)&&<small className="form-help">Para {p.doseUnit}, el inventario ejecutable debe registrarse en {expectedInventoryUnit(p.doseUnit)}.</small>}
     <FormActions><button className="button primary">Guardar insumo</button></FormActions>
-   </form></Card>
-   <Card title="Registrar lote"><form id="inventory-lot-new" data-module="Nuevo lote de inventario" data-record-id="new-lot" className="form-grid one" onSubmit={addL}>
+   </form></Card>:<Card title="Insumos organizacionales"><ValidationMessage type="info">Tu membership permite operar inventario en la sede activa, pero no crear insumos organizacionales.</ValidationMessage></Card>}
+   {access.canManage?<Card title="Registrar lote"><form id="inventory-lot-new" data-module="Nuevo lote de inventario" data-record-id="new-lot" className="form-grid one" onSubmit={addL}>
     <Field label="Producto"><select required value={lot.productId} onChange={e=>setLot({...lot,productId:e.target.value})}><option value="">Selecciona</option>{inventory.products.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></Field>
     <Field label="Sede"><select required value={lot.siteId} onChange={e=>setLot({...lot,siteId:e.target.value})}><option value="">Selecciona</option>{inventory.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
     <Field label="Cantidad inicial"><input min="0" type="number" step=".01" value={lot.quantity} onChange={e=>setLot({...lot,quantity:+e.target.value})}/></Field>
@@ -56,8 +56,8 @@ export default function InventoryPage(){
     <Field label="Stock mínimo"><input min="0" type="number" step=".01" value={lot.minimum} onChange={e=>setLot({...lot,minimum:+e.target.value})}/></Field>
     <Field label="Responsable"><input value={lot.responsible} onChange={e=>setLot({...lot,responsible:e.target.value})}/></Field>
     <FormActions><button className="button primary">Guardar lote y movimiento inicial</button></FormActions>
-   </form></Card>
-  </div>
+   </form></Card>:<Card title="Lotes"><ValidationMessage type="info">Tienes acceso de consulta. Registrar lotes requiere `manage_inventory` en el contexto activo.</ValidationMessage></Card>}
+  </div></>:<ValidationMessage type="info">Tienes acceso de consulta. Las operaciones de inventario requieren permiso de administración.</ValidationMessage>}
   <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{inventory.inventoryLots.map(l=>{const product=inventory.products.find(x=>x.id===l.productId),site=inventory.sites.find(x=>x.id===l.siteId);return <tr key={`${l.organizationId}:${l.id}`}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
  </>
 }

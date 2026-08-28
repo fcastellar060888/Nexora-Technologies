@@ -31,15 +31,12 @@ export function resolveOrganizationId(state,{record=null,siteId=null,label='obje
  const resolvedSiteId=text(siteId||record?.siteId)
  const siteCandidates=resolvedSiteId?list(state?.sites).filter(item=>item?.id===resolvedSiteId):[]
  const siteOwners=[...new Set(siteCandidates.map(explicitOrganizationId).filter(Boolean))]
+ if(siteOwners.length>1)throw new Error(`La sede de ${label} es ambigua entre organizaciones.`)
  if(explicit){
-  if(siteOwners.length&&!siteOwners.includes(explicit))throw new Error(`Ownership organizacional contradictorio para ${label}.`)
+  if(siteOwners.length&&siteOwners[0]!==explicit)throw new Error(`Ownership organizacional contradictorio para ${label}.`)
   return explicit
  }
  if(siteOwners.length===1)return siteOwners[0]
- if(siteOwners.length>1){
-  if(active&&siteOwners.includes(active))return active
-  throw new Error(`La sede de ${label} es ambigua entre organizaciones.`)
- }
  if(companies.length>1)throw new Error(`No se puede determinar organizationId de ${label} en un estado multiempresa.`)
  if(active)return active
  if(companies.length===1)return text(companies[0]?.id)
