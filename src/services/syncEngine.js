@@ -1,6 +1,7 @@
 import{CANONICAL_IRRIGATION_COLLECTIONS}from'../domain/irrigationMirfeTenancy.js'
 import{assertInventoryCommandReceipt,mergeInventoryCommandReceipts}from'../domain/inventoryReceiptPersistence.js'
 import{assertInventoryHydrationRows}from'../domain/inventoryHydrationAuthority.js'
+import{assertInventoryDeleteChanges,assertInventoryDeleteRows}from'../domain/inventoryDeletionAuthority.js'
 
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentDevices','environmentCalibrations','environmentSetpoints','environmentalReadings','environmentAlerts',
@@ -72,6 +73,7 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  const tenant=text(companyId)
  const forbiddenDelete=list(changes).find(change=>APPEND_ONLY_SYNC_COLLECTIONS.has(change.collection)&&change.operation==='delete')
  if(forbiddenDelete)throw new Error(`${forbiddenDelete.collection} es append-only y no admite delete de sync`)
+ assertInventoryDeleteChanges(state,changes,{organizationId:tenant})
  const queued=changes.map(change=>{
   const declaredOwner=text(change.organizationId)
   if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
@@ -123,6 +125,7 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  assertAppendOnlyRemoteIntegrity(records)
  assertRemoteReceiptIntegrity(state,records,tenant)
  assertInventoryHydrationRows(state,records,{organizationId:tenant})
+ assertInventoryDeleteRows(state,records,{organizationId:tenant})
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
