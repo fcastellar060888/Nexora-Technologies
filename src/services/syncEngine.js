@@ -1,15 +1,20 @@
 import{CANONICAL_IRRIGATION_COLLECTIONS}from'../domain/irrigationMirfeTenancy.js'
+import{assertInventoryCommandReceipt,mergeInventoryCommandReceipts}from'../domain/inventoryReceiptPersistence.js'
+import{assertInventoryHydrationRows}from'../domain/inventoryHydrationAuthority.js'
+import{assertInventoryDeleteChanges,assertInventoryDeleteRows}from'../domain/inventoryDeletionAuthority.js'
+import{INVENTORY_SCOPED_COLLECTIONS}from'../domain/inventoryTenancy.js'
 
 export const SYNCABLE_COLLECTIONS=[
  'sites','houses','beds','plantPositions','operationalAreas','infrastructureElements','infrastructureMovements','infrastructureAssets','assetMaintenances','environmentDevices','environmentCalibrations','environmentSetpoints','environmentalReadings','environmentAlerts',
- 'genetics','incidents','findings','treatments','mipeInterventions','mipeCommandReceipts','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
+ 'genetics','incidents','findings','treatments','mipeInterventions','mipeCommandReceipts','inventoryCommandReceipts','plantEvents','grandmotherPlants','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','phaseTargets','lotEvents','cultivationTasks','propagationBanks','mapElements',
  'growingMediumProducts','growingMediumFormulas','growingMediumBatches','growingMediumAssignments','growingMediumReusePolicies','growingMediumReuseCycles','growingMediumPurchaseRequirements',
  ...CANONICAL_IRRIGATION_COLLECTIONS,
  'products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','customers','mirfePrograms','mirfeMonitoring','mirfeReinforcements','waterAnalyses','nutrientProducts','nutrientObjectives','irrigationPlans','formulations','tankPreparations','workOrders','irrigationApplications','irrigationCorrections','irrigationHistory',
  'productionBatches','dryingBatches','trimmingBatches','selectionBatches','packingBatches','productionFlows','costEntries'
 ]
 
-const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts'])
+const APPEND_ONLY_SYNC_COLLECTIONS=new Set(['mipeCommandReceipts','inventoryCommandReceipts','inventoryMovements'])
+const INVENTORY_SYNC_COLLECTIONS=new Set(INVENTORY_SCOPED_COLLECTIONS)
 const now=()=>new Date().toISOString()
 const uid=()=>crypto.randomUUID()
 const list=value=>Array.isArray(value)?value:[]
@@ -39,6 +44,32 @@ function assertRemoteReceiptIntegrity(state,records,tenant){
   if(existing.length>1)throw new Error('El estado local contiene receipts MIPE duplicados antes de hidratar sync')
   if(existing.length===1&&text(existing[0].signature)!==validated.signature)throw new Error('El receipt MIPE remoto contradice la firma durable local')
  }
+ const inventoryRows=list(records).filter(item=>item?.collection==='inventoryCommandReceipts')
+ if(inventoryRows.some(row=>row.deletedAt))throw new Error('Los receipts de inventario son append-only y no admiten tombstones remotos')
+ const remoteReceipts=inventoryRows.map(row=>assertInventoryCommandReceipt(row.payload,{organizationId:tenant,commandId:text(row.recordId)}))
+ mergeInventoryCommandReceipts(list(state?.inventoryCommandReceipts),remoteReceipts,tenant)
+}
+function assertAppendOnlyRemoteIntegrity(records){
+ const forbidden=list(records).find(row=>APPEND_ONLY_SYNC_COLLECTIONS.has(row?.collection)&&row?.deletedAt)
+ if(forbidden)throw new Error(`${forbidden.collection} es append-only y no admite tombstones remotos`)
+}
+function assertInventorySyncOwnership(change,tenant){
+ if(!INVENTORY_SYNC_COLLECTIONS.has(change?.collection))return
+ const evidence=change?.operation==='delete'?change?.previousPayload:change?.payload
+ const owner=recordOrganizationId(evidence)
+ if(!owner)throw new Error(`${change.collection} legacy sin organizationId debe migrarse antes de sync`)
+ if(owner!==tenant)throw new Error('No se puede sincronizar un registro de inventario perteneciente a otra empresa')
+}
+function assertNoAmbiguousLegacyInventoryIdentity(state,row,tenant){
+ if(!INVENTORY_SYNC_COLLECTIONS.has(row?.collection))return
+ const id=text(row?.recordId)
+ const legacy=list(state?.[row.collection]).filter(item=>recordId(item)===id&&!recordOrganizationId(item))
+ if(legacy.length)throw new Error(`${row.collection} contiene un homónimo legacy sin organizationId; debe migrarse antes de hidratar sync`)
+ if(!row?.deletedAt){
+  const owner=recordOrganizationId(row?.payload)
+  if(!owner)throw new Error(`${row.collection} remoto requiere organizationId explícito`)
+  if(owner!==tenant)throw new Error('No se puede hidratar inventario de otra empresa')
+ }
 }
 
 export function collectionChanges(prev,next,collections=SYNCABLE_COLLECTIONS){
@@ -62,6 +93,8 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
  const tenant=text(companyId)
  const forbiddenDelete=list(changes).find(change=>APPEND_ONLY_SYNC_COLLECTIONS.has(change.collection)&&change.operation==='delete')
  if(forbiddenDelete)throw new Error(`${forbiddenDelete.collection} es append-only y no admite delete de sync`)
+ for(const change of list(changes))assertInventorySyncOwnership(change,tenant)
+ assertInventoryDeleteChanges(state,changes,{organizationId:tenant})
  const queued=changes.map(change=>{
   const declaredOwner=text(change.organizationId)
   if(declaredOwner&&declaredOwner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
@@ -72,6 +105,7 @@ export function enqueueChanges(state,changes,{companyId,userId,deviceId}={}){
    const owner=recordOrganizationId(payload)
    if(owner&&owner!==tenant)throw new Error('No se puede sincronizar un registro perteneciente a otra empresa')
    if(change.collection==='mipeCommandReceipts')assertCommandReceiptPayload(payload,change.recordId,tenant)
+   if(change.collection==='inventoryCommandReceipts')payload=assertInventoryCommandReceipt(payload,{organizationId:tenant,commandId:change.recordId})
    payload={...payload,id:recordId(payload),_organizationId:tenant}
   }
   return{
@@ -109,17 +143,23 @@ export function applyRemoteRecords(state,records=[],{companyId=state.currentCont
  if(foreign.length)throw new Error('No se pueden aplicar registros remotos de otra empresa')
  const foreignPayload=list(records).find(row=>{const owner=recordOrganizationId(row.payload);return owner&&owner!==tenant})
  if(foreignPayload)throw new Error('No se puede hidratar un payload perteneciente a otra empresa')
+ for(const row of list(records))assertNoAmbiguousLegacyInventoryIdentity(state,row,tenant)
+ assertAppendOnlyRemoteIntegrity(records)
  assertRemoteReceiptIntegrity(state,records,tenant)
+ assertInventoryHydrationRows(state,records,{organizationId:tenant})
+ assertInventoryDeleteRows(state,records,{organizationId:tenant})
  const next={...state}
  for(const row of records){
   if(!SYNCABLE_COLLECTIONS.includes(row.collection))continue
   const items=list(next[row.collection]),remoteId=text(row.recordId)
   if(!remoteId)throw new Error('El registro remoto no tiene identidad estable')
-  const receiptCollection=row.collection==='mipeCommandReceipts'
-  const isTenantRecord=item=>recordId(item)===remoteId&&(receiptCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
+  const receiptCollection=row.collection==='mipeCommandReceipts'||row.collection==='inventoryCommandReceipts'
+  const inventoryCollection=INVENTORY_SYNC_COLLECTIONS.has(row.collection)
+  const isTenantRecord=item=>recordId(item)===remoteId&&(receiptCollection||inventoryCollection?recordOrganizationId(item)===tenant:(!recordOrganizationId(item)||recordOrganizationId(item)===tenant))
   if(row.deletedAt){next[row.collection]=items.filter(item=>!isTenantRecord(item));continue}
   let record={...(row.payload||{}),id:row.recordId,_organizationId:tenant,_syncVersion:Number(row.version||0),_updatedAt:row.updatedAt||''}
-  if(receiptCollection)record={...record,commandId:row.recordId,organizationId:tenant}
+  if(row.collection==='mipeCommandReceipts')record={...record,commandId:row.recordId,organizationId:tenant}
+  if(row.collection==='inventoryCommandReceipts')record=assertInventoryCommandReceipt({...record,commandId:row.recordId,organizationId:tenant},{organizationId:tenant,commandId:row.recordId})
   const index=items.findIndex(isTenantRecord)
   next[row.collection]=index<0?[...items,record]:items.map((item,i)=>i===index?record:item)
  }

@@ -3,29 +3,27 @@ import Card from'../components/Card'
 import Field from'../components/Field'
 import PageHeader from'../components/PageHeader'
 import{FormActions,ValidationMessage}from'../components/forms/FormKit.jsx'
-import{useStore}from'../services/store'
-import{createInventoryLot}from'../domain/inventory'
+import{INVENTORY_OPERATIONS}from'../services/inventoryCommand.js'
+import{useInventoryCommandStore}from'../services/inventoryCommandStore.js'
 
 const emptyProduct={name:'',category:'MIPE',activeIngredient:'',manufacturer:'',registrationNumber:'',unit:'mL',doseMin:0,doseMax:0,doseUnit:'mL/L',reentryHours:0,withdrawalDays:0,cost:0,validFrom:'',validUntil:'',technicalRevision:1}
 const executableMipeCategory=category=>['MIPE','Biológico','Adyuvante'].includes(category)
 const expectedInventoryUnit=doseUnit=>String(doseUnit).startsWith('mL')?'mL':String(doseUnit).startsWith('g')?'g':''
 
 export default function InventoryPage(){
- const{state,update}=useStore()
+ const{state:inventory,execute}=useInventoryCommandStore()
  const[p,setP]=useState(emptyProduct)
- const[lot,setLot]=useState({productId:state.products[0]?.id||'',siteId:state.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
- function addP(e){
+ const[lot,setLot]=useState({productId:inventory.products[0]?.id||'',siteId:inventory.sites[0]?.id||'',quantity:0,lotNumber:'',expiryDate:'',minimum:0,responsible:''})
+ async function addP(e){
   e.preventDefault();if(!p.name.trim())return alert('El nombre comercial es obligatorio.')
   if(Number(p.doseMin)<0||Number(p.doseMax)<0||Number(p.cost)<0||Number(p.reentryHours)<0||Number(p.withdrawalDays)<0)return alert('Dosis, restricciones y costos no pueden ser negativos.')
   if(Number(p.doseMax)>0&&Number(p.doseMin)>Number(p.doseMax))return alert('La dosis mínima no puede superar la máxima.')
   if(!Number.isSafeInteger(Number(p.technicalRevision))||Number(p.technicalRevision)<1)return alert('La revisión técnica debe ser un entero positivo.')
   if(p.validFrom&&p.validUntil&&Date.parse(p.validUntil)<Date.parse(p.validFrom))return alert('La vigencia final no puede ser anterior a la inicial.')
   if(executableMipeCategory(p.category)){const expected=expectedInventoryUnit(p.doseUnit);if(!expected||p.unit!==expected)return alert(`La unidad de inventario debe ser ${expected||'compatible'} para ${p.doseUnit}.`)}
-  const organizationId=state.currentContext?.companyId||'';if(!organizationId)return alert('Selecciona una empresa antes de crear el insumo.')
-  const id=crypto.randomUUID(),record={id,organizationId,...p,name:p.name.trim(),active:true}
-  update(s=>({...s,products:[...s.products,record]}),{module:'Inventario',action:'Crear insumo',detail:p.name.trim()});setLot(current=>({...current,productId:id}));setP(emptyProduct)
+  try{const result=await execute({operation:INVENTORY_OPERATIONS.CREATE_PRODUCT,input:{...p,name:p.name.trim(),active:true}});setLot(current=>({...current,productId:result.aggregateId}));setP(emptyProduct)}catch(error){alert(error.message)}
  }
- function addL(e){e.preventDefault();try{update(s=>createInventoryLot(s,lot),{module:'Inventario',action:'Crear lote de inventario',detail:lot.lotNumber});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
+ async function addL(e){e.preventDefault();try{await execute({operation:INVENTORY_OPERATIONS.CREATE_LOT,input:lot});setLot(current=>({...current,quantity:0,lotNumber:'',expiryDate:'',minimum:0}))}catch(error){alert(error.message)}}
  return <>
   <PageHeader title="Inventario MIPE / MIRFE" subtitle="Insumos, perfiles técnicos, lotes, vencimientos y existencias respaldadas por kardex."/>
   <ValidationMessage type="info">Los formularios están separados para permitir trabajo simultáneo sin bloquear operaciones distintas.</ValidationMessage>
@@ -50,8 +48,8 @@ export default function InventoryPage(){
     <FormActions><button className="button primary">Guardar insumo</button></FormActions>
    </form></Card>
    <Card title="Registrar lote"><form id="inventory-lot-new" data-module="Nuevo lote de inventario" data-record-id="new-lot" className="form-grid one" onSubmit={addL}>
-    <Field label="Producto"><select required value={lot.productId} onChange={e=>setLot({...lot,productId:e.target.value})}><option value="">Selecciona</option>{state.products.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></Field>
-    <Field label="Sede"><select required value={lot.siteId} onChange={e=>setLot({...lot,siteId:e.target.value})}><option value="">Selecciona</option>{state.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
+    <Field label="Producto"><select required value={lot.productId} onChange={e=>setLot({...lot,productId:e.target.value})}><option value="">Selecciona</option>{inventory.products.map(product=><option key={product.id} value={product.id}>{product.name}</option>)}</select></Field>
+    <Field label="Sede"><select required value={lot.siteId} onChange={e=>setLot({...lot,siteId:e.target.value})}><option value="">Selecciona</option>{inventory.sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></Field>
     <Field label="Cantidad inicial"><input min="0" type="number" step=".01" value={lot.quantity} onChange={e=>setLot({...lot,quantity:+e.target.value})}/></Field>
     <Field label="Lote"><input required value={lot.lotNumber} onChange={e=>setLot({...lot,lotNumber:e.target.value})}/></Field>
     <Field label="Vencimiento"><input type="date" value={lot.expiryDate} onChange={e=>setLot({...lot,expiryDate:e.target.value})}/></Field>
@@ -60,6 +58,6 @@ export default function InventoryPage(){
     <FormActions><button className="button primary">Guardar lote y movimiento inicial</button></FormActions>
    </form></Card>
   </div>
-  <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{state.inventoryLots.map(l=>{const product=state.products.find(x=>x.id===l.productId),site=state.sites.find(x=>x.id===l.siteId);return <tr key={l.id}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
+  <Card title="Existencias"><div className="table-scroll"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Sede</th><th>Existencia</th><th>Mínimo</th><th>Lote</th><th>Vence</th><th>Estado</th></tr></thead><tbody>{inventory.inventoryLots.map(l=>{const product=inventory.products.find(x=>x.id===l.productId),site=inventory.sites.find(x=>x.id===l.siteId);return <tr key={`${l.organizationId}:${l.id}`}><td>{product?.name}</td><td>{product?.category}</td><td>{site?.name}</td><td>{l.quantity} {product?.unit}</td><td>{l.minimum}</td><td>{l.lotNumber||'—'}</td><td>{l.expiryDate||'—'}</td><td className={l.quantity<=l.minimum?'warn':'ok'}>{l.quantity<=l.minimum?'COMPRAR':'OK'}</td></tr>})}</tbody></table></div></Card>
  </>
 }
