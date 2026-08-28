@@ -2,6 +2,7 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{readFile}from'node:fs/promises'
 import{PERMISSIONS}from'../src/domain/accessControl.js'
+import{operationalContextOptions}from'../src/domain/operationalContext.js'
 import{ROLE_PERMISSIONS}from'../src/services/permissions.js'
 import{inventoryUiAccess,scopeInventoryUiState}from'../src/services/inventoryUiAccess.js'
 
@@ -13,6 +14,7 @@ const baseState=({permissions=['view_inventory'],siteId='s1',membershipSites=['s
  roles:[{id:'r1',permissions}],
  memberships:[{id:'m1',userId:'u1',companyId:org,roleId:'r1',siteIds:membershipSites,status:'active'}],
  sites:[{id:'s1',companyId:org,name:'Allowed'},{id:'s2',companyId:org,name:'Foreign site'}],
+ houses:[],beds:[],plantPositions:[],genetics:[],
  products:[{id:'p1',organizationId:org,name:'Product'}],
  inventoryLots:[
   {id:'l1',organizationId:org,productId:'p1',siteId:'s1',quantity:10},
@@ -41,6 +43,7 @@ test('site-scoped membership sees only Lot and Movement evidence from the active
  assert.deepEqual(scoped.inventoryLots.map(x=>x.id),['l1'])
  assert.deepEqual(scoped.inventoryMovements.map(x=>x.id),['mv1'])
  assert.deepEqual(scoped.products.map(x=>x.id),['p1'])
+ assert.deepEqual(operationalContextOptions(state,state.currentContext).sites.map(x=>x.id),['s1'])
 })
 
 test('membership for another site cannot read inventory through an unauthorized active context',()=>{
@@ -56,6 +59,16 @@ test('membership for another site cannot read inventory through an unauthorized 
  assert.deepEqual(scoped.sites,[])
 })
 
+test('ambiguous active sessions fail closed for Inventory UI data',()=>{
+ const state=baseState()
+ state.users.push({id:'u2',remote:true,active:true,activeSession:true})
+ state.memberships.push({id:'m2',userId:'u2',companyId:org,roleId:'r1',siteIds:['s1'],status:'active'})
+ const access=inventoryUiAccess(state)
+ assert.equal(access.canView,false)
+ assert.equal(access.canManage,false)
+ assert.deepEqual(scopeInventoryUiState(state).inventoryLots,[])
+})
+
 test('site manage permission can operate Lots and Movements but cannot create organization-wide Product',()=>{
  const access=inventoryUiAccess(baseState({permissions:['view_inventory','manage_inventory'],membershipSites:['s1']}))
  assert.equal(access.canManage,true)
@@ -67,6 +80,16 @@ test('organization-wide manage permission can create Product and operate the act
  assert.equal(access.canView,true)
  assert.equal(access.canManage,true)
  assert.equal(access.canManageProduct,true)
+})
+
+test('Inventory routes and navigation both require view_inventory',async()=>{
+ const app=await readFile(new URL('../src/App.jsx',import.meta.url),'utf8')
+ const shell=await readFile(new URL('../src/components/AppShell.jsx',import.meta.url),'utf8')
+ assert.match(app,/path="\/inventory\/movements" element={<Guard permission="view_inventory"/)
+ assert.match(app,/path="\/inventory" element={<Guard permission="view_inventory"/)
+ assert.match(shell,/inventoryPath\(path\)\|\|hasPermission\(state,'view_inventory'\)/)
+ assert.match(shell,/\/irrigation\/orders/)
+ assert.doesNotMatch(shell,/\/irigation\/orders/)
 })
 
 test('Inventory pages consume explicit access authority rather than exposing unconditional write forms',async()=>{
