@@ -12,7 +12,7 @@ export const SYSTEM_ROLES={
 export const PERMISSIONS=[
  'manage_organization','manage_users','manage_settings','manage_quality',
  'view_operations','manage_operations','manage_cultivation','manage_mipe',
- 'manage_mirfe','manage_inventory','manage_production','manage_sales',
+ 'manage_mirfe','view_inventory','manage_inventory','manage_production','manage_sales',
  'view_costs','manage_costs','view_audit'
 ]
 
