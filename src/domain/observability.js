@@ -35,7 +35,7 @@ function scoped(state,collection,organizationId){
  return list(state?.[collection]).flatMap(record=>resolveObservabilityOwner(state,collection,record)===organizationId?[record.organizationId?record:{...record,organizationId}]:[])
 }
 
-const OBSERVABILITY_COLLECTIONS=['sites','houses','beds','plantPositions','auditLog','operationalLedgerEntries','mirfeMonitoring','findings','motherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','operationalAreas','infrastructureElements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','treatments','products','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','waterAnalyses','nutrientObjectives','formulations','tankPreparations','workOrders','irrigationApplications','productionFlows','costEntries']
+const OBSERVABILITY_COLLECTIONS=['sites','houses','beds','plantPositions','auditLog','operationalLedgerEntries','mirfeMonitoring','findings','motherPlants','grandmotherPlants','propagationBatches','propagationUnits','phaseTransitions','cultivationCycles','operationalAreas','infrastructureElements','infrastructureAssets','assetMaintenances','environmentalReadings','genetics','incidents','treatments','products','nutrientProducts','inventoryLots','inventoryMovements','finishedGoods','finishedGoodsMovements','sales','waterAnalyses','nutrientObjectives','formulations','tankPreparations','workOrders','irrigationApplications','productionFlows','costEntries']
 
 export function observabilityViewForActiveOrganization(state){
  const organizationId=activeOrganizationId(state)
