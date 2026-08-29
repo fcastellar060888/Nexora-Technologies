@@ -1,67 +1,15 @@
 import test from'node:test'
 import assert from'node:assert/strict'
 import{buildMigrationManifest,migrationRows}from'../src/services/initialMigration.js'
-import{groupRemoteRecords,hydrateAuthoritativeState}from'../src/services/remoteBootstrap.js'
+import{groupRemoteRecords,hydrateAuthoritativeState,operationalCollections}from'../src/services/remoteBootstrap.js'
 
-const multiState=()=>({
- schemaVersion:16,
- currentContext:{companyId:'org-a'},
- companies:[{id:'org-a',name:'A'},{id:'org-b',name:'B'}],
- sites:[{id:'site-a',organizationId:'org-a'},{id:'site-b',organizationId:'org-b'}],
- products:[
-  {id:'product-ownerless',name:'Legacy ambiguo'},
-  {id:'product-transport-only',_organizationId:'org-a',name:'Envelope no es ownership'},
-  {id:'product-a',organizationId:'org-a',name:'Producto A'},
-  {id:'product-b',organizationId:'org-b',name:'Producto B'}
- ],
- users:[{id:'user-local',name:'Admin local'}],roles:[{id:'role-local',name:'Admin'}],memberships:[],
- syncQueue:[],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],auditLog:[],userSessions:[]
-})
+const multiState=()=>({schemaVersion:16,currentContext:{companyId:'org-a'},companies:[{id:'org-a',name:'A'},{id:'org-b',name:'B'}],sites:[{id:'site-a',organizationId:'org-a'},{id:'site-b',organizationId:'org-b'}],products:[{id:'product-ownerless',name:'Legacy ambiguo'},{id:'product-transport-only',_organizationId:'org-a',name:'Envelope no es ownership'},{id:'product-a',organizationId:'org-a',name:'Producto A'},{id:'product-b',organizationId:'org-b',name:'Producto B'}],users:[{id:'user-local',name:'Admin local'}],roles:[{id:'role-local',name:'Admin'}],memberships:[],syncQueue:[],syncConflicts:[],syncHealthEvents:[],syncDeviceHealth:[],auditLog:[],userSessions:[]})
 
-test('M4.5 F001: multi-company initial migration excludes local-only, foreign and transport-only records and fails closed on ambiguous ownership',()=>{
- const manifest=buildMigrationManifest(multiState(),{companyId:'org-a',migrationId:'migration-a'})
- assert.equal(manifest.validation.valid,false)
- assert.match(manifest.validation.errors.join(' '),/product-ownerless|product-transport-only|ownership|empresa|organización|ownerless|ambigu/i)
- assert.equal(manifest.collections.some(group=>['companies','users','roles','memberships'].includes(group.collection)),false)
- const products=manifest.collections.find(group=>group.collection==='products')
- assert.deepEqual(products?.records.map(record=>record.id),['product-a'])
-})
-
-test('M4.5 F001: single-company ownerless operational data can be materialized with first-class ownership',()=>{
- const state={...multiState(),companies:[{id:'org-a',name:'A'}],products:[{id:'product-legacy',name:'Legacy único'}],users:[],roles:[]}
- const manifest=buildMigrationManifest(state,{companyId:'org-a',migrationId:'migration-single'})
- assert.equal(manifest.validation.valid,true)
- const row=migrationRows(manifest).find(item=>item.record_id==='product-legacy')
- assert.equal(row.organization_id,'org-a')
- assert.equal(row.payload.organizationId,'org-a')
-})
-
-test('M4.5 F002: bootstrap rejects a payload whose domain owner contradicts the row organization',()=>{
- const rows=[{organization_id:'org-a',collection:'products',record_id:'product-x',payload:{id:'product-x',organizationId:'org-b'},version:1,updated_at:'2026-08-18T12:00:00.000Z'}]
- assert.throws(()=>groupRemoteRecords(rows,{companyId:'org-a'}),/payload|otra empresa|ownership|contrad|organización/i)
-})
-
-test('M4.5 F002: bootstrap materializes row organization as first-class payload ownership',()=>{
- const rows=[{organization_id:'org-a',collection:'products',record_id:'product-a',payload:{id:'product-a',name:'A'},version:1,updated_at:'2026-08-18T12:00:00.000Z'}]
- const grouped=groupRemoteRecords(rows,{companyId:'org-a'})
- assert.equal(grouped.products[0].organizationId,'org-a')
- assert.equal(grouped.products[0]._organizationId,'org-a')
-})
-
-test('M4.5 F003: authoritative hydration preserves ambiguous ownerless local records without adopting or deleting them',()=>{
- const local={...multiState(),products:[{id:'legacy-ownerless',name:'No adoptar'}]}
- const hydrated=hydrateAuthoritativeState(local,[],{companyId:'org-a',initialState:local,hydratedAt:'2026-08-18T12:00:00.000Z'})
- const legacy=hydrated.products.find(item=>item.id==='legacy-ownerless')
- assert.ok(legacy)
- assert.equal(legacy.organizationId,undefined)
- assert.equal(legacy._organizationId,undefined)
-})
-
-test('M4.5 F003: ownerless pending mutations are not assigned to whichever tenant is currently hydrated',()=>{
- const local={...multiState(),products:[],syncQueue:[{id:'mutation-ownerless',collection:'products',recordId:'pending-product',operation:'upsert',payload:{id:'pending-product',name:'No adoptar'},status:'pending'}]}
- const hydrated=hydrateAuthoritativeState(local,[],{companyId:'org-a',initialState:local,hydratedAt:'2026-08-18T12:00:00.000Z'})
- assert.equal(hydrated.products.some(item=>item.id==='pending-product'),false)
- const queued=hydrated.syncQueue.find(item=>item.id==='mutation-ownerless')
- assert.ok(queued)
- assert.equal(queued.companyId,undefined)
-})
+test('M4.5 F001: multi-company initial migration excludes local-only, foreign and transport-only records and fails closed on ambiguous ownership',()=>{const manifest=buildMigrationManifest(multiState(),{companyId:'org-a',migrationId:'migration-a'});assert.equal(manifest.validation.valid,false);assert.match(manifest.validation.errors.join(' '),/product-ownerless|product-transport-only|ownership|empresa|organización|ownerless|ambigu/i);assert.equal(manifest.collections.some(group=>['companies','users','roles','memberships'].includes(group.collection)),false);const products=manifest.collections.find(group=>group.collection==='products');assert.deepEqual(products?.records.map(record=>record.id),['product-a'])})
+test('M4.5 F001: single-company ownerless operational data can be materialized with first-class ownership',()=>{const state={...multiState(),companies:[{id:'org-a',name:'A'}],products:[{id:'product-legacy',name:'Legacy único'}],users:[],roles:[]};const manifest=buildMigrationManifest(state,{companyId:'org-a',migrationId:'migration-single'});assert.equal(manifest.validation.valid,true);const row=migrationRows(manifest).find(item=>item.record_id==='product-legacy');assert.equal(row.organization_id,'org-a');assert.equal(row.payload.organizationId,'org-a')})
+test('M4.5 F002: bootstrap rejects a payload whose domain owner contradicts the row organization',()=>{const rows=[{organization_id:'org-a',collection:'products',record_id:'product-x',payload:{id:'product-x',organizationId:'org-b'},version:1,updated_at:'2026-08-18T12:00:00.000Z'}];assert.throws(()=>groupRemoteRecords(rows,{companyId:'org-a'}),/payload|otra empresa|ownership|contrad|organización/i)})
+test('M4.5 F002: bootstrap materializes row organization as first-class payload ownership',()=>{const rows=[{organization_id:'org-a',collection:'products',record_id:'product-a',payload:{id:'product-a',name:'A'},version:1,updated_at:'2026-08-18T12:00:00.000Z'}];const grouped=groupRemoteRecords(rows,{companyId:'org-a'});assert.equal(grouped.products[0].organizationId,'org-a');assert.equal(grouped.products[0]._organizationId,'org-a')})
+test('M4.5 F003: authoritative hydration preserves ambiguous ownerless local records without adopting or deleting them',()=>{const local={...multiState(),products:[{id:'legacy-ownerless',name:'No adoptar'}]};const hydrated=hydrateAuthoritativeState(local,[],{companyId:'org-a',initialState:local,hydratedAt:'2026-08-18T12:00:00.000Z'});const legacy=hydrated.products.find(item=>item.id==='legacy-ownerless');assert.ok(legacy);assert.equal(legacy.organizationId,undefined);assert.equal(legacy._organizationId,undefined)})
+test('M4.5 F003: ownerless pending mutations are not assigned to whichever tenant is currently hydrated',()=>{const local={...multiState(),products:[],syncQueue:[{id:'mutation-ownerless',collection:'products',recordId:'pending-product',operation:'upsert',payload:{id:'pending-product',name:'No adoptar'},status:'pending'}]};const hydrated=hydrateAuthoritativeState(local,[],{companyId:'org-a',initialState:local,hydratedAt:'2026-08-18T12:00:00.000Z'});assert.equal(hydrated.products.some(item=>item.id==='pending-product'),false);const queued=hydrated.syncQueue.find(item=>item.id==='mutation-ownerless');assert.ok(queued);assert.equal(queued.companyId,undefined)})
+test('M4.5 F004: authoritative hydration only traverses collections in the canonical sync contract',()=>{const state={...multiState(),products:[],evilOperationalArray:[{id:'x',organizationId:'org-a'}],localDrafts:[{id:'draft',organizationId:'org-a'}]};const collections=operationalCollections(state);assert.equal(collections.includes('products'),true);assert.equal(collections.includes('evilOperationalArray'),false);assert.equal(collections.includes('localDrafts'),false)})
+test('M4.5 F004: remote bootstrap fails closed on a server row outside the canonical sync contract',()=>{const rows=[{organization_id:'org-a',collection:'users',record_id:'user-injected',payload:{id:'user-injected',organizationId:'org-a'},version:1,updated_at:'2026-08-29T11:00:00.000Z'}];assert.throws(()=>groupRemoteRecords(rows,{companyId:'org-a'}),/fuera del contrato sync|colección/i)})
