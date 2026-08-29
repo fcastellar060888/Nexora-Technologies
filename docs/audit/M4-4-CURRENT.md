@@ -13,4 +13,14 @@ Remediación: `src/domain/finance.js` introduce una frontera tenant-aware para m
 
 Evidence: `tests/finance-tenancy.test.js` cubre mutación exacta de homónimos, spoofing/duplicados intra-tenant, legacy ownerless multiempresa y contrato estático de UI.
 
-**Estado:** F001 Ready for Quality — no Verified. F002–F006 pendientes de reauditoría individual.
+**Estado:** F001 Ready for Quality — no Verified.
+
+## F002 — Critical — Ready for Quality
+
+Defecto confirmado: `CostsPage` escribía `costEntries` directamente y calculaba costo acumulado y gramos empacados sobre colecciones globales. Un costo o `packingBatch` homónimo/foreign podía contaminar KPIs financieros del tenant activo; además el formulario aceptaba sedes sin una autoridad financiera que validara ownership.
+
+Remediación: `financialViewForActiveOrganization()` proyecta `costEntries` y `packingBatches` exclusivamente del tenant activo, con inferencia por sede solo cuando el ownership es inequívoco. `createCostEntry()` valida organización solicitada, sede tenant-scoped, importe positivo y persiste `organizationId`/`siteId`. `CostsPage` dejó de leer/escribir arrays financieros globales y consume exclusivamente la autoridad canónica para KPIs y altas.
+
+Evidence: `tests/finance-tenancy.test.js` cubre exclusión de costos y masa foreign con IDs homónimos, spoofing de organización/sede, sellado del nuevo costo y contrato estático de UI contra acceso directo a `state.costEntries`/`state.packingBatches`.
+
+**Estado:** F002 Ready for Quality — no Verified. F003–F006 pendientes de reauditoría individual.
