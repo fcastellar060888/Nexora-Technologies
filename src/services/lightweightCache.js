@@ -91,13 +91,14 @@ export function readLightweightCache(storage=localStorage){
  return{...identity,...(company.collections||{}),cacheMeta:{...(identity.cacheMeta||{}),source:'segmented-cache',loadedAt:new Date().toISOString(),companyId}}
 }
 
-export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttlMs=DEFAULT_TTL_MS}={}){
+export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttlMs=DEFAULT_TTL_MS,companyId=''}={}){
  const manifest=parse(storage.getItem(MANIFEST_KEY),{companies:[]})
  const retained=[]
  let removed=0
  for(const entry of list(manifest.companies)){
   const age=now-(Date.parse(entry.lastAccessedAt||entry.cachedAt)||0)
-  if(age>ttlMs){storage.removeItem(companyKey(entry.companyId));removed++}
+  const eligible=!companyId||entry.companyId===companyId
+  if(eligible&&age>ttlMs){storage.removeItem(companyKey(entry.companyId));removed++}
   else retained.push(entry)
  }
  const next={...manifest,companies:retained.slice(0,MAX_COMPANIES),lastCleanupAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString()}
@@ -105,10 +106,11 @@ export function cleanupLightweightCache(storage=localStorage,{now=Date.now(),ttl
  return{removed,manifest:next}
 }
 
-export function cacheDiagnostics(storage=localStorage){
+export function cacheDiagnostics(storage=localStorage,{companyId=''}={}){
  const manifest=parse(storage.getItem(MANIFEST_KEY),{companies:[]})
  const identityRaw=storage.getItem(IDENTITY_KEY)||''
- const companies=list(manifest.companies).map(entry=>({
+ const entries=companyId?list(manifest.companies).filter(entry=>entry.companyId===companyId):list(manifest.companies)
+ const companies=entries.map(entry=>({
   ...entry,
   actualSizeBytes:bytes(storage.getItem(companyKey(entry.companyId))||''),
   available:Boolean(storage.getItem(companyKey(entry.companyId)))
