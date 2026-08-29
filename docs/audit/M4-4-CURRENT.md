@@ -33,4 +33,19 @@ Remediación: `SalesPage` consume `financialViewForActiveOrganization(state)` pa
 
 Evidence: `tests/finance-tenancy.test.js` incorpora contrato estático contra `state.currencies` en Ventas y adversarial que verifica que la proyección excluye moneda foreign y legacy ambigua.
 
-**Estado:** F003 Ready for Quality — no Verified. F004–F006 pendientes de reauditoría individual.
+**Estado:** F003 Ready for Quality — no Verified.
+
+## F004 — High — Ready for Quality
+
+Defecto confirmado: `reserveFinishedGoods()` aceptaba `currency` y `exchangeRate` suministrados por el caller sin validar que la moneda existiera y perteneciera inequívocamente al tenant activo, estuviera habilitada o que la tasa congelada fuese estrictamente positiva. Esto permitía corromper `totalBase` mediante moneda foreign/ownerless/inactiva o tasa 0, negativa o no numérica.
+
+Remediación: `currencyForActiveOrganization()` expone un resolver financiero fail-closed; `reserveFinishedGoods()` resuelve la moneda contra esa autoridad, exige moneda activa, normaliza precio no negativo y tasa congelada positiva antes de persistir la reserva y sus totales.
+
+Evidence: `tests/sales-finance-integrity.test.js` cubre moneda tenant-scoped, rechazo foreign/legacy ambigua, tasa inválida e inactividad.
+
+**Estado:** F004 Ready for Quality — no Verified.
+
+## Pendientes
+
+- F005 — reauditoría confirma defecto real de sync financiero: `currencies` no está sincronizado y `costEntries` no exige ownership financiero de primer nivel. Pendiente de remediación en baseline actual.
+- F006 — reauditoría confirma defecto real de migración: `productionLedger` canónico todavía se normaliza como array y puede perder el ledger por fase. Pendiente de remediación en baseline actual.
