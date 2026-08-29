@@ -5,59 +5,43 @@
 - Rama: `audit/v3-m4-3-sales-current`
 - Base apilada: `audit/v3-m4-2-postharvest-current`
 - Base SHA: `134fc032458a7e44f38ac4e11237934fd8e6e056`
-- Superficie inicial: `src/domain/sales.js`, `src/pages/SalesPage.jsx`, `finishedGoods`, `sales`, `finishedGoodsMovements`.
+- Superficie: `src/domain/sales.js`, `src/pages/SalesPage.jsx`, `finishedGoods`, `sales`, `finishedGoodsMovements`.
 - Método: Audit → Evidence/Test → Fix → Re-Audit → Quality Gate → Close.
 - Ningún hallazgo será `Verified` sin GitHub Actions Quality con runner real y steps ejecutados.
 
 ## F001 — Critical — Ready for Quality
 
-**Reserva, despacho y cancelación comercial resolvían stock/venta por ID global y podían leer o mutar homónimos de otra empresa.**
+Reserva, despacho y cancelación resolvían stock/venta por ID global. Se corrigió con resolución tenant-aware, fail-closed ante ownership ambiguo/foreign, validación causal Sale ↔ FinishedGood, mutación por índice resuelto y tenancy persistida en Sale/movimientos. Evidencia: `tests/sales-tenancy.test.js`.
 
-### Evidencia de reauditoría
+## F002 — High — Ready for Quality
 
-En el baseline actual de M4.2, `src/domain/sales.js` todavía contenía:
+`SalesPage.jsx` consumía colecciones operacionales globales para KPIs, reservas, historial y joins de lote. Ahora consume `salesViewForActiveOrganization(state)` como frontera única tenant-scoped. Los adversariales introducen homónimos cross-tenant en stock, ventas, movimientos y lotes y verifican exclusión completa del tenant extranjero.
 
-- `stockOf(state,id)` con `state.finishedGoods.find(x => x.id === id)`;
-- mutación de `finishedGoods` mediante `map(x => x.id === stock.id ? ... : x)`;
-- resolución de `sales` por `find(x => x.id === input.saleId)`;
-- mutación de venta/stock por raw ID;
-- Sale y movimientos sin `organizationId`/`siteId` como autoridad persistida.
+## F003 — High — Ready for Quality
 
-El defecto permite que IDs homónimos entre empresas seleccionen o muten registros ajenos según el orden del array.
+### Defecto confirmado
+
+Los comandos comerciales no tenían replay durable. Repetir una reserva podía descontar stock nuevamente; despacho/cancelación repetidos dependían del estado terminal y fallaban, pero no podían reconocer de forma determinista un retry idéntico. `movementId` tampoco estaba protegido contra reutilización contradictoria dentro del tenant.
 
 ### Remediación
 
-`src/domain/sales.js` ahora:
-
-1. resuelve la empresa activa mediante `activeOrganizationId()`;
-2. resuelve stock y venta por ID + ownership tenant-aware;
-3. falla cerrado ante foreign-only, ownership ambiguo o duplicados dentro del tenant activo;
-4. rechaza `organizationId` o `siteId` contradictorios enviados por el comando;
-5. valida consistencia causal Sale ↔ FinishedGood;
-6. muta exclusivamente el índice exacto resuelto;
-7. persiste `organizationId` y `siteId` en Sale, FinishedGood materializado y movimientos;
-8. expone `salesViewForActiveOrganization()` como proyección tenant-scoped para la siguiente reauditoría de UI.
+- `movementId` funciona como receipt durable tenant-scoped para Reserva, Despacho y Liberación de reserva.
+- Un retry idéntico con el mismo `movementId`, tipo, `sourceId`, stock y delta de gramos retorna el estado sin nuevas mutaciones.
+- La reutilización del mismo `movementId` para un comando semánticamente contradictorio falla cerrado.
+- Reserva también protege `saleId` contra reutilización no respaldada por el receipt idéntico.
+- Despacho/cancelación resuelven primero Sale + FinishedGood tenant-aware y validan causalidad antes de aceptar replay.
 
 ### Evidence / adversariales
 
-- `tests/sales-tenancy.test.js`
-- Reserva modifica exactamente un stock homónimo del tenant activo.
-- Stock foreign-only y spoof de autoridad fallan cerrado.
-- Identidad duplicada same-tenant falla como ambigua.
-- Despacho resuelve venta+stock dentro del tenant activo y no toca homónimos extranjeros.
-- Cancelación libera únicamente la reserva del tenant activo.
-- Sale y movimientos conservan `organizationId` + `siteId`.
+`tests/sales-tenancy.test.js` verifica:
 
-**Estado:** Ready for Quality — no Verified.
+1. reserva idéntica no descuenta dos veces ni duplica Sale/movimiento;
+2. despacho idéntico no incrementa `soldGrams` dos veces;
+3. cancelación idéntica no libera stock dos veces;
+4. reutilización contradictoria de `movementId` falla cerrado.
 
-## F002 — High — Under investigation
-
-Reauditar `SalesPage.jsx`: selectores, KPIs, reservas, historial, monedas y joins de lote deben consumir proyecciones tenant-scoped y no colecciones globales.
-
-## F003 — High — Under investigation
-
-Reauditar idempotencia/replay de reserva-despacho-cancelación, carreras de stock y reutilización contradictoria de IDs de movimiento/venta. Requiere evidencia adversarial independiente.
+**Estado M4.3:** F001–F003 Ready for Quality — ninguno Verified.
 
 ## Quality
 
-F001 permanece `Ready for Quality` hasta obtener un GitHub Actions Quality con runner real y steps ejecutados. Un workflow abortado antes de asignar runner no constituye evidencia de certificación.
+El último Quality observado antes de F003 (`#2771`, HEAD `a30218758fa04a9b99a9b613a2be5e00ea3335a7`) terminó antes de ejecutar código: `steps: []`, `runner_id: 0`, `runner_name: ""`. No constituye evidencia de certificación. El HEAD posterior a F003 requiere un nuevo Quality con runner real y steps ejecutados.
