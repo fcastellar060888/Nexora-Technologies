@@ -23,4 +23,14 @@ Remediación: `financialViewForActiveOrganization()` proyecta `costEntries` y `p
 
 Evidence: `tests/finance-tenancy.test.js` cubre exclusión de costos y masa foreign con IDs homónimos, spoofing de organización/sede, sellado del nuevo costo y contrato estático de UI contra acceso directo a `state.costEntries`/`state.packingBatches`.
 
-**Estado:** F002 Ready for Quality — no Verified. F003–F006 pendientes de reauditoría individual.
+**Estado:** F002 Ready for Quality — no Verified.
+
+## F003 — High — Ready for Quality
+
+Defecto confirmado: aunque Monedas y Costos ya consumían la frontera financiera tenant-aware, `SalesPage` todavía resolvía y listaba monedas directamente desde `state.currencies`. Esto permitía que el selector comercial reintrodujera monedas homónimas foreign u ownerless ambiguas y dejaba una tercera superficie fuera del boundary financiero común.
+
+Remediación: `SalesPage` consume `financialViewForActiveOrganization(state)` para catálogo monetario, resolución de tasa y monedas activas. Ya no existe acceso directo a `state.currencies`; las opciones usan identidad tenant-aware y el stock seleccionado sólo puede resolver tasa contra la proyección financiera de la empresa activa.
+
+Evidence: `tests/finance-tenancy.test.js` incorpora contrato estático contra `state.currencies` en Ventas y adversarial que verifica que la proyección excluye moneda foreign y legacy ambigua.
+
+**Estado:** F003 Ready for Quality — no Verified. F004–F006 pendientes de reauditoría individual.
