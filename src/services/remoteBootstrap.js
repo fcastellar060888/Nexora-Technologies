@@ -41,8 +41,17 @@ export function groupRemoteRecords(rows=[],{companyId=''}={}){
 function replaceCompanyPartition(existing,remote,companyId){return[...list(existing).filter(record=>recordOrganizationId(record)!==companyId),...list(remote)]}
 function upsert(collection,record){const id=recordKey(record);if(!recordId(record))return collection;const index=collection.findIndex(candidate=>recordKey(candidate)===id);if(index<0)return[...collection,record];return collection.map((candidate,position)=>position===index?record:candidate)}
 export function overlayConcurrentChanges(initialState,currentState,base,{companyId=currentState?.currentContext?.companyId||''}={}){
+ const tenant=text(companyId);if(!tenant)return base
  const next={...base},collections=new Set([...operationalCollections(initialState),...operationalCollections(currentState)])
- for(const collection of collections){const initial=list(initialState?.[collection]),current=list(currentState?.[collection]),initialById=new Map(initial.map(record=>[recordKey(record),record]).filter(([id])=>!id.endsWith(':'))),currentById=new Map(current.map(record=>[recordKey(record),record]).filter(([id])=>!id.endsWith(':')));let merged=list(next[collection]);for(const[id,record]of currentById){const previous=initialById.get(id);if(!previous||serialize(previous)!==serialize(record))merged=upsert(merged,record)}for(const id of initialById.keys())if(!currentById.has(id))merged=merged.filter(record=>recordKey(record)!==id);next[collection]=merged}
+ for(const collection of collections){
+  const initial=list(initialState?.[collection]).filter(record=>domainOrganizationId(record)===tenant)
+  const current=list(currentState?.[collection]).filter(record=>domainOrganizationId(record)===tenant)
+  const initialById=new Map(initial.map(record=>[recordKey(record),record]).filter(([id])=>!id.endsWith(':'))),currentById=new Map(current.map(record=>[recordKey(record),record]).filter(([id])=>!id.endsWith(':')))
+  let merged=list(next[collection])
+  for(const[id,record]of currentById){const previous=initialById.get(id);if(!previous||serialize(previous)!==serialize(record))merged=upsert(merged,record)}
+  for(const id of initialById.keys())if(!currentById.has(id))merged=merged.filter(record=>recordKey(record)!==id)
+  next[collection]=merged
+ }
  return next
 }
 export function overlayPendingMutations(state,base){
