@@ -3,9 +3,11 @@ import Card from'../components/Card'
 import PageHeader from'../components/PageHeader'
 import{useStore}from'../services/store'
 import{lotTiming,renewalTiming}from'../domain/lifecycle'
+import{diagnosticStateForActiveOrganization}from'../domain/observability.js'
 
 export default function DashboardPage(){
- const{state}=useStore()
+ const{state:rawState}=useStore()
+ const state=diagnosticStateForActiveOrganization(rawState)
  const nav=useNavigate()
  const lots=state.propagationBatches
  const grandDue=state.grandmotherPlants.filter(x=>renewalTiming(x).remaining<=Number(x.alertDays||30))
