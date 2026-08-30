@@ -10,8 +10,10 @@ import{cleanupLegacySeed}from'./legacySeedCleanup.js'
 import{quarantineLegacyInlineDocuments}from'./legacyInlineDocumentMigration.js'
 
 let lastObservedAuditId=''
-let persistenceRuntime=createPersistenceRuntime()
+const persistenceRuntimes=new Map()
 const persistenceListeners=new Set()
+const persistenceKey=value=>String(value||'__unscoped__')
+const organizationIdForState=state=>String(state?.currentContext?.companyId||'')
 const migratePersistedState=value=>cleanupLegacySeed(migrateMipePersistenceState(migrateMaterialPlantIdentity(migrateState(value))))
 const normalizeState=value=>{const migrated=migratePersistedState(value);return{...migrated,currentContext:normalizeOperationalContext(migrated,migrated.currentContext)}}
 const preparePersistedState=value=>normalizeState(quarantineLegacyInlineDocuments(value))
@@ -20,13 +22,17 @@ function cloneInitialState(){
  return preparePersistedState(structuredClone(initialState))
 }
 
-function publishPersistenceResult(result){
- persistenceRuntime=recordPersistenceResult(persistenceRuntime,result)
+function publishPersistenceResult(result,organizationId=''){
+ const key=persistenceKey(organizationId)
+ const current=persistenceRuntimes.get(key)||createPersistenceRuntime()
+ persistenceRuntimes.set(key,recordPersistenceResult(current,result))
  persistenceListeners.forEach(listener=>{try{listener()}catch(error){console.error('Falló un observador de persistencia.',error)}})
  return result
 }
 
-export function getPersistenceRuntime(){return persistenceRuntime}
+export function getPersistenceRuntime(organizationId=''){
+ return persistenceRuntimes.get(persistenceKey(organizationId))||createPersistenceRuntime()
+}
 export function subscribePersistenceRuntime(listener){
  if(typeof listener!=='function')throw new Error('El observador de persistencia debe ser una función')
  persistenceListeners.add(listener)
@@ -83,14 +89,15 @@ export function loadState(){
 }
 
 export function saveState(state){
+ const organizationId=organizationIdForState(state)
  try{
   const normalized=preparePersistedState(state)
   const result=writeLightweightCache({...normalized,schemaVersion:CURRENT_SCHEMA_VERSION,persistedAt:new Date().toISOString()})
   emitOperationalChange(normalized)
-  return publishPersistenceResult({ok:true,...result})
+  return publishPersistenceResult({ok:true,...result},organizationId)
  }catch(error){
   console.error('No fue posible guardar la caché offline.',error)
-  return publishPersistenceResult({ok:false,error:error instanceof Error?error.message:'Error desconocido de almacenamiento'})
+  return publishPersistenceResult({ok:false,error:error instanceof Error?error.message:'Error desconocido de almacenamiento'},organizationId)
  }
 }
 

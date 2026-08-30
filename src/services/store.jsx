@@ -8,6 +8,7 @@ import{createTabSyncCoordinator}from'./tabSyncCoordinator.js'
 import{appendHealthEvent}from'./syncHealth.js'
 import{loadOrganizationDeviceHealth,normalizeRemoteDeviceHealth,reportDeviceHealth}from'./syncDeviceHealth.js'
 import{bootstrapOrganization}from'./remoteBootstrap.js'
+import{activeOrganizationId}from'../domain/organizationOwnership.js'
 
 const StoreContext=createContext(null)
 const DEVICE_KEY='cannapa_device_id'
@@ -42,19 +43,25 @@ function reducer(prev,action){
  const changes=action.meta.sync===false?[]:collectionChanges(prev,candidate)
  let next=enqueueChanges(candidate,changes,{companyId,userId:actorUser?.remoteId||actorUser?.id||'',deviceId:deviceId()})
 
- const shouldAudit=action.meta.audit!==false&&changed.some(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
+ const auditedCollections=changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
+ const shouldAudit=action.meta.audit!==false&&auditedCollections.length>0
  if(!shouldAudit)return next
 
+ const organizationId=activeOrganizationId(candidate)
+ const siteId=String(candidate.currentContext?.siteId||'').trim()
  return{
   ...next,
   auditLog:[...(next.auditLog||[]),{
    id:action.audit.id,
    createdAt:action.audit.createdAt,
+   organizationId,
+   siteId,
    actor:actorUser?.name||'Usuario local',
+   actorId:actorUser?.remoteId||actorUser?.id||'',
    action:action.meta.action||'Actualización de datos',
-   module:action.meta.module||changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k)).join(', ')||'Sistema',
+   module:action.meta.module||auditedCollections.join(', ')||'Sistema',
    detail:action.meta.detail||'',
-   collections:changed.filter(k=>!['auditLog','syncQueue','syncConflicts','syncHealthEvents','syncDeviceHealth'].includes(k))
+   collections:auditedCollections
   }]
  }
 }
