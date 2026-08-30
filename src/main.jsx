@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import ApplicationErrorBoundary from './components/ApplicationErrorBoundary.jsx'
 import DomainEventAuditBridge from './core/audit/DomainEventAuditBridge.jsx'
 import OperationalLedgerBridge from './core/ledger/OperationalLedgerBridge.jsx'
 import DomainEventTimelineBridge from './core/timeline/DomainEventTimelineBridge.jsx'
@@ -24,4 +25,4 @@ import './styles/timeline.css'
 import './styles/unified-cultivation-map.css'
 import './styles/accessibility-fixes.css'
 import './styles/date-time-controls.css'
-ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><StoreProvider><KnowledgeGraphRuntimeProvider><OperationalLedgerBridge/><DomainEventAuditBridge/><DomainEventTimelineBridge/><PersistenceHealthBridge/><RealtimeProvider><App/></RealtimeProvider></KnowledgeGraphRuntimeProvider></StoreProvider></BrowserRouter></React.StrictMode>)
+ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode><ApplicationErrorBoundary><BrowserRouter><StoreProvider><KnowledgeGraphRuntimeProvider><OperationalLedgerBridge/><DomainEventAuditBridge/><DomainEventTimelineBridge/><PersistenceHealthBridge/><RealtimeProvider><App/></RealtimeProvider></KnowledgeGraphRuntimeProvider></StoreProvider></BrowserRouter></ApplicationErrorBoundary></React.StrictMode>)
