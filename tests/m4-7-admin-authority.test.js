@@ -20,6 +20,16 @@ test('M4.7 Edge authority requires caller membership and manage_users permission
  assert.match(source,/SUPABASE_SERVICE_ROLE_KEY/)
 })
 
+test('M4.7 membership mutations remain tenant-scoped even when IDs collide across organizations',async()=>{
+ const source=await read('../supabase/functions/admin-users/index.ts')
+ assert.match(source,/membershipMutationTarget\(membership,organizationId,userId\)/)
+ assert.match(source,/organization_id=eq\.\$\{encodeURIComponent\(organizationId\)\}/)
+ assert.match(source,/user_id=eq\.\$\{encodeURIComponent\(userId\)\}/)
+ assert.match(source,/if\(rows\.length!==1\)throw new Error\('La actualización de membresía no afectó exactamente una fila tenant-scoped'\)/)
+ assert.match(source,/if\(removed\.length!==1\)throw new Error\('La eliminación de membresía no afectó exactamente una fila tenant-scoped'\)/)
+ assert.doesNotMatch(source,/memberships\?id=eq\.\$\{encodeURIComponent\(text\(membership\.id\)\)\}`/)
+})
+
 test('M4.7 enterprise UI derives rows and mutations from active organization view',async()=>{
  const source=await read('../src/pages/UsersPage.jsx')
  assert.match(source,/identityAdministrationView\(state\)/)
