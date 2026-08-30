@@ -5,7 +5,9 @@ import StateMessage from'./StateMessage.jsx'
 
 export default function PersistenceHealthBridge(){
  const{state}=useStore()
- const runtime=useSyncExternalStore(subscribePersistenceRuntime,getPersistenceRuntime,getPersistenceRuntime)
+ const organizationId=String(state?.currentContext?.companyId||'')
+ const getSnapshot=()=>getPersistenceRuntime(organizationId)
+ const runtime=useSyncExternalStore(subscribePersistenceRuntime,getSnapshot,getSnapshot)
  const[retrying,setRetrying]=useState(false)
  if(!runtime.dirty)return null
  const retry=()=>{
