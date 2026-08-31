@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "provider": "cloudflare-pages",
+  "environmentContract": "config/environments.json",
+  "environments": {
+    "preview": {
+      "deploymentProfile": "cloudflare-preview",
+      "buildScript": "build:preview",
+      "requiresSuccessfulQuality": true,
+      "production": false
+    },
+    "staging": {
+      "deploymentProfile": "cloudflare-staging",
+      "buildScript": "build:staging",
+      "requiresSuccessfulQuality": true,
+      "production": false
+    },
+    "production": {
+      "deploymentProfile": "cloudflare-production",
+      "buildScript": "build:production",
+      "requiresSuccessfulQuality": true,
+      "production": true,
+      "requiresExplicitApproval": true
+    }
+  },
+  "rollback": {
+    "strategy": "restore-prior-cloudflare-pages-deployment",
+    "targetByImmutableDeploymentId": true,
+    "requiresTargetEnvironmentMatch": true,
+    "requiresPriorSuccessfulDeployment": true,
+    "requiresPostRollbackSmokeCheck": true,
+    "prohibitsSourceBranchRewrite": true
+  },
+  "requiredEvidence": [
+    "sourceCommitSha",
+    "qualityRunUrl",
+    "cloudflareDeploymentId",
+    "environment",
+    "deployedAt",
+    "operator"
+  ],
+  "rollbackEvidence": [
+    "rollbackFromDeploymentId",
+    "rollbackToDeploymentId",
+    "environment",
+    "postRollbackSmokeResult",
+    "operator",
+    "rolledBackAt"
+  ]
+}
