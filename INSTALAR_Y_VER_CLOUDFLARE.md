@@ -1,21 +1,13 @@
-# Cannapa ERP Enterprise v6.1 — instalación limpia
+# Nexora One — Cloudflare
 
-Desde la carpeta del proyecto:
+Este archivo se conserva únicamente como punto de entrada para enlaces históricos.
 
-```bash
-rm -rf node_modules dist
-npm install
-npm run build
-npm run dev -- --host 0.0.0.0 --port 5173
-```
+La guía canónica de despliegue, promoción, variables y rollback está en:
 
-En otra terminal, publica el puerto con Cloudflare:
+- `docs/operations/CLOUDFLARE_DEPLOYMENT_RUNBOOK.md`
+- `config/deployment-policy.json`
+- `config/environments.json`
 
-```bash
-cloudflared tunnel --url http://localhost:5173
-```
+No uses las instrucciones antiguas de túnel temporal como procedimiento de despliegue de preview, staging o producción. Tampoco uses `npm install` para reproducir el entorno certificado: el flujo de Quality y despliegue parte del lockfile y de `npm ci`.
 
-Abre la dirección `https://...trycloudflare.com` que imprime Cloudflare.
-
-## Importante
-La aplicación usa almacenamiento local del navegador. Para comenzar completamente limpio, borra los datos del sitio del dominio anterior o abre el nuevo enlace en una ventana privada. Los respaldos JSON de v6 siguen siendo compatibles; la migración agrega automáticamente las nuevas colecciones de áreas e infraestructura.
+Cualquier promoción a producción requiere Quality exitoso sobre el commit objetivo y aprobación humana explícita. Un rollback debe restaurar un deployment previo e inmutable de Cloudflare Pages para el mismo entorno; no debe reescribir `main` ni el historial Git.
