@@ -52,6 +52,7 @@ import InfrastructureOperationsPage from './pages/InfrastructureOperationsPage'
 import GrowingMediumPage from './pages/GrowingMediumPage'
 import SyncCenterPage from './pages/SyncCenterPage'
 import InitialMigrationPage from './pages/InitialMigrationPage'
+import ProductionUnavailablePage from './pages/ProductionUnavailablePage'
 
 function Guard({ permission, children }) {
   return <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
@@ -104,12 +105,12 @@ export default function App() {
         <Route path="/irrigation/preparations" element={<Guard permission="manage_irrigation"><PreparationsPage /></Guard>} />
         <Route path="/irrigation/orders" element={<Guard permission="execute_orders"><WorkOrdersPage /></Guard>} />
         <Route path="/irrigation/workflow" element={<Guard permission="record_irrigation"><IrrigationWorkflowPage /></Guard>} />
-        <Route path="/production/harvest" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/production/drying" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/production/trimming" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/production/selection" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/production/packing" element={<Navigate to="/propagation/batches" replace />} />
-        <Route path="/production/flow" element={<Navigate to="/propagation/batches" replace />} />
+        <Route path="/production/harvest" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
+        <Route path="/production/drying" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
+        <Route path="/production/trimming" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
+        <Route path="/production/selection" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
+        <Route path="/production/packing" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
+        <Route path="/production/flow" element={<Guard permission="view_production"><ProductionUnavailablePage /></Guard>} />
         <Route path="/finished-goods" element={<Guard permission="view_production"><FinishedGoodsPage /></Guard>} />
         <Route path="/sales" element={<Guard permission="manage_inventory"><SalesPage /></Guard>} />
         <Route path="/currencies" element={<Guard permission="manage_settings"><CurrenciesPage /></Guard>} />
