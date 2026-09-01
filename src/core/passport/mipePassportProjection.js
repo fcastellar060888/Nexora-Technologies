@@ -1,5 +1,6 @@
 import{mipeFindingHistory,verifyMipeFindingHistory}from'../../domain/mipeFindingWorkflow.js'
 import{mipeRecordOrganizationId,mipeRecordsForOrganization}from'../../domain/mipeTenancy.js'
+import{explicitOrganizationId}from'../../domain/organizationOwnership.js'
 import{irrigationMirfeRecordOrganizationId}from'../../domain/irrigationMirfeTenancy.js'
 import{passportIndicator,passportRelationship}from'./passportDomainSources.js'
 
@@ -20,6 +21,7 @@ function targetOf(finding){
 }
 function uniqueById(records,label){const seen=new Set();for(const record of records){const id=text(record?.id);if(!id)throw new Error(`${label} sin id en la proyección MIPE.`);if(seen.has(id))throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);seen.add(id)}return records}
 function mipeForOrganization(state,collection,organizationId){return mipeRecordsForOrganization(state,collection,organizationId)}
+function passportInterventions(state,organizationId,findingIds){const owner=text(organizationId);return uniqueById(list(state?.mipeInterventions).filter(item=>findingIds.has(text(item?.findingId))&&(mipeRecordOrganizationId(state,'mipeInterventions',item)===owner||explicitOrganizationId(item)===owner)),'Intervention')}
 function sharedById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&irrigationMirfeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function mipeById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&mipeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function iso(value){const raw=text(value);if(!raw||Number.isNaN(Date.parse(raw)))return'';return new Date(raw).toISOString()}
@@ -83,7 +85,7 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
  if(!id)throw new Error('targetId es obligatorio para el Knowledge Graph MIPE.')
  const findings=findingTargets(state,{organizationId:owner,targetType:type,targetId:id}),findingIds=new Set(findings.map(item=>item.id)),findingsById=new Map(findings.map(item=>[text(item.id),item]))
  const allTreatments=uniqueById(mipeForOrganization(state,'treatments',owner).filter(item=>findingIds.has(text(item?.findingId))),'Treatment'),treatmentsById=new Map(allTreatments.map(item=>[text(item.id),item]))
- const allInterventions=uniqueById(mipeForOrganization(state,'mipeInterventions',owner).filter(item=>findingIds.has(text(item?.findingId))),'Intervention')
+ const allInterventions=passportInterventions(state,owner,findingIds)
  const relationships=[],timeline=[],incidentUses=new Map(),historicalIncidentUses=new Map(),productUses=new Map(),lotUses=new Map(),restrictions=[],resolutions=[]
  for(const finding of findings){
   const findingId=text(finding.id),reportedAt=iso(finding.reportedAt||finding.createdAt||finding.updatedAt),incidentId=text(finding.incidentId)
