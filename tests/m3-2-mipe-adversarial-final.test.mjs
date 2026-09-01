@@ -77,10 +77,10 @@ test('F012: Treatment explícito sin Finding causal queda en cuarentena aunque P
  assert.equal(mipeRecordOrganizationId(state,'treatments',record),'')
 })
 
-test('F012: Intervention explícita requiere Finding y Treatment cuando su tipo es Tratamiento',()=>{
+test('F012: Intervention explícita requiere Finding; causalidad de Treatment queda visible para fail-closed del Passport',()=>{
  const state=causalState()
  assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',{id:'intervention-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-missing',type:'Seguimiento'}),'')
- assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',{id:'intervention-treatment-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-b',type:'Tratamiento'}),'')
+ assert.equal(mipeRecordOrganizationId(state,'mipeInterventions',{id:'intervention-treatment-orphan',organizationId:'org-a',siteId:'site-b',findingId:'finding-b',type:'Tratamiento'}),'org-a')
 })
 
 test('F012: applyRemoteRecords puede conservar evidencia hostil raw, pero scope MIPE nunca la expone',()=>{
