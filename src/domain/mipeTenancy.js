@@ -152,6 +152,17 @@ function recordSiteCausallyValid(state,collection,record,organizationId){
  return true
 }
 
+function findingOwnershipCausallyValid(state,record,organizationId){
+ const owner=text(organizationId)
+ if(!owner||!recordSiteCausallyValid(state,'findings',record,owner))return false
+ const incidentId=text(record?.incidentId)
+ if(!incidentId)return true
+ const candidates=list(state?.incidents).filter(item=>text(item?.id)===incidentId),local=candidates.filter(item=>explicitOrganizationId(item)===owner)
+ if(local.length>1)return false
+ if(local.length===1)return true
+ return list(record?.mipeHistory).length>0||Number(record?.mipeHistoryVersion||0)>0
+}
+
 function interventionOwnershipCausallyValid(state,record,organizationId){
  const owner=text(organizationId),findingId=text(record?.findingId),finding=ownedReference(state,'findings',findingId,owner)
  if(!owner||!findingId||!finding)return false
@@ -166,8 +177,7 @@ function findingOwnerGroups(state,record){
  if(positionId){const owners=ownersForReference(state,'plantPositions',positionId);if(owners.length)groups.push(owners)}
  const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
  if(materialId){const owners=materialPlantOwners(state,materialId);if(owners.length)groups.push(owners)}
- const incidentOwners=explicitOwnersForReference(state,'incidents',record?.incidentId)
- if(incidentOwners.length)groups.push(incidentOwners)
+ if(!groups.length){const incidentOwners=explicitOwnersForReference(state,'incidents',record?.incidentId);if(incidentOwners.length)groups.push(incidentOwners)}
  return groups
 }
 
@@ -204,6 +214,10 @@ function recordOwnerGroups(state,collection,record){
  return[]
 }
 
+function ownershipCausallyValid(state,collection,record,organizationId){
+ return collection==='findings'?findingOwnershipCausallyValid(state,record,organizationId):recordSiteCausallyValid(state,collection,record,organizationId)
+}
+
 export function mipeRecordOrganizationId(state,collection,record){
  if(!record||typeof record!=='object')return''
  if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))return sharedRecordOrganizationId(state,collection,record)
@@ -211,14 +225,14 @@ export function mipeRecordOrganizationId(state,collection,record){
  if(explicit){
   if(groups.some(owners=>!owners.includes(explicit)))return''
   if(collection==='mipeInterventions')return interventionOwnershipCausallyValid(state,record,explicit)?explicit:''
-  if(!recordSiteCausallyValid(state,collection,record,explicit))return''
+  if(!ownershipCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
  const inferred=[...new Set(groups.flat())]
- if(inferred.length===1)return recordSiteCausallyValid(state,collection,record,inferred[0])?inferred[0]:''
+ if(inferred.length===1)return ownershipCausallyValid(state,collection,record,inferred[0])?inferred[0]:''
  if(inferred.length>1)return''
  const companies=list(state?.companies),fallback=companies.length===1?text(companies[0]?.id):companies.length===0?'local-installation':''
- return fallback&&recordSiteCausallyValid(state,collection,record,fallback)?fallback:''
+ return fallback&&ownershipCausallyValid(state,collection,record,fallback)?fallback:''
 }
 
 export function mipeRecordsForOrganization(state,collection,organizationId=activeOrganizationId(state)){
