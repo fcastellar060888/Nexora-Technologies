@@ -152,6 +152,12 @@ function recordSiteCausallyValid(state,collection,record,organizationId){
  return true
 }
 
+function interventionOwnershipCausallyValid(state,record,organizationId){
+ const owner=text(organizationId),findingId=text(record?.findingId),finding=ownedReference(state,'findings',findingId,owner)
+ if(!owner||!findingId||!finding)return false
+ return sitesCompatible(record?.siteId,[finding.siteId])
+}
+
 function findingOwnerGroups(state,record){
  const groups=[]
  const siteOwners=ownerForSite(state,record?.siteId)
@@ -204,7 +210,7 @@ export function mipeRecordOrganizationId(state,collection,record){
  const explicit=explicitOrganizationId(record),groups=recordOwnerGroups(state,collection,record)
  if(explicit){
   if(groups.some(owners=>!owners.includes(explicit)))return''
-  if(collection==='mipeInterventions')return explicit
+  if(collection==='mipeInterventions')return interventionOwnershipCausallyValid(state,record,explicit)?explicit:''
   if(!recordSiteCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
