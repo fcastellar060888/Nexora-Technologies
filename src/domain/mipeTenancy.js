@@ -188,7 +188,7 @@ function recordOwnerGroups(state,collection,record){
  }
  if(collection==='mipeInterventions'){
   const groups=[]
-  for(const[targetCollection,field]of[['findings','findingId'],['treatments','treatmentId']]){
+  for(const[targetCollection,field]of[['findings','findingId']]){
    const id=text(record?.[field]);if(!id)continue
    const owners=ownersForReference(state,targetCollection,id);if(owners.length)groups.push(owners)
   }
@@ -203,7 +203,9 @@ export function mipeRecordOrganizationId(state,collection,record){
  if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))return sharedRecordOrganizationId(state,collection,record)
  const explicit=explicitOrganizationId(record),groups=recordOwnerGroups(state,collection,record)
  if(explicit){
-  if(groups.some(owners=>!owners.includes(explicit))||!recordSiteCausallyValid(state,collection,record,explicit))return''
+  if(groups.some(owners=>!owners.includes(explicit)))return''
+  if(collection==='mipeInterventions')return explicit
+  if(!recordSiteCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
  const inferred=[...new Set(groups.flat())]
