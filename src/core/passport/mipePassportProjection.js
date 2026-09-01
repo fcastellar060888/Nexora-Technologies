@@ -1,4 +1,5 @@
 import{mipeFindingHistory,verifyMipeFindingHistory}from'../../domain/mipeFindingWorkflow.js'
+import{projectMaterialPlantUnits}from'../../domain/materialPlantIdentity.js'
 import{mipeRecordOrganizationId,mipeRecordsForOrganization}from'../../domain/mipeTenancy.js'
 import{explicitOrganizationId}from'../../domain/organizationOwnership.js'
 import{irrigationMirfeRecordOrganizationId}from'../../domain/irrigationMirfeTenancy.js'
@@ -21,13 +22,21 @@ function targetOf(finding){
 }
 function uniqueById(records,label){const seen=new Set();for(const record of records){const id=text(record?.id);if(!id)throw new Error(`${label} sin id en la proyección MIPE.`);if(seen.has(id))throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);seen.add(id)}return records}
 function mipeForOrganization(state,collection,organizationId){return mipeRecordsForOrganization(state,collection,organizationId)}
+function rawFindingTargetOwned(state,finding,organizationId,targetType,targetId){
+ const owner=text(organizationId),siteId=text(finding?.siteId)
+ if(!owner)return false
+ if(siteId){const sites=list(state?.sites).filter(item=>text(item?.id)===siteId&&irrigationMirfeRecordOrganizationId(state,'sites',item)===owner);if(sites.length!==1)return false}
+ if(targetType==='POSITION'){const positions=list(state?.plantPositions).filter(item=>text(item?.id)===targetId&&irrigationMirfeRecordOrganizationId(state,'plantPositions',item)===owner);return positions.length===1}
+ if(targetType==='MATERIAL_PLANT'){try{return projectMaterialPlantUnits(state).filter(item=>text(item?.id)===targetId&&text(item?.organizationId)===owner).length===1}catch{return false}}
+ return false
+}
+function findingTargets(state,{organizationId,targetType,targetId}){const owner=text(organizationId);return uniqueById(list(state?.findings).filter(item=>{const target=targetOf(item);if(target.targetType!==targetType||target.targetId!==targetId)return false;if(mipeRecordOrganizationId(state,'findings',item)===owner)return true;return explicitOrganizationId(item)===owner&&rawFindingTargetOwned(state,item,owner,targetType,targetId)}),'Finding')}
 function passportInterventions(state,organizationId,findingIds){const owner=text(organizationId);return uniqueById(list(state?.mipeInterventions).filter(item=>findingIds.has(text(item?.findingId))&&(mipeRecordOrganizationId(state,'mipeInterventions',item)===owner||explicitOrganizationId(item)===owner)),'Intervention')}
 function sharedById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&irrigationMirfeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function mipeById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&mipeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function iso(value){const raw=text(value);if(!raw||Number.isNaN(Date.parse(raw)))return'';return new Date(raw).toISOString()}
 function sorted(values){return[...new Set(values.map(text).filter(Boolean))].sort()}
 function relation(type,targetType,targetId,label,organizationId,extra={}){return passportRelationship(type,targetType,targetId,label,{targetOrganizationId:organizationId,...extra})}
-function findingTargets(state,{organizationId,targetType,targetId}){return uniqueById(mipeForOrganization(state,'findings',organizationId).filter(item=>{const target=targetOf(item);return target.targetType===targetType&&target.targetId===targetId}),'Finding')}
 function historyFor(finding){if(list(finding?.mipeHistory).length){const verification=verifyMipeFindingHistory(finding);if(!verification.valid)throw new Error(`El historial MIPE de Finding ${text(finding?.id)} no es íntegro: ${verification.errors.join(' ')}`)}return mipeFindingHistory(finding)}
 function resolutionEvents(finding){return historyFor(finding).filter(event=>TERMINAL.has(text(event?.to)))}
 function findingFieldAt(finding,field,at){
