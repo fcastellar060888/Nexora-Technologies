@@ -32,6 +32,15 @@ function rawFindingTargetOwned(state,finding,organizationId,targetType,targetId)
 }
 function findingTargets(state,{organizationId,targetType,targetId}){const owner=text(organizationId);return uniqueById(list(state?.findings).filter(item=>{const target=targetOf(item);if(target.targetType!==targetType||target.targetId!==targetId)return false;if(mipeRecordOrganizationId(state,'findings',item)===owner)return true;return explicitOrganizationId(item)===owner&&rawFindingTargetOwned(state,item,owner,targetType,targetId)}),'Finding')}
 function passportInterventions(state,organizationId,findingIds){const owner=text(organizationId);return uniqueById(list(state?.mipeInterventions).filter(item=>findingIds.has(text(item?.findingId))&&(mipeRecordOrganizationId(state,'mipeInterventions',item)===owner||explicitOrganizationId(item)===owner)),'Intervention')}
+function rawTreatmentReferencesOwned(state,treatment,organizationId,findingsById){
+ const owner=text(organizationId),finding=findingsById.get(text(treatment?.findingId));if(!owner||!finding)return false
+ if(text(treatment?.siteId)&&text(finding?.siteId)&&text(treatment.siteId)!==text(finding.siteId))return false
+ const productId=text(treatment?.productId);if(!productId)return false
+ const products=list(state?.products).filter(item=>text(item?.id)===productId&&irrigationMirfeRecordOrganizationId(state,'products',item)===owner);if(products.length!==1)return false
+ const lotId=text(treatment?.lotId||treatment?.inventoryLotId);if(lotId){const lots=list(state?.inventoryLots).filter(item=>text(item?.id)===lotId&&irrigationMirfeRecordOrganizationId(state,'inventoryLots',item)===owner);if(lots.length!==1)return false;if(text(lots[0]?.productId)&&text(lots[0].productId)!==productId)return false}
+ return true
+}
+function passportTreatments(state,organizationId,findingIds,findingsById){const owner=text(organizationId);return uniqueById(list(state?.treatments).filter(item=>findingIds.has(text(item?.findingId))&&(mipeRecordOrganizationId(state,'treatments',item)===owner||(explicitOrganizationId(item)===owner&&rawTreatmentReferencesOwned(state,item,owner,findingsById)))),'Treatment')}
 function sharedById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&irrigationMirfeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function mipeById(state,collection,id,organizationId,label){const key=text(id);if(!key)return null;const owned=list(state?.[collection]).filter(item=>text(item?.id)===key&&mipeRecordOrganizationId(state,collection,item)===organizationId);if(owned.length>1)throw new Error(`${label} tiene identidad duplicada dentro de la empresa activa.`);return owned[0]||null}
 function iso(value){const raw=text(value);if(!raw||Number.isNaN(Date.parse(raw)))return'';return new Date(raw).toISOString()}
@@ -93,7 +102,7 @@ export function projectMipePassportTrace(state,{organizationId,targetType,target
  if(!['POSITION','MATERIAL_PLANT'].includes(type))throw new Error('targetType no es válido para el Knowledge Graph MIPE.')
  if(!id)throw new Error('targetId es obligatorio para el Knowledge Graph MIPE.')
  const findings=findingTargets(state,{organizationId:owner,targetType:type,targetId:id}),findingIds=new Set(findings.map(item=>item.id)),findingsById=new Map(findings.map(item=>[text(item.id),item]))
- const allTreatments=uniqueById(mipeForOrganization(state,'treatments',owner).filter(item=>findingIds.has(text(item?.findingId))),'Treatment'),treatmentsById=new Map(allTreatments.map(item=>[text(item.id),item]))
+ const allTreatments=passportTreatments(state,owner,findingIds,findingsById),treatmentsById=new Map(allTreatments.map(item=>[text(item.id),item]))
  const allInterventions=passportInterventions(state,owner,findingIds)
  const relationships=[],timeline=[],incidentUses=new Map(),historicalIncidentUses=new Map(),productUses=new Map(),lotUses=new Map(),restrictions=[],resolutions=[]
  for(const finding of findings){
