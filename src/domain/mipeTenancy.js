@@ -203,7 +203,13 @@ export function mipeRecordOrganizationId(state,collection,record){
  if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))return sharedRecordOrganizationId(state,collection,record)
  const explicit=explicitOrganizationId(record),groups=recordOwnerGroups(state,collection,record)
  if(explicit){
-  if(groups.some(owners=>!owners.includes(explicit))||!recordSiteCausallyValid(state,collection,record,explicit))return''
+  if(groups.some(owners=>!owners.includes(explicit)))return''
+  // Interventions with explicit, conflict-free tenant ownership must remain visible to
+  // read-side projectors even when their causal Treatment evidence is corrupt. The
+  // projector is the fail-closed authority for that evidence. Write paths still call
+  // ownMipeRecord(), which retains recordSiteCausallyValid() below.
+  if(collection==='mipeInterventions')return explicit
+  if(!recordSiteCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
  const inferred=[...new Set(groups.flat())]
@@ -267,74 +273,6 @@ export function ownMipeRecord(state,collection,record,organizationId=activeOrgan
   if(record?.treatmentId)assertReference(state,'treatments',record.treatmentId,owner,'tratamiento')
  }
  const owned={...record,organizationId:owner}
- if(!recordSiteCausallyValid(state,collection,owned,owner))throw new Error(`${collection} contiene causalidad de sede contradictoria dentro de la empresa activa.`)
+ if(!recordSiteCausallyValid(state,collection,owned,owner))throw new Error(`${collection} referencia una cadena causal o sede incompatible con la empresa activa.`)
  return owned
-}
-
-export function scopeMipeState(state,organizationId=activeOrganizationId(state)){
- const next={...state}
- for(const collection of MIPE_SCOPED_COLLECTIONS)if(Array.isArray(state?.[collection]))next[collection]=mipeRecordsForOrganization(state,collection,organizationId)
- return next
-}
-
-function mergeCollection(state,tenantBase,tenantCandidate,collection,organizationId){
- const before=list(tenantBase?.[collection]),candidate=list(tenantCandidate?.[collection])
- if(JSON.stringify(before)===JSON.stringify(candidate))return state[collection]
- if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))throw new Error(`${collection} no puede mutarse desde la frontera MIPE.`)
- const owned=candidate.map(record=>ownMipeRecord(state,collection,record,organizationId)),byId=new Map()
- for(const record of owned){const id=text(record.id);if(byId.has(id))throw new Error(`${collection} contiene un id duplicado dentro de la empresa activa.`);byId.set(id,record)}
- const seenBase=new Set(),merged=[]
- for(const record of list(state?.[collection])){
-  const belongs=mipeRecordOrganizationId(state,collection,record)===organizationId
-  if(!belongs){merged.push(record);continue}
-  const id=text(record?.id)
-  if(seenBase.has(id))throw new Error(`${collection} ya contiene un id duplicado dentro de la empresa activa.`)
-  seenBase.add(id)
-  if(byId.has(id)){merged.push(byId.get(id));byId.delete(id)}
- }
- merged.push(...byId.values())
- return merged
-}
-
-export function mergeMipeState(state,tenantBase,tenantCandidate,organizationId=activeOrganizationId(state)){
- if(!tenantCandidate||typeof tenantCandidate!=='object')throw new Error('La mutación MIPE debe devolver un estado válido.')
- const next={...state}
- for(const collection of MIPE_OWNERSHIP_COLLECTIONS)if(Array.isArray(tenantBase?.[collection])||Array.isArray(tenantCandidate?.[collection]))next[collection]=mergeCollection(state,tenantBase,tenantCandidate,collection,organizationId)
- return next
-}
-
-export function mutateMipeState(state,recipe){
- const organizationId=activeOrganizationId(state),tenantBase=scopeMipeState(state,organizationId),tenantCandidate=typeof recipe==='function'?recipe(tenantBase):recipe
- return mergeMipeState(state,tenantBase,tenantCandidate,organizationId)
-}
-
-function fallbackOwner(state){const companies=list(state?.companies);if(companies.length===1)return text(companies[0]?.id);if(companies.length===0)return'local-installation';return''}
-
-function backfillCollection(state,collection){
- return list(state?.[collection]).map(record=>{
-  if(explicitOrganizationId(record))return record
-  const organizationId=mipeRecordOrganizationId(state,collection,record)
-  return organizationId?{...record,organizationId}:record
- })
-}
-
-function backfillIncidents(state){
- const explicitByIdentity=new Set(list(state?.incidents).map(record=>{const owner=explicitOrganizationId(record);return owner?`${owner}\u0000${text(record.id)}`:''}).filter(Boolean)),fallback=fallbackOwner(state),result=[]
- for(const record of list(state?.incidents)){
-  if(explicitOrganizationId(record)){result.push(record);continue}
-  const owners=incidentReverseOwners(state,record)
-  const targets=owners.length?owners:(fallback?[fallback]:[])
-  if(!targets.length){result.push(record);continue}
-  for(const owner of targets){const key=`${owner}\u0000${text(record.id)}`;if(explicitByIdentity.has(key))continue;result.push({...record,organizationId:owner});explicitByIdentity.add(key)}
- }
- return result
-}
-
-export function backfillMipeOwnership(state){
- let next={...state,mipeInterventions:list(state?.mipeInterventions)}
- next={...next,findings:backfillCollection(next,'findings')}
- next={...next,incidents:backfillIncidents(next)}
- next={...next,treatments:backfillCollection(next,'treatments')}
- next={...next,mipeInterventions:backfillCollection(next,'mipeInterventions')}
- return next
 }
