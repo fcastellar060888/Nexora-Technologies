@@ -18,7 +18,7 @@ test('la ficha conserva fotografías y enruta escritura por command boundary aud
  assert.match(source,/AttachmentUploader entityType="plant" entityId=\{plantId\}/)
  assert.match(source,/executePlantEventCommand/)
  assert.match(source,/publishDomainEvent/)
- assert.match(source,/hasPermission\(state,'record_observations'\)/)
+ assert.match(source,/hasPermission\(profileState,'record_observations'\)/)
  assert.doesNotMatch(source,/plantEvents:\[\.\.\.\(s\.plantEvents\|\|\[\]\)/)
  assert.match(source,/MIPE/)
  assert.match(source,/MIRFE/)

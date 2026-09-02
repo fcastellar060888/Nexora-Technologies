@@ -14,7 +14,8 @@ function hasIrrigationMirfeEvidence(projection){
 }
 function addMipeTrace(state,object,source,{targetType,includeTreatmentTimeline=false,replaceLegacyTreatmentTimeline=false}={}){
  const trace=projectMipePassportTrace(state,{organizationId:text(object.organizationId),targetType,targetId:text(object.objectId),includeTreatmentTimeline})
- const baseTimeline=replaceLegacyTreatmentTimeline?list(source?.timeline).filter(item=>!text(item?.id).startsWith('treatment:')):list(source?.timeline)
+ const canonicalTreatmentIds=new Set(list(trace?.summary?.treatmentIds).map(text))
+ const baseTimeline=replaceLegacyTreatmentTimeline?list(source?.timeline).filter(item=>!text(item?.id).startsWith('treatment:')||!canonicalTreatmentIds.has(text(item?.sourceId))):list(source?.timeline)
  return{...source,relationships:[...list(source?.relationships),...trace.relationships],indicators:[...list(source?.indicators),...trace.indicators],timeline:[...baseTimeline,...trace.timeline]}
 }
 function enrichCultivationPlant(input,source){

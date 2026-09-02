@@ -13,7 +13,8 @@ test('F009: PhaseTransitions usa command boundary y no muta fases directamente d
 
 test('F009: propagation command aplica guard MIPE dentro del executor y usa un solo reloj',async()=>{
  const source=await read('src/services/propagationBatchCommand.js')
- assert.match(source,/propagationSourceUnits\(state,\{organizationId,siteId,at:occurredAt\}\)/)
+ assert.match(source,/sourceForCut\(state,\{organizationId,siteId,sourcePlantId,at:occurredAt\}\)/)
+ assert.match(source,/propagationSourceUnits\(state,\{organizationId,siteId,at\}\)/)
  assert.match(source,/assertMipeOperationAllowed/)
  assert.match(source,/MIPE_RESTRICTED_OPERATIONS\.PROPAGATION_CUT/)
  assert.match(source,/at:occurredAt/)
