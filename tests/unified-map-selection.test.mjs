@@ -26,14 +26,14 @@ test('la acción masiva exige confirmación y reconcilia objetivos disponibles',
  assert.match(source,/availableIds:availablePlantIds/)
  assert.match(source,/confirmed/)
  assert.match(source,/Confirmo registrar esta observación/)
- assert.match(source,/request\.targetIds\.map/)
- assert.match(source,/Observación masiva registrada/)
+ assert.match(source,/for\(const plantId of request\.targetIds\)/)
+ assert.match(source,/executePlantEvent\(\{plantId,commandId:/)
 })
 
 test('el cambio de sede limpia selección y borrador para evitar acciones cruzadas',async()=>{
  const page=await read('src/pages/UnifiedCultivationMapPage.jsx')
  const hook=await read('src/services/useUnifiedMapSelection.js')
- assert.match(page,/selection\.resetForSite\(nextSiteId\)/)
+ assert.match(page,/selection\.resetForSite\(siteId\)/)
  assert.match(hook,/setSelection\(selectionFor\(nextSiteId\)\)/)
  assert.match(hook,/setSelectionMode\(false\)/)
  assert.match(hook,/setBulkDraft\(emptyDraft\(\)\)/)

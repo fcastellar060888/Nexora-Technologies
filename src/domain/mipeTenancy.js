@@ -340,11 +340,30 @@ function backfillCollection(state,collection){
  })
 }
 
+function migrationFindingOrganizationId(state,record){
+ const explicit=explicitOrganizationId(record),groups=findingOwnerGroups(state,record)
+ if(explicit){
+  if(groups.some(owners=>!owners.includes(explicit)))return''
+  return recordSiteCausallyValid(state,'findings',record,explicit)?explicit:''
+ }
+ const inferred=[...new Set(groups.flat())]
+ if(inferred.length===1)return recordSiteCausallyValid(state,'findings',record,inferred[0])?inferred[0]:''
+ if(inferred.length>1)return''
+ const fallback=fallbackOwner(state)
+ return fallback&&recordSiteCausallyValid(state,'findings',record,fallback)?fallback:''
+}
+
+function incidentBackfillOwners(state,record){
+ const id=text(record?.id)
+ if(!id)return[]
+ return[...new Set(list(state?.findings).filter(item=>text(item?.incidentId)===id).map(item=>migrationFindingOrganizationId(state,item)).filter(Boolean))]
+}
+
 function backfillIncidents(state){
  const explicitByIdentity=new Set(list(state?.incidents).map(record=>{const owner=explicitOrganizationId(record);return owner?`${owner}\u0000${text(record.id)}`:''}).filter(Boolean)),fallback=fallbackOwner(state),result=[]
  for(const record of list(state?.incidents)){
   if(explicitOrganizationId(record)){result.push(record);continue}
-  const owners=incidentReverseOwners(state,record)
+  const owners=incidentBackfillOwners(state,record)
   const targets=owners.length?owners:(fallback?[fallback]:[])
   if(!targets.length){result.push(record);continue}
   for(const owner of targets){const key=`${owner}\u0000${text(record.id)}`;if(explicitByIdentity.has(key))continue;result.push({...record,organizationId:owner});explicitByIdentity.add(key)}

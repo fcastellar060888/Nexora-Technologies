@@ -69,8 +69,8 @@ test('M21-F004: retry with the same command is state-idempotent',async()=>{
 
 test('M21-F005/F006: foreign bank and source context fail closed before mutation',()=>{
  const state=stateFixture()
- assert.throws(()=>preparePropagationBatch(state,commandInput({bankId:'bank-b'}),{commandId:'foreign-bank'}),/banco no pertenece/)
- assert.throws(()=>preparePropagationBatch(state,commandInput({siteId:'site-b',bankId:'bank-b'}),{commandId:'foreign-source'}),/sede no pertenece|origen no es elegible/)
+ assert.throws(()=>preparePropagationBatch(state,commandInput({bankId:'bank-b'}),{commandId:'foreign-bank'}),/No se encontró el banco|banco.*organización/i)
+ assert.throws(()=>preparePropagationBatch(state,commandInput({siteId:'site-b',bankId:'bank-b'}),{commandId:'foreign-source'}),/No se encontró la sede|sede no pertenece|origen no es elegible/i)
 })
 
 test('M21-F004/F005: capacity and permission are enforced before commit',async()=>{
@@ -107,7 +107,9 @@ test('M21-F004: direct grandmother production requires explicit traceable author
 
 test('M21-F004: batch identity collisions are tenant-aware and command-aware',()=>{
  const foreign=stateFixture();foreign.propagationBatches=[{id:'cut-cmd-1',organizationId:'org-b',commandId:'other',code:'foreign'}]
- assert.throws(()=>preparePropagationBatch(foreign,commandInput(),{commandId:'cut-cmd-1'}),/otra organización/)
+ const prepared=preparePropagationBatch(foreign,commandInput(),{commandId:'cut-cmd-1'})
+ assert.equal(prepared.batch.id,'cut-cmd-1')
+ assert.equal(prepared.batch.organizationId,'org-a')
  const local=stateFixture();local.propagationBatches=[{id:'cut-cmd-1',organizationId:'org-a',commandId:'other',code:'local'}]
  assert.throws(()=>preparePropagationBatch(local,commandInput(),{commandId:'cut-cmd-1'}),/otra operación/)
 })

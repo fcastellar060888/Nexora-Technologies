@@ -10,7 +10,8 @@ const materialFinding={id:'finding-mat',organizationId:'org-a',siteId:'site-a',m
 
 function state(){return{
  companies:[{id:'org-a'},{id:'org-b'}],currentContext:{companyId:'org-a',siteId:'site-a'},users:[{id:'user-a',name:'Agrónomo A',role:'Encargado MIPE',activeSession:true,active:true,remote:false}],memberships:[],roles:[],
- sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-b',companyId:'org-b'}],houses:[],beds:[],plantPositions:[],grandmotherPlants:[],motherPlants:[],genetics:[],products:[],inventoryLots:[],inventoryMovements:[],costEntries:[],incidents:[],
+ sites:[{id:'site-a',organizationId:'org-a',companyId:'org-a'},{id:'site-b',organizationId:'org-b',companyId:'org-b'}],houses:[],beds:[],plantPositions:[],grandmotherPlants:[],motherPlants:[],genetics:[],products:[],inventoryLots:[],inventoryMovements:[],costEntries:[],
+ incidents:[{id:'incident-a',organizationId:'org-a',name:'Incidente A'},{id:'incident-a',organizationId:'org-b',name:'Incidente B'}],
  findings:[structuredClone(positionFinding),structuredClone(materialFinding),{...positionFinding,id:'finding-foreign',organizationId:'org-b',siteId:'site-b',plantPositionId:'position-b',targetId:'position-b'}],
  treatments:[{id:'treatment-a',organizationId:'org-a',siteId:'site-a',findingId:'finding-pos',productId:'product-a',status:'Ejecutado',lotId:'lot-a',executedAt:'2026-08-17T09:00:00.000Z'},{id:'treatment-b',organizationId:'org-b',siteId:'site-b',findingId:'finding-foreign',productId:'product-b',status:'Ejecutado'}],
  mipeInterventions:[],mipeCommandReceipts:[],materialPlantUnits:[],plantEvents:[]
