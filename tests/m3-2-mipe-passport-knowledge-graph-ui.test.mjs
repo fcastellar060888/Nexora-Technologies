@@ -11,9 +11,10 @@ test('F011: enrichment conecta el mismo Knowledge Graph MIPE a Position y materi
  assert.match(source,/targetType:'MATERIAL_PLANT',includeTreatmentTimeline:true/)
 })
 
-test('F011: timeline legacy de Treatment se reemplaza por la proyección histórica basada en snapshot',async()=>{
+test('F011: timeline legacy de Treatment se reemplaza selectivamente cuando existe proyección histórica canónica',async()=>{
  const enrichment=await readFile('src/core/passport/passportProjectionEnrichment.js','utf8'),projection=await readFile('src/core/passport/mipePassportProjection.js','utf8')
- assert.match(enrichment,/filter\(item=>!text\(item\?\.id\)\.startsWith\('treatment:'\)\)/)
+ assert.match(enrichment,/canonicalTreatmentIds=new Set/)
+ assert.match(enrichment,/canonicalTreatmentIds\.has\(text\(item\?\.sourceId\)\)/)
  assert.match(projection,/treatment\?\.productSnapshot\?\.name/)
  assert.match(projection,/historicalSnapshots/)
  assert.match(projection,/mipekg:treatment:/)
