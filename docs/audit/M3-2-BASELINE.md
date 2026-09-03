@@ -1,324 +1,178 @@
 # Nexora One — Auditoría Forense v3 · M3.2 MIPE
 
-Estado: **AUDIT IN PROGRESS — 9/12 Verified**  
-Base certificada: M3.1 Irrigation & MIRFE, head `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
-Bloque: M3 — Agronomy Operational (`MIRFE + MIPE + Inventory integration`).  
-Normativa: `docs/NEXORA_DOMAIN_MODEL_V1.md` + `docs/NEXORA_PRODUCT_DOCTRINE.md`.  
-Método: Audit → Fix → Test → Quality Gate → Re-Audit → Close.
+Estado: **CERTIFIED CLOSURE CANDIDATE — 12/12 Verified**  
+Condición final: el commit que contiene este cierre documental debe obtener un **Quality real completamente verde**.  
+Candidato funcional certificado: `be85c67798738fcd535a470ab6145818e74ef921`.  
+Base certificada de entrada: M3.1 Irrigation & MIRFE, `6943ad022ba7c88fc7eb1b5111552f4b06b22992`, Quality #1919 verde.  
+Método: Audit → Fix → Test → Quality → Re-Audit → Close.
 
-## Alcance M3.2
+> El expediente detallado acumulado de F001–F009 permanece íntegro en el historial Git del archivo, inmediatamente antes de este cierre, en `be85c67798738fcd535a470ab6145818e74ef921`. Este baseline final compacta el estado certificado sin borrar esa evidencia histórica.
 
-MIPE se audita como autoridad operativa completa: incidencia, hallazgo, severidad, seguimiento, intervención, tratamiento, producto, dosis, lote, consumo/costo, restricciones de reentrada/carencia, permisos, eventos, tenancy, persistencia/sync, dashboard/croquis, Passport/Knowledge Graph y pruebas adversariales.
+## Alcance certificado
+
+M3.2 queda auditado como autoridad MIPE operativa end-to-end: Incident, Finding, workflow, Intervention, Treatment, Product, Lot, costo, restricciones de reentrada/carencia/propagación, tenancy, command boundaries, idempotencia, persistencia/sync, contexto jerárquico, Dashboard/croquis, Passport/Knowledge Graph y adversariales requested→commit.
 
 ## Estado de hallazgos
 
-| ID | Sev. | Estado | Área | Resultado / riesgo pendiente |
+| ID | Sev. | Estado | Área | Evidencia de cierre |
 |---|---:|---|---|---|
-| M32-F001 | P0 | **Verified** | Domain authority | Incident/Finding/Treatment/Intervention tenant-owned e inmutables. Quality #1926. |
-| M32-F002 | P0 | **Verified** | Tenancy | Ownership causal, IDs homónimos aislados, scope/merge/backfill fail-closed y UI tenant-scoped. Quality #1945. |
-| M32-F003 | P0 | **Verified** | Commands/permissions/events | Operaciones explícitas, permisos, replay, tenant guard y requested→commit→completion; superficies MIPE sin mutación directa. Quality #1983; cierre documental #1986. |
-| M32-F004 | P0 | **Verified** | Treatment/inventory transaction | Ejecución remota atómica de lote+movimiento+Treatment+Finding+costo, con locks/version preflight/idempotencia. Quality #2000; cierre documental #2002. |
-| M32-F005 | P1 | **Verified** | Workflow/audit history | Workflow canónico e historial append-only; correcciones con before/after, hard-delete prohibido, UI sin reescritura y replay post-workflow idempotente. Quality #2034. |
-| M32-F006 | P1 | **Verified** | Follow-up/interventions | Intervention canónica tenant-aware, snapshots causales, tareas de revisión correctas y reasignación append-only sin bypass legacy. Quality #2076; documental #2078. |
-| M32-F007 | P1 | **Verified** | Incident/product authority | Incident no destructivo y vigente; Product técnico ejecutable congelado en Treatment; costo/reentrada/carencia no dependen del catálogo mutable. Quality #2118; documental #2120. |
-| M32-F008 | P1 | **Verified** | Persistence/sync | Migración MIPE dedicada, caché/bootstrap/sync/tombstones y receipts tenant-aware con identidad estable. Quality #2135. |
-| M32-F009 | P1 | **Verified** | Operational restrictions | Reentrada, carencia y bloqueo de propagación son restricciones derivadas tenant-aware y guards no-bypassables en executors. Quality #2176. |
-| M32-F010 | P1 | **Open** | Dashboard/croquis/context | Falta cerrar contexto jerárquico persistente Empresa→Sede→Nave→Cama→Planta y croquis. |
-| M32-F011 | P1 | **Open** | Passport/Knowledge Graph | Falta traza canónica Finding→Incident→Intervention/Treatment→Product/Lot→Restriction/Resolution. |
-| M32-F012 | P1 | **Open** | Adversarial verification | Falta reauditoría transversal final de workflow, sync, Graph y ausencia de fuga/regresión. |
+| M32-F001 | P0 | **Verified** | Domain authority | Quality #1926. |
+| M32-F002 | P0 | **Verified** | Tenancy | Quality #1945; reauditoría final de backfill incluida en #2975. |
+| M32-F003 | P0 | **Verified** | Commands / permissions / events | Quality #1983; documental #1986. |
+| M32-F004 | P0 | **Verified** | Treatment / inventory transaction | Quality #2000; documental #2002; exactamente cinco consecuencias preservadas. |
+| M32-F005 | P1 | **Verified** | Workflow / audit history | Quality #2034. |
+| M32-F006 | P1 | **Verified** | Follow-up / interventions | Quality #2076; documental #2078. |
+| M32-F007 | P1 | **Verified** | Incident / Product authority | Quality #2118; documental #2120. |
+| M32-F008 | P1 | **Verified** | Persistence / sync | Quality #2135. |
+| M32-F009 | P1 | **Verified** | Operational restrictions | Quality #2176. |
+| M32-F010 | P1 | **Verified** | Dashboard / croquis / context | Quality #2975, reauditoría funcional integral 1236/1236. |
+| M32-F011 | P1 | **Verified** | Passport / Knowledge Graph | Quality #2975 después de reparación causal fail-closed y reauditoría histórica. |
+| M32-F012 | P1 | **Verified** | Adversarial verification | Quality #2975, cero fallos/cancelados/skipped. |
 
-## M32-F001 — cierre verificado
+## M32-F001–F009 — continuidad de certificación
 
-### Solución
+Los nueve cierres previos conservan sus autoridades y evidencia original. La reanudación de runners no reabrió esos hallazgos, pero sí ejecutó de nuevo toda la suite acumulada sobre el candidato final. Quality #2975 volvió a validar sus contratos junto con F010–F012.
 
-- `src/domain/mipeAuthority.js` define `Incident`, `Finding`, `Treatment` e `Intervention` con ownership explícito, identidad estable y deep immutability.
-- Finding compone Target + Incident dentro de la misma organización/sede, valida severidad, fechas y evidencia.
-- Treatment valida Finding/Product, dosis/unidad/volumen y congela snapshot de producto, reentrada, carencia y costo.
-- Intervention hereda tenant/sede del Finding y exige causalidad correcta con Treatment cuando aplica.
+Invariantes transversales preservadas:
 
-### Evidencia
+- ownership e identidad tenant-aware; ningún lookup operativo depende de ID global;
+- command boundaries permission-aware, receipts e idempotencia effect-once;
+- workflow de Finding e historias/correcciones append-only;
+- Treatment congela evidencia Product/Lot y F004 mantiene exactamente `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries`;
+- persistencia, bootstrap, sync y tombstones preservan identidad por tenant y fallan cerrado;
+- reentrada, carencia y propagación se derivan de evidencia causal y no pueden saltarse desde UI.
 
-- `tests/m3-2-mipe-domain-authority.test.mjs`: IDs repetidos cross-tenant, referencias extranjeras, dosis/unidades, snapshot e intervención causal.
-- Quality #1926: **981/981**, todos los gates verdes.
+## M32-F010 — Dashboard / croquis / contexto — Verified
 
-## M32-F002 — cierre verificado
+### Cierre
 
-### Solución
-
-- `src/domain/mipeTenancy.js` resuelve ownership por sede/Position/material vegetal/Finding/Product/Lot/Treatment, no por ID global.
-- `findMipeRecord()` falla cerrado ante extranjero, ambigüedad o duplicado same-tenant.
-- `scopeMipeState()` y `mergeMipeState()` aíslan la partición activa y preservan homónimos extranjeros.
-- `backfillMipeOwnership()` usa causalidad; un Incident legacy compartido por varias empresas se materializa por tenant en vez de adjudicarse arbitrariamente.
-- `mipeTenantState.js` compone MIPE con ownership de inventario/costos; las superficies MIPE consumen estado tenant-scoped.
-
-### Evidencia
-
-- `tests/m3-2-mipe-tenancy.test.mjs` + `tests/m3-2-mipe-tenancy-ui.test.mjs`.
-- Quality #1945: **994/994**, todos los gates verdes.
-
-## M32-F003 — cierre verificado
-
-### Solución
-
-- `src/services/mipeCommand.js` expone operaciones explícitas; no acepta recipes arbitrarios.
-- `manage_mipe` protege catálogo/hallazgos/seguimiento/programación; `execute_treatments` protege ejecución.
-- Firma estable + receipt `(organizationId, commandId)` permiten replay efecto-único y colisión fail-closed.
-- Cambio de tenant entre intención y commit falla cerrado.
-- `executeCoreOperationCommand()` garantiza `core.operation.requested → commit → completion` con correlación/causalidad deterministas.
-- Incidents, Findings, Treatments, Dashboard, HouseMap y MaterialPlantMipePanel pasan por `useMipeCommandStore()`.
-- Se eliminaron mutadores MIPE directos y publicación manual de eventos; Dashboard registra seguimiento como `Seguimiento` explícito.
+- `src/domain/operationalContext.js` resuelve el contexto operativo autorizado y mantiene la jerarquía Empresa → Sede → Nave → Cama → Planta; la rama material mantiene Empresa → Sede → Genética sin mezclar jerarquías Position.
+- `ContextBar`, perfiles de planta/material, Dashboard MIPE, House Map y mapa unificado consumen estado scoped al contexto activo en vez de filtrar entidades por IDs globales.
+- El acceso directo a un perfil de planta resuelve su contexto autorizado antes de construir el Passport y sincroniza únicamente `currentContext`; la escritura de eventos sigue pasando por `executePlantEventCommand()`.
+- Un cambio de planta/sede invalida selección y drafts locales para impedir que una intención preparada en un contexto se ejecute en otro.
+- El Dashboard usa la frontera MIPE y el scope operacional actual; las acciones de seguimiento/reasignación no reintroducen mutadores legacy.
+- El croquis mantiene selección y acciones bulk site-scoped y enruta la escritura por el command canónico de eventos de planta.
 
 ### Evidencia
 
-- `tests/m3-2-mipe-command.test.mjs` + `tests/m3-2-mipe-command-ui.test.mjs`.
-- Quality #1980: rojo útil **1007/1009**, únicamente por dos contratos UI históricos que exigían mutadores eliminados.
-- Quality #1983: **1009/1009**, todos los gates verdes.
-- Commit documental `acd135e250dfd504bf258a44ecbdff2e90453e66`; Quality #1986 verde.
+- `tests/m3-2-mipe-operational-context.test.mjs`
+- `tests/m3-2-mipe-operational-context-persistence-ui.test.mjs`
+- `tests/m3-2-mipe-context-membership.test.mjs`
+- `tests/m3-2-mipe-context-plant-event.test.mjs`
+- `tests/m3-2-mipe-house-map-context.test.mjs`
+- `tests/m3-2-mipe-plant-profile-context.test.mjs`
+- `tests/mipe-dashboard-actions-ui.test.mjs`
+- `tests/unified-map-selection.test.mjs`
 
-## M32-F004 — cierre verificado
+Quality #2975 ejecutó estas pruebas junto con la regresión completa y terminó verde.
 
-### Problema reproducido
+## M32-F011 — Passport / Knowledge Graph — Verified
 
-Con dos dispositivos y command IDs diferentes, ambos podían partir del mismo saldo/versiones locales y ejecutar contra el mismo lote. El replay local de F003 no resuelve esa carrera porque cada dispositivo puede presentar una intención válida distinta antes de conocer la escritura del otro.
+### Cierre
 
-### Solución
-
-- `src/services/mipeTreatmentTransaction.js` construye una unidad atómica de **exactamente cinco consecuencias**: `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries`.
-- Lote, Treatment y Finding llevan `_syncVersion` previa; Movement y Cost nuevos parten de versión 0.
-- `supabase/migrations/20260817010000_mipe_treatment_execution.sql` crea el receipt remoto y RPC `commit_mipe_treatment_execution` con sesión, membresía, `execute_treatments`, site scope, advisory lock y `FOR UPDATE`.
-- Todas las versiones se preflightan antes del primer write; un conflicto revierte la unidad completa.
-- El servidor exige Treatment remoto `Programado`, producto/lote/sede coherentes y saldo remoto igual a `balanceBefore`.
-- Receipt remoto `(organization_id, command_id)` permite recovery tras respuesta perdida sin doble consumo; colisión de contenido falla cerrado.
-- Confirmación parcial, extranjera o duplicada no se hidrata.
-- `sync:false` evita reencolar consecuencias ya confirmadas por RPC.
+- `src/core/passport/mipePassportProjection.js` proyecta la cadena explicable `Finding → Incident → Intervention/Treatment → Product/Lot → Restriction → Resolution` y valida la historia antes de emitir evidencia.
+- `cultivationPlantPassport.js` deriva la ubicación Position por la ascendencia canónica Bed → House → Site; redundancias contradictorias o referencias ambiguas fallan cerrado.
+- `materialPlantPassport.js` resuelve Site, Genetic y parent plant dentro del tenant activo; homónimos extranjeros no contaminan el grafo y duplicados same-tenant fallan cerrado.
+- Las correcciones históricas de Incident se reconstruyen as-of y sus relaciones sobreviven incluso si no existe Intervention contemporánea.
+- Los estados terminales `Resuelto`, `Falso positivo` y `Planta eliminada` se conservan como Resolution; un historial adulterado no se proyecta silenciosamente.
+- La reauditoría de certificación reprodujo un defecto real: evidencia same-tenant causalmente corrupta podía quedar filtrada antes del projector y desaparecer en vez de fallar cerrado. La reparación incorporada en la rama de certificación vuelve auditable esa evidencia y mantiene estricta la autoridad operativa normal.
+- El enriquecimiento del Passport ya no elimina indiscriminadamente todos los eventos legacy `treatment:`: sólo reemplaza un Treatment legacy cuando el trace canónico contiene ese mismo `sourceId`. La evidencia histórica no reemplazable permanece visible.
 
 ### Evidencia
 
-- `tests/m3-2-mipe-inventory-concurrency.test.mjs`: nueve escenarios adversariales de conjunto atómico, carrera entre dos dispositivos, respuesta perdida, cambio de tenant y confirmaciones hostiles.
-- Quality #1997: rojo útil **1013/1018** por fixture sin Incidents causales; tenancy falló cerrado correctamente.
-- Corrección exclusiva del fixture: `271503e48034461ce13c55b56620eda5dc6759e5`.
-- Quality #2000: **1018/1018**, todos los gates verdes.
-- Cierre documental `fe26cade4990fb05b23faf2de5a0bf6200f8ef34`; Quality #2002 verde.
+- `tests/m3-2-mipe-passport-knowledge-graph.test.mjs`
+- `tests/m3-2-mipe-passport-knowledge-graph-integration.test.mjs`
+- `tests/m3-2-mipe-passport-knowledge-graph-ui.test.mjs`
+- `tests/m3-2-mipe-passport-causality.test.mjs`
+- `tests/m3-2-mipe-passport-position-location-causality.test.mjs`
+- `tests/m3-2-mipe-passport-material-reference-causality.test.mjs`
 
-## M32-F005 — cierre verificado
+La reparación final también preserva evidencia histórica de Treatment sin relajar Product/Lot/tenant causality.
 
-### Problema reproducido
+## M32-F012 — Adversarial verification — Verified
 
-Aunque F003 ya obligaba a escribir mediante commands, un Finding todavía podía reescribir `createdAt` y `status`, cerrarse fuera de un grafo canónico y eliminarse físicamente. Eso protegía el canal de escritura, pero no la historia agronómica. La reauditoría también encontró que un retry post-commit podía volver a planear una transición contra el estado ya avanzado y fallar aun cuando el receipt demostraba que el efecto ya había ocurrido.
+### Reauditoría transversal final
 
-### Solución
+La suite adversarial final confirma, entre otros casos:
 
-- `src/domain/mipeFindingWorkflow.js` materializa historial append-only dentro del mismo Finding mediante eventos `CREATED`, `IMPORTED`, `CORRECTION` y `TRANSITION`.
-- Finding nuevo solo puede iniciar en `Detectado`. Un Finding legacy conserva explícitamente su estado actual mediante `IMPORTED`; si carece de fecha se usa epoch neutro `1970-01-01T00:00:00.000Z`, nunca “ahora”.
-- Grafo explícito: evaluación, aprobación de tratamiento, inicio de tratamiento, seguimiento y cierres terminales `Resuelto`, `Falso positivo` o `Planta eliminada`.
-- Estados terminales no pueden reabrirse mediante un command nuevo.
-- `CORRECT_FINDING` y el alias legacy `UPDATE_FINDING` son correcciones auditables: requieren motivo y solo permiten `incidentId`, `severity`, `notes`, `action`, `responsible` y `followUpDate`.
-- `createdAt`, `reportedAt`, `status`, target, ownership, cierre e historial están prohibidos. Una clave no autorizada falla explícitamente antes de `core.operation.requested`, receipt o mutación; no se ignora silenciosamente.
-- Cada corrección agrega before/after; ninguna corrección altera el estado del workflow.
-- `DELETE_FINDING` falla durante planificación: el hard-delete de evidencia MIPE está prohibido.
-- `FindingsPage` elimina edición de fecha original, selector libre de estado y botón Eliminar; ofrece “Corregir” con motivo y solo transiciones devueltas por `availableMipeFindingTransitions()`.
-- `HouseMapPage` fija `Detectado` como estado inicial y no permite escoger un estado arbitrario al crear.
-- Programar tratamiento agrega `APPROVE_TREATMENT`; ejecutar agrega `BEGIN_TREATMENT → START_FOLLOW_UP`. El historial permanece embebido en `findings`, por lo que F004 conserva exactamente sus cinco colecciones atómicas.
-- Idempotencia append-only: `transitionMipeFinding()` y `correctMipeFinding()` verifican primero el `eventId` determinista derivado del command. Un retry idéntico después del primer efecto devuelve la evidencia existente antes de validar contra el estado post-commit; un commandId nuevo sigue sometido a todas las reglas de transición/corrección.
+- homónimos cross-tenant y cross-site no alteran ownership ni causalidad;
+- IDs duplicados same-tenant fallan cerrado aunque los registros parezcan equivalentes;
+- receipts MIPE son tenant-explicit, durables e idempotentes; tombstones/sync no borran el homónimo extranjero;
+- requested→commit vuelve a resolver identidad causal y rechaza cambios de Finding target, Treatment→Finding e Intervention→Finding ocurridos durante la ventana TOCTOU;
+- `executeTreatment()` no puede ejecutar sobre Finding terminal, falso positivo o planta eliminada;
+- F004 mantiene exactamente cinco consecuencias atómicas y no incorpora receipts como una sexta colección;
+- la identidad de material vegetal queda ligada a Lot/Site canónicos; overrides contradictorios se ponen en cuarentena o fallan cerrado por tenant;
+- correcciones de Finding deben mantener cadenas before/after íntegras;
+- la ascendencia Position redundante/contradictoria falla cerrado;
+- Passport/Knowledge Graph conserva Resolution y estados terminales en la proyección final.
 
-### Pruebas adversariales
+### Evidencia
 
-- `tests/m3-2-mipe-finding-workflow.test.mjs`: creación, import legacy, corrección before/after, skips, tiempo regresivo, duplicados y adulteración de historial.
-- `tests/m3-2-mipe-workflow-command.test.mjs`: creación canónica, corrección, payload hostil con `status + createdAt`, replay de corrección, transición inválida, hard-delete, lifecycle de Treatment y terminal no reabrible.
-- `tests/m3-2-mipe-workflow-ui.test.mjs`: UI sin reescritura/hard-delete, estado inicial fijo y preservación del conjunto F004.
-- `tests/m3-2-mipe-command.test.mjs` vuelve a ejecutar el mismo Treatment command después de quedar en `Seguimiento` y exige consumo efecto-único.
-- `tests/ux-f008-operational-state-feedback.test.mjs` exige fecha original visible pero inmutable y prohíbe reintroducir `DateTimeFields` en Hallazgos.
+- `tests/m3-2-mipe-adversarial-final.test.mjs`
+- `tests/m3-2-mipe-adversarial-command-commit-scope.test.mjs`
+- `tests/m3-2-mipe-adversarial-causal-identity-toctou.test.mjs`
+- `tests/m3-2-mipe-adversarial-material-terminal.test.mjs`
+- `tests/m3-2-mipe-adversarial-operational-permissions.test.mjs`
+- `tests/m3-2-mipe-material-plant-identity-causality.test.mjs`
+- suites de persistencia, workflow, Passport y concurrencia F004 incluidas en la ejecución integral.
 
-### Quality y reauditoría
+## Recuperación de runners y reauditoría de certificación
 
-- La primera reauditoría detectó que autoridad/tests F005 existían sin wiring productivo; no se cerró el hallazgo hasta conectar `mipeCommand.js`, `FindingsPage` y `HouseMapPage`.
-- Quality #2026: **1032/1034**. Los dos rojos eran contratos históricos: un fixture F003 viajaba hacia atrás en el tiempo y UX-F008 todavía exigía editar la fecha original. Se corrigieron solo las pruebas, no la autoridad.
-- Quality #2030: **1033/1034**. El único rojo reveló un defecto productivo real: un retry de `EXECUTE_TREATMENT` encontraba su receipt pero volvía a planear `BEGIN_TREATMENT` desde el Finding ya en `Seguimiento`.
-- Fix de replay: `e709e75b67fb25edf2886db1cb6376f4f382cebb`.
-- Adversarial adicional de correction replay / HEAD funcional final: `81d6471e03bc441de132031030e9a170ed019fd3`.
-- Quality #2034: **verde, 1035/1035 pruebas**, cero fallos; static audit, dependency audit, environment contract, authentication/session audit, coverage gate, production build y production artifact audit verdes.
-- Reauditoría desde cierre F004: el delta F005 queda en catálogo, workflow, command boundary, Findings/HouseMap y pruebas. `src/domain/mipeInterventionAuthority.js` proviene del commit preparatorio F006 `8d50e711c45f1998efd1ea4a504dd7740fa66223`, permanece sin imports productivos y **no se atribuye a F005**.
+Tras recuperarse GitHub Actions, el candidato congelado dejó de estar bloqueado por infraestructura y pasó a una reauditoría real:
 
-## M32-F006 — cierre verificado
+1. Runs reales rojos permitieron separar defects de producto de contratos de prueba obsoletos.
+2. Se corrigió el backfill de Incidents legacy para que la migración no dependa circularmente del resolver runtime de Findings. La autoridad runtime normal permanece estricta.
+3. Se corrigió la preservación selectiva de Treatment histórico en Passport.
+4. Las expectativas históricas se alinearon con contratos ya endurecidos sin retirar las invariantes que auditaban.
+5. Commit funcional final: `be85c67798738fcd535a470ab6145818e74ef921`.
 
-### Problema reproducido
+## Quality #2975 — evidencia funcional de certificación
 
-El seguimiento MIPE todavía tenía dos autoridades paralelas: el helper legacy de material vegetal creaba intervenciones con UUID y permitía reescribir responsable, mientras `mipeInterventionAuthority.js` existía aislado. La proyección de revisiones además confundía el vencimiento con la causalidad: podía no reconocer una inspección hecha a tiempo o permitir que intervenciones simultáneas se cerraran entre sí. La reauditoría encontró también riesgos de homónimos cross-tenant, `treatmentId` no verificado, un `plantEvent` impropio para target `POSITION` y una vía directa de reasignación fuera del command boundary.
+Quality #2975 se ejecutó con runner GitHub-hosted real sobre el SHA exacto `be85c67798738fcd535a470ab6145818e74ef921`.
 
-### Solución
-
-- `src/domain/mipeInterventionAuthority.js` queda como autoridad canónica de Intervention y se conecta a `RECORD_INTERVENTION` / `REASSIGN_INTERVENTION` en `src/services/mipeCommand.js`.
-- Cada Intervention congela `organizationId`, sede, Finding, target `POSITION` o `MATERIAL_PLANT`, actor, evidencia temporal y, cuando aplica, snapshot de Treatment. Un `treatmentId` recibido del cliente solo se conserva si el Treatment fue resuelto y verificado contra la misma empresa, sede y Finding.
-- La identidad de la intervención deriva del command; replay y colisiones se someten al receipt tenant-aware del command boundary.
-- `assignmentHistory` es append-only: una reasignación agrega evento con responsable anterior/nuevo, actor y fecha. El mismo command de reasignación es idempotente por `eventId` y no vuelve a modificar historia.
-- `src/domain/mipeReviewTasks.js` queda como proyección de solo lectura: se eliminó `reassignMipeReviewTask`, por lo que ya no existe un mutador directo que reescriba responsable.
-- Una obligación de revisión solo queda `Completada` por un `Seguimiento` posterior a la intervención origen. Puede ocurrir antes o exactamente en la fecha límite; una intervención simultánea no satisface causalidad y un Treatment posterior tampoco sustituye la evidencia de seguimiento.
-- La resolución de tareas usa identidad compuesta tenant+Finding, filtra por organización antes de proyectar y falla cerrado ante Finding duplicado same-tenant, ownership ambiguo o evidencia legacy sin ownership que pretenda completar una tarea tenant-owned.
-- Target `POSITION` no genera un falso `plantEvent` material. Para `MATERIAL_PLANT`, el target se toma del snapshot canónico y el evento auxiliar usa identidad tenant-compuesta `${organizationId}:${interventionId}:plant-event`, evitando colisión si dos empresas reutilizan el mismo commandId.
-
-### Pruebas adversariales
-
-- `tests/m3-2-mipe-intervention-authority.test.mjs`: target/actor/Treatment snapshots, fechas, Finding cerrado, homónimos cross-tenant, revisión anticipada/puntual, simultaneidad, POSITION vs MATERIAL_PLANT, reasignación append-only y replay.
-- `tests/m3-2-mipe-intervention-bypass-reaudit.test.mjs`: prohíbe reintroducir el mutador de reasignación legacy y exige routing productivo por la autoridad canónica.
-- La reauditoría adicional cubre Treatment posterior que no satisface follow-up, intervención legacy sin ownership, Finding tenant-owned vs unowned, duplicado same-tenant, filtro por organización, `treatmentId` no verificado y commandId homónimo entre empresas con conservación de ambos eventos materiales.
-
-### Quality y reauditoría
-
-- Quality #2048: **1041/1043**. Las ocho adversariales F006 iniciales pasaron; los dos rojos estaban en el contrato histórico de tareas y revelaron que dos intervenciones con el mismo timestamp no deben completar mutuamente una obligación.
-- Se corrigió la causalidad a `performedAt > source.performedAt`, manteniendo que una revisión anticipada o exacta al vencimiento sí es válida.
-- Quality #2074 sobre `fe5e6c27682bead1a33afc39b3032186841e9749`: **1051/1052**. El único rojo era una expectativa del fixture: una tarea a 23 horas del vencimiento es correctamente `Próxima`, no `Pendiente`; no hubo defecto productivo.
-- Corrección exclusiva del test: `ba4f42943b9d5e7cbc04fd8809091e250d00790a`.
-- Quality #2076 sobre `ba4f42943b9d5e7cbc04fd8809091e250d00790a`: **verde, 1052/1052 pruebas**, cero fallos; el workflow `Quality` concluyó `success`.
-- Reauditoría final: no queda import productivo de `appendMipeIntervention` ni `reassignMipeReviewTask`; creación y reasignación pasan por la autoridad canónica, la proyección es tenant-aware y los eventos materiales están namespaced por organización.
-- Cierre documental `7819e9736e43cd937879f741c3dc4597f030f044`; Quality #2078 verde.
-
-## M32-F007 — cierre verificado
-
-### Problema reproducido
-
-La identidad Product existía en Inventario, pero el flujo productivo MIPE no congelaba su perfil técnico al programar. `executeTreatment()` volvía a leer `cost`, `reentryHours` y `withdrawalDays` del Product mutable, de modo que editar el catálogo después de aprobar un Treatment podía reescribir retroactivamente su costo, reentrada y carencia. Además, Incidents podían eliminarse físicamente, material vegetal aceptaba tipos libres y existía una vía de Intervention `Tratamiento` con producto/dosis textual sin Treatment canónico.
-
-### Solución
-
-- `src/domain/mipeCatalogAuthority.js` define la autoridad sanitaria de catálogo sin duplicar Inventario: Incident tiene categoría/riesgo/vigencia/lifecycle y Product compartido produce un snapshot técnico ejecutable MIPE.
-- Incident nuevo conserva identidad, ownership, nombre científico, descripción y vigencia. `ARCHIVE_INCIDENT` agrega lifecycle append-only; `DELETE_INCIDENT` queda únicamente como alias de compatibilidad que **archiva**, nunca elimina.
-- Nuevos Findings de Position y material vegetal deben resolver un Incident activo, no archivado y vigente del tenant activo. Material vegetal persiste `incidentId` canónico y deriva el nombre desde el catálogo, no desde texto libre.
-- `SCHEDULE_TREATMENT` construye `productSnapshot` tenant/site-aware con nombre, categoría, ingrediente activo, fabricante, registro técnico, unidad, rango/unidad de dosis, costo, reentrada, carencia, vigencia y `technicalRevision`.
-- La unidad de dosis solicitada debe coincidir con el perfil técnico, y la unidad física ejecutable debe corresponder: `mL/* → mL`, `g/* → g`.
-- `executeTreatment()` valida el snapshot a la fecha de ejecución y calcula costo/reentrada/carencia desde la evidencia congelada. Editar o desactivar el Product vivo después de aprobar no modifica el Treatment ya programado.
-- Treatments legacy sin snapshot conservan fallback explícito al Product vivo para compatibilidad histórica; toda nueva programación por `mipeCommand` nace con snapshot.
-- La transacción F004 continúa con **exactamente cinco colecciones**: el snapshot vive anidado dentro de Treatment, no crea una sexta consecuencia.
-- Una Intervention de tipo `Tratamiento` exige un Treatment canónico verificado del mismo Finding/tenant/sede. El panel material deja únicamente Seguimiento rápido; los tratamientos reales pasan por Treatments MIPE con Product/Lot/costo/restricciones.
-- `InventoryPage` captura fabricante, registro técnico/ICA, vigencia y revisión técnica sobre la misma colección `products`, estampa `organizationId` y rechaza desde UI combinaciones incoherentes entre unidad de dosis y unidad de inventario.
-- `TreatmentsPage` bloquea la unidad de dosis al perfil seleccionado, muestra registro/vigencia/reentrada/carencia y usa `productSnapshot` para historia visible.
-
-### Pruebas adversariales
-
-- `tests/m3-2-mipe-catalog-authority.test.mjs`: snapshot técnico completo/inmutable, tenant/sede/categoría/vigencia, unidad y rango de dosis, archivado/replay de Incident.
-- `tests/m3-2-mipe-incident-product-command.test.mjs`: archivado no destructivo, alias DELETE→archive, Incident archivado/futuro, Product homónimo cross-tenant, snapshot programado, mutación posterior del Product vivo, expiración al ejecutar, unidad incompatible y Treatment textual prohibido.
-- La reproducción financiera/agronómica programa con costo/reentrada/carencia A, muta el Product vivo a valores B y exige que la ejecución siga usando A; también exige no descontar inventario si el snapshot ya expiró.
-- `tests/m3-2-mipe-incident-product-ui.test.mjs`: no hard-delete en catálogo, Incidents activos en croquis/material, Seguimiento-only rápido, doseUnit bloqueada, metadatos técnicos de Inventario y coherencia `doseUnit ↔ unit`.
-- Suites F006 se adaptaron al contrato endurecido sin debilitar sus invariantes: Treatment posterior usa Treatment canónico; homónimos cross-tenant y eventos materiales siguen cubiertos.
-
-### Quality y reauditoría
-
-- Quality #2108 sobre `7142b049c22655a3fe62b76fd923646719696783`: **1068/1072**. Los cuatro rojos eran contratos históricos: tres fixtures F006 todavía fabricaban Treatment textual y UX-F008 esperaba el copy anterior. La autoridad F007 no falló.
-- Se migraron únicamente esos contratos. Quality #2114 quedó verde sobre `cee46f3f26dc9d91b16e16b2e532c2d3bbaf74f7`.
-- Reauditoría final añadió validación de coherencia de unidad en la captura de Inventario y su prueba estática; no modificó dominio ni la transacción F004.
-- HEAD funcional final: `9cc5239de5ebcea606020ad9dab40918ceda7a13`.
-- Quality #2118: **verde, 1072/1072 pruebas**, cero fallos.
-- Reauditoría: no queda hard-delete productivo de Incident; `DELETE_INCIDENT` es alias no destructivo; nuevos Findings requieren Incident usable; nuevas programaciones nacen con snapshot; costo/reentrada/carencia se calculan desde `profile=snapshot||product`; Treatment textual sin Treatment canónico falla antes de evento/commit.
-- Cierre documental `1e016f168c8e7370584e8fe1f179c4e82586b714`; Quality #2120 verde.
-
-## M32-F008 — cierre verificado
-
-### Problema reproducido
-
-El backend genérico `erp_records` ya aceptaba cualquier colección, pero el cliente no materializaba ni sincronizaba por completo la evidencia F006/F003. `mipeInterventions` y `mipeCommandReceipts` faltaban del allowlist de sync y de la normalización persistente. Además, los receipts usaban `commandId` como identidad contractual pero no tenían necesariamente `id`, mientras el motor genérico esperaba `record.id`; habilitarlos sin corregir esa diferencia habría creado identidades vacías/colisiones y pérdida de idempotencia entre dispositivos. El backfill causal F002 existía en dominio, pero tampoco formaba parte del pipeline de persistencia/bootstrap.
-
-### Solución
-
-- `src/services/mipePersistenceMigration.js` introduce una migración MIPE dedicada (`MIPE_PERSISTENCE_VERSION=1`) sin reabrir el schema global M3.1: materializa `mipeInterventions` y `mipeCommandReceipts`, aplica `backfillMipeOwnership()` y normaliza cada receipt a `id = commandId`.
-- Identidad durable de receipt: `(organizationId, commandId)`. Duplicados idénticos convergen; dos signatures contradictorias para la misma identidad fallan cerrado durante migración.
-- `safeStorage.js` ejecuta la migración MIPE en load/save, después de la migración general/material y antes de persistir la caché segmentada.
-- `remoteBootstrap.js` ejecuta la misma migración tras hidratación autoritativa; sus helpers de identidad aceptan `id || commandId`, por lo que un dispositivo nuevo no depende de haber cargado una caché legacy antes.
-- `SYNCABLE_COLLECTIONS` incorpora `mipeInterventions` y `mipeCommandReceipts`.
-- `syncEngine.js` define identidad sincronizable como `id || commandId`; un registro realmente sin identidad falla cerrado. Los upserts estampan `id=recordId` y `_organizationId`, y los tombstones solo afectan la identidad del tenant activo.
-- Interventions conservan `assignmentHistory`, snapshots y ownership durante cache/sync/bootstrap; los homónimos de otra empresa permanecen intactos.
-- Mutaciones offline pendientes del tenant activo se superponen al snapshot remoto en bootstrap, sin destruir el homónimo extranjero.
-- Un receipt hidratado desde PostgreSQL permite que el mismo command vuelva a ejecutarse como replay efecto-único después de recarga/dispositivo nuevo.
-- No se crean tablas MIPE nuevas ni RPCs redundantes: `003_sync_transport.sql`/`007_remote_bootstrap.sql` ya proveen almacenamiento genérico por `(organization_id, collection, record_id)`.
-- F004 no se expande: el receipt genérico MIPE no forma parte de `MIPE_TREATMENT_TRANSACTION_COLLECTIONS`; la RPC de Treatment mantiene exactamente lote + movimiento + Treatment + Finding + costo y `sync:false` para consecuencias ya confirmadas remotamente.
-
-### Pruebas adversariales
-
-- `tests/m3-2-mipe-persistence-sync.test.mjs`: migración dedicada, backfill causal, receipt `id=commandId`, contradicción fail-closed, caché tenant-aware, cola sync, bootstrap, tombstone, pending offline overlay, homónimos cross-tenant y replay tras hidratar receipt.
-- `tests/m3-2-mipe-persistence-receipt-reaudit.test.mjs`: receipts idénticos convergen y un tombstone de A conserva el homónimo de B.
-- La suite verifica explícitamente que `MIPE_TREATMENT_TRANSACTION_COLLECTIONS` sigue siendo `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries` y que `mipeTreatmentTransaction.js` no incorpora `mipeCommandReceipts`.
-
-### Quality y reauditoría
-
-- Quality #2132: **1080/1081**. El único rojo era una aserción estática de la prueba que buscaba el nombre interno antiguo `CANONICAL_COLLECTIONS`; producción exponía correctamente `MIPE_TREATMENT_TRANSACTION_COLLECTIONS` con las mismas cinco consecuencias.
-- Se corrigió exclusivamente esa aserción y se añadió reauditoría de convergencia/tombstone de receipts.
-- HEAD funcional final: `1faa98c...` (commit que contiene la reauditoría final de receipts).
-- Quality #2135: **verde, 1083/1083 pruebas**, cero fallos; workflow `Quality` concluido `success`.
-- Reauditoría final: backend genérico intacto; no hay nueva autoridad SQL paralela; cache/bootstrap/sync comparten la misma identidad tenant-aware; receipts contradictorios fallan y los idénticos convergen; F004 conserva su atomicidad de cinco colecciones.
-
-## M32-F009 — cierre verificado
-
-### Problema reproducido
-
-Reentrada y carencia se calculaban, pero no constituían una autoridad operativa única. La transición a `Cosecha` verificaba carencia en UI antes de mutar Store directamente; una llamada programática podía saltarla. La reentrada no protegía el executor de cambio de fase. En propagación, la elegibilidad dependía principalmente del string mutable `operationalAvailability`, por lo que un override manual podía contradecir la evidencia MIPE. La reauditoría también detectó dos riesgos adicionales: un `commandId` de fase reutilizado con otro payload podía confundirse con replay y una evidencia futura podía bloquear retroactivamente si solo se evaluaba su fecha final.
-
-### Solución
-
-- `src/domain/mipeOperationalRestrictions.js` define una autoridad derivada, de solo lectura y tenant-aware para `REENTRY`, `HARVEST_WITHDRAWAL` y `PROPAGATION_BLOCK`.
-- Las restricciones temporales nacen únicamente de Treatments ejecutados causales del target y respetan ventana `[startsAt, endsAt)`: no bloquean antes de ejecutarse y expiran automáticamente sin mutación adicional.
-- Reentrada y carencia sobreviven al cierre posterior del Finding hasta que vence su evidencia temporal; cerrar un Finding no cancela retroactivamente el Treatment ejecutado.
-- Para material vegetal, un Finding abierto con `restrictsPropagation=true` proyecta bloqueo de corte. Un Finding terminal libera la proyección; un string legacy `Bloqueada por MIPE` solo se ignora como stale cuando existe causalidad canónica histórica que ya terminó. Sin causalidad verificable se mantiene fail-closed.
-- Homónimos cross-tenant se filtran por ownership antes de proyectar; evidencia ambigua o identidad duplicada same-tenant falla cerrado.
-- `activePlantRestrictions()` conserva su contrato legacy pero delega a la autoridad canónica, evitando dos semánticas de restricciones.
-- `preparePropagationBatch()` vuelve a comprobar `PROPAGATION_CUT` dentro del command boundary y usa el mismo `occurredAt` tanto para el prefilter de fuentes como para el guard. Un override manual `Disponible para corte` no libera evidencia MIPE activa.
-- `src/services/plantPhaseTransitionCommand.js` reemplaza la mutación directa de `PhaseTransitionsPage`: `CULTIVATION_WORK` exige ausencia de reentrada y `HARVEST` exige ausencia de reentrada y carencia dentro del executor.
-- El cambio de fase usa `executeCoreOperationCommand()`, permiso `manage_cultivation`, identidad tenant-aware y evento canónico `cultivation.plant.phase_changed`.
-- Replay de cambio de fase es effect-idempotent solo para el mismo payload; reutilizar `commandId` con `plantId`, fase, fecha o contexto distintos falla cerrado.
-- `WorkOrdersPage` no se forzó dentro de F009 porque hoy las órdenes solo tienen `siteId` y texto, sin target agronómico canónico. Aplicar reentrada ahí como bloqueo global de sede inventaría semántica; la incorporación de scope jerárquico verificable corresponde a F010.
-
-### Pruebas adversariales
-
-- `tests/m3-2-mipe-operational-restrictions.test.mjs`: tenancy, Treatments futuros, expiración automática, cierre de Finding, operación CULTIVATION_WORK/HARVEST, bloqueos materiales, homónimos y duplicados fail-closed.
-- `tests/m3-2-mipe-operational-commands.test.mjs`: bypass directo de fase/cosecha, replay/collision de `commandId`, homónimo cross-tenant, override manual de disponibilidad, legacy fail-closed y liberación causal stale.
-- `tests/m3-2-mipe-operational-contract.test.mjs`: PhaseTransitions sin `update()` directo, guard dentro de propagación, reloj único, delegación de `activePlantRestrictions`, evento plant-specific y selector que no confía ciegamente en el string legacy.
-
-### Quality y reauditoría
-
-- Quality #2172 sobre `10b7836fdb8890fef480cfe42a68c822ed3576dc`: **1105/1106**. Las invariantes F009 pasaron; el único rojo era el fixture de liberación stale, que declaraba la genética en `geneticProfiles` en vez de la colección canónica `genetics`.
-- Se corrigió exclusivamente el fixture. La reauditoría concurrente añadió `at: occurredAt` al selector de fuentes para que prefilter y guard compartan reloj determinista.
-- HEAD funcional final: `1fcb48ef30cbe17644e88a00f6e89a63fdb328e8`.
-- Quality #2176: **verde, 1106/1106 pruebas**, cero fallos, cero cancelados y cero skipped; workflow `Quality` concluyó `success`.
-- Reauditoría de regresión F004 dentro del mismo artefacto: nueve adversariales verdes y conjunto atómico preservado en exactamente `inventoryLots`, `inventoryMovements`, `treatments`, `findings`, `costEntries`.
-- Reauditoría final F009: no queda mutación directa de fase en UI; los guards viven en executors; restricciones temporales son causales y autoexpiran; propagación no puede liberarse mediante override mutable; replay y tenancy fallan cerrado.
-
-## Orden de cierre
-
-1. **F001 Domain authority — Verified.**
-2. **F002 Tenancy — Verified.**
-3. **F003 Commands/permissions/events — Verified.**
-4. **F004 Treatment/inventory transaction — Verified.**
-5. **F005 Workflow/history — Verified.**
-6. **F006 Follow-up/interventions — Verified.**
-7. **F007 Incident/product authority — Verified.**
-8. **F008 Persistence/sync — Verified.**
-9. **F009 Operational restrictions — Verified.**
-10. **F010 Dashboard/croquis/context** — contexto jerárquico persistente y acciones desde croquis.
-11. **F011 Passport/Knowledge Graph** — trazabilidad explicable end-to-end.
-12. **F012 Adversarial verification** — reauditoría transversal y cierre.
+- Static audit: **success**
+- Dependency audit: **success**
+- Environment contract audit: **success**
+- Authentication/session audit: **success**
+- Functional tests: **1236/1236 pass**
+- Fail: **0**
+- Cancelled: **0**
+- Skipped: **0**
+- Coverage gate: **success**
+- Production build: **success**
+- Production artifact audit: **success**
+- `functional-test-evidence` artifact: `9827843605`
+- digest: `sha256:7eaa30f6fe0610c904dfbd7f289c4ddc8871405f1fc062d928b2596332d0a6e6`
 
 ## Criterios de cierre M3.2
 
-1. Entidades MIPE tenant-owned e identidad estable.
-2. Ningún lookup operativo depende de ID global.
-3. Ninguna UI MIPE significativa escribe directamente en Store.
-4. Mutaciones por command boundary permission-aware e idempotente.
-5. Ejecución de tratamiento atómica respecto de lote, movimiento, costo, Treatment, Finding y evidencia.
-6. Workflow e historial append-only sin reescritura silenciosa.
-7. Seguimientos/intervenciones persistentes, tenant-aware y causales.
-8. Producto/dosis/lote/reentrada/carencia ligados a evidencia verificable.
-9. Schema/cache/bootstrap/sync/tombstones preservan `(organizationId,id)` y fallan cerrado.
-10. Dashboard/croquis respetan Empresa→Sede→Nave→Cama→Planta.
-11. Passport/Knowledge Graph explican la cadena MIPE sin nodos extranjeros.
-12. Quality completo verde y reauditoría final sin P0/P1 abiertos.
+1. Entidades MIPE tenant-owned e identidad estable. **Cumplido.**
+2. Ningún lookup operativo depende de ID global. **Cumplido.**
+3. Ninguna UI MIPE significativa escribe dominio directamente en Store. **Cumplido.**
+4. Mutaciones por command boundary permission-aware e idempotente. **Cumplido.**
+5. Treatment atómico respecto de lote, movimiento, costo, Treatment, Finding y evidencia. **Cumplido.**
+6. Workflow e historial append-only sin reescritura silenciosa. **Cumplido.**
+7. Seguimientos/intervenciones persistentes, tenant-aware y causales. **Cumplido.**
+8. Product/dosis/Lot/reentrada/carencia ligados a evidencia verificable. **Cumplido.**
+9. Cache/bootstrap/sync/tombstones preservan identidad por tenant. **Cumplido.**
+10. Dashboard/croquis respetan el contexto operativo jerárquico. **Cumplido.**
+11. Passport/Knowledge Graph explican la cadena MIPE sin contaminación extranjera. **Cumplido.**
+12. Quality funcional completo verde y reauditoría final sin P0/P1 abiertos. **Cumplido por #2975.**
 
-## Conteo inicial
+## Orden de cierre ejecutado
 
-- Open: **12**
-- P0: **4**
-- P1: **8**
-- Verified: **0**
+1. F001–F009 — **Verified** por sus Quality históricos y regresión #2975.
+2. F010 Dashboard/croquis/context — **Verified**.
+3. F011 Passport/Knowledge Graph — **Verified**.
+4. F012 Adversarial verification — **Verified**.
 
 ## Estado actual
 
-- Verified: **9**
-- Open: **3**
+- Verified: **12**
+- Open: **0**
 - P0 abiertos: **0**
-- P1 abiertos: **3**
+- P1 abiertos: **0**
+
+## Condición documental final
+
+Este archivo constituye el único delta documental posterior al candidato funcional `be85c67798738fcd535a470ab6145818e74ef921`. M3.2 se declara definitivamente **12/12 Verified** únicamente cuando el workflow `Quality` de este commit documental se ejecute con runner real y concluya completamente verde. No se autoriza merge ni modificación de `main` como parte de esta certificación.

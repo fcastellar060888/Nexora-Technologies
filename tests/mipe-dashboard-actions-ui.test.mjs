@@ -4,7 +4,7 @@ import{readFile}from'node:fs/promises'
 
 test('el Dashboard MIPE ofrece filtros y acciones rápidas de revisión por command boundary',async()=>{
  const source=await readFile('src/pages/MipeDashboardPage.jsx','utf8')
- assert.match(source,/Filtrar tareas por sede/)
+ assert.match(source,/scopeOperationalState/)
  assert.match(source,/Filtrar tareas por estado/)
  assert.match(source,/Filtrar tareas por responsable/)
  assert.match(source,/Registrar seguimiento/)

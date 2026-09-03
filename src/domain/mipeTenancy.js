@@ -152,6 +152,23 @@ function recordSiteCausallyValid(state,collection,record,organizationId){
  return true
 }
 
+function findingOwnershipCausallyValid(state,record,organizationId){
+ const owner=text(organizationId)
+ if(!owner||!recordSiteCausallyValid(state,'findings',record,owner))return false
+ const incidentId=text(record?.incidentId)
+ if(!incidentId)return true
+ const candidates=list(state?.incidents).filter(item=>text(item?.id)===incidentId),local=candidates.filter(item=>explicitOrganizationId(item)===owner)
+ if(local.length>1)return false
+ if(local.length===1)return true
+ return list(record?.mipeHistory).length>0||Number(record?.mipeHistoryVersion||0)>0
+}
+
+function interventionOwnershipCausallyValid(state,record,organizationId){
+ const owner=text(organizationId),findingId=text(record?.findingId),finding=ownedReference(state,'findings',findingId,owner)
+ if(!owner||!findingId||!finding)return false
+ return sitesCompatible(record?.siteId,[finding.siteId])
+}
+
 function findingOwnerGroups(state,record){
  const groups=[]
  const siteOwners=ownerForSite(state,record?.siteId)
@@ -160,8 +177,7 @@ function findingOwnerGroups(state,record){
  if(positionId){const owners=ownersForReference(state,'plantPositions',positionId);if(owners.length)groups.push(owners)}
  const materialId=text(record?.materialPlantId)||(text(record?.targetType)==='MATERIAL_PLANT'?text(record?.targetId):'')
  if(materialId){const owners=materialPlantOwners(state,materialId);if(owners.length)groups.push(owners)}
- const incidentOwners=explicitOwnersForReference(state,'incidents',record?.incidentId)
- if(incidentOwners.length)groups.push(incidentOwners)
+ if(!groups.length){const incidentOwners=explicitOwnersForReference(state,'incidents',record?.incidentId);if(incidentOwners.length)groups.push(incidentOwners)}
  return groups
 }
 
@@ -188,7 +204,7 @@ function recordOwnerGroups(state,collection,record){
  }
  if(collection==='mipeInterventions'){
   const groups=[]
-  for(const[targetCollection,field]of[['findings','findingId'],['treatments','treatmentId']]){
+  for(const[targetCollection,field]of[['findings','findingId']]){
    const id=text(record?.[field]);if(!id)continue
    const owners=ownersForReference(state,targetCollection,id);if(owners.length)groups.push(owners)
   }
@@ -198,19 +214,25 @@ function recordOwnerGroups(state,collection,record){
  return[]
 }
 
+function ownershipCausallyValid(state,collection,record,organizationId){
+ return collection==='findings'?findingOwnershipCausallyValid(state,record,organizationId):recordSiteCausallyValid(state,collection,record,organizationId)
+}
+
 export function mipeRecordOrganizationId(state,collection,record){
  if(!record||typeof record!=='object')return''
  if(!MIPE_OWNERSHIP_COLLECTIONS.includes(collection))return sharedRecordOrganizationId(state,collection,record)
  const explicit=explicitOrganizationId(record),groups=recordOwnerGroups(state,collection,record)
  if(explicit){
-  if(groups.some(owners=>!owners.includes(explicit))||!recordSiteCausallyValid(state,collection,record,explicit))return''
+  if(groups.some(owners=>!owners.includes(explicit)))return''
+  if(collection==='mipeInterventions')return interventionOwnershipCausallyValid(state,record,explicit)?explicit:''
+  if(!ownershipCausallyValid(state,collection,record,explicit))return''
   return explicit
  }
  const inferred=[...new Set(groups.flat())]
- if(inferred.length===1)return recordSiteCausallyValid(state,collection,record,inferred[0])?inferred[0]:''
+ if(inferred.length===1)return ownershipCausallyValid(state,collection,record,inferred[0])?inferred[0]:''
  if(inferred.length>1)return''
  const companies=list(state?.companies),fallback=companies.length===1?text(companies[0]?.id):companies.length===0?'local-installation':''
- return fallback&&recordSiteCausallyValid(state,collection,record,fallback)?fallback:''
+ return fallback&&ownershipCausallyValid(state,collection,record,fallback)?fallback:''
 }
 
 export function mipeRecordsForOrganization(state,collection,organizationId=activeOrganizationId(state)){
@@ -318,11 +340,30 @@ function backfillCollection(state,collection){
  })
 }
 
+function migrationFindingOrganizationId(state,record){
+ const explicit=explicitOrganizationId(record),groups=findingOwnerGroups(state,record)
+ if(explicit){
+  if(groups.some(owners=>!owners.includes(explicit)))return''
+  return recordSiteCausallyValid(state,'findings',record,explicit)?explicit:''
+ }
+ const inferred=[...new Set(groups.flat())]
+ if(inferred.length===1)return recordSiteCausallyValid(state,'findings',record,inferred[0])?inferred[0]:''
+ if(inferred.length>1)return''
+ const fallback=fallbackOwner(state)
+ return fallback&&recordSiteCausallyValid(state,'findings',record,fallback)?fallback:''
+}
+
+function incidentBackfillOwners(state,record){
+ const id=text(record?.id)
+ if(!id)return[]
+ return[...new Set(list(state?.findings).filter(item=>text(item?.incidentId)===id).map(item=>migrationFindingOrganizationId(state,item)).filter(Boolean))]
+}
+
 function backfillIncidents(state){
  const explicitByIdentity=new Set(list(state?.incidents).map(record=>{const owner=explicitOrganizationId(record);return owner?`${owner}\u0000${text(record.id)}`:''}).filter(Boolean)),fallback=fallbackOwner(state),result=[]
  for(const record of list(state?.incidents)){
   if(explicitOrganizationId(record)){result.push(record);continue}
-  const owners=incidentReverseOwners(state,record)
+  const owners=incidentBackfillOwners(state,record)
   const targets=owners.length?owners:(fallback?[fallback]:[])
   if(!targets.length){result.push(record);continue}
   for(const owner of targets){const key=`${owner}\u0000${text(record.id)}`;if(explicitByIdentity.has(key))continue;result.push({...record,organizationId:owner});explicitByIdentity.add(key)}
