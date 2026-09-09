@@ -21,9 +21,9 @@ test('resuelve un conflicto conservando la versión remota',()=>{
  const companyId='company-a'
  const state={
   currentContext:{companyId},
-  products:[{id:'p1',name:'Local'}],
+  products:[{id:'p1',organizationId:companyId,name:'Local'}],
   syncQueue:[{id:'m1',companyId,status:'conflict'}],
-  syncConflicts:[{id:'x1',companyId,mutationId:'m1',collection:'products',recordId:'p1',localPayload:{id:'p1',name:'Local'},remotePayload:{id:'p1',name:'Remoto'},localVersion:1,remoteVersion:2,status:'open'}]
+  syncConflicts:[{id:'x1',companyId,mutationId:'m1',collection:'products',recordId:'p1',localPayload:{id:'p1',organizationId:companyId,name:'Local'},remotePayload:{id:'p1',organizationId:companyId,name:'Remoto'},localVersion:1,remoteVersion:2,status:'open'}]
  }
  const next=applyConflictResolution(state,'x1',{strategy:'remote',resolvedBy:'Admin'})
  assert.equal(next.products[0].name,'Remoto')
