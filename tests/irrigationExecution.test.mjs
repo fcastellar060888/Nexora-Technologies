@@ -17,16 +17,23 @@ test('crea preparación solo desde fórmula aprobada',()=>{
 })
 
 test('ejecuta preparación, convierte kg, genera costo y orden',()=>{
+ const organizationId='org1'
  const state={
-  formulations:[{id:'f1',status:'Aprobada',siteId:'s1',volumeL:1000,stage:'Vegetativo',items:[{productId:'n1',tank:'A',grams:500}]}],
-  nutrientProducts:[{id:'n1',inventoryProductId:'p1',cost:2}],products:[{id:'p1',unit:'kg',cost:3000}],
-  inventoryLots:[{id:'l1',productId:'p1',siteId:'s1',quantity:0.8}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[]
+  companies:[{id:organizationId}],currentContext:{companyId:organizationId,siteId:'s1'},sites:[{id:'s1',organizationId}],
+  formulations:[{id:'f1',organizationId,status:'Aprobada',siteId:'s1',volumeL:1000,stage:'Vegetativo',items:[{productId:'n1',tank:'A',grams:500}]}],
+  nutrientProducts:[{id:'n1',organizationId,inventoryProductId:'p1',cost:2}],products:[{id:'p1',organizationId,unit:'kg',cost:3000}],
+  inventoryLots:[{id:'l1',organizationId,productId:'p1',siteId:'s1',unit:'kg',quantity:0.8}],inventoryMovements:[],costEntries:[],workOrders:[],tankPreparations:[]
  }
  const created=createTankPreparation(state,{id:'prep1',formulationId:'f1',createdAt:'2026-07-30T12:00:00.000Z'})
- const executed=executeTankPreparation(created,{preparationId:'prep1',allocations:{'f1-0':'l1'},responsible:'Ana',executedAt:'2026-07-30T13:00:00.000Z',costEntryId:'c1',workOrderId:'w1'})
+ const executed=executeTankPreparation(created,{preparationId:'prep1',allocations:{'f1-0':'l1'},responsible:'Ana',executedAt:'2026-07-30T13:00:00.000Z',movementIdPrefix:'prep1-movement',costEntryId:'c1',workOrderId:'w1'})
+ const movement=executed.inventoryMovements.find(item=>item.id==='prep1-movement:0')
+ const opening=executed.inventoryMovements.find(item=>item.sourceType==='LegacyInventoryBootstrap')
  assert.equal(executed.inventoryLots[0].quantity,0.30000000000000004)
- assert.equal(executed.inventoryMovements[0].signedQuantity,-0.5)
- assert.equal(executed.inventoryMovements[0].sourceType,'MirfePreparation')
+ assert.ok(opening)
+ assert.equal(opening.balanceAfter,0.8)
+ assert.equal(movement.signedQuantity,-0.5)
+ assert.equal(movement.sourceType,'MirfePreparation')
+ assert.equal(movement.previousMovementId,opening.id)
  assert.equal(executed.tankPreparations[0].status,'Preparada')
  assert.equal(executed.tankPreparations[0].items[0].consumedUnit,'kg')
  assert.equal(executed.tankPreparations[0].totalCost,1500)
