@@ -24,6 +24,6 @@ test('F007 persistence enforces causal snapshot server-side for every inventory 
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:lot-product/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:unit'/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:unit-cost/)
- assert.match(sql,/v_source_type <> 'Manual' and v_source_id is null/)
+ assert.match(sql,/v_source_type\s*<>\s*'Manual'\s+and\s+v_source_id\s+is\s+null/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:immutable/)
 })
