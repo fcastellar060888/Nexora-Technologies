@@ -2,6 +2,9 @@ import test from'node:test'
 import assert from'node:assert/strict'
 import{activePlantRestrictions,calculateTreatmentQuantity,executeTreatment,scheduleTreatment}from'../src/domain/mipe.js'
 
+const organizationId='local-installation'
+const inventoryAuthority={currentContext:{companyId:organizationId,siteId:'s1'},companies:[{id:organizationId}],sites:[{id:'s1',organizationId}]}
+
 test('calcula dosis por litro',()=>{
  assert.equal(calculateTreatmentQuantity(2,'mL/L',500),1000)
  assert.equal(calculateTreatmentQuantity(1.5,'g/L',100),150)
@@ -13,7 +16,7 @@ test('calcula correctamente dosis por 100 litros',()=>{
 })
 
 test('programa y ejecuta un tratamiento de forma transaccional',()=>{
- const base={sites:[{id:'s1'}],findings:[{id:'f1',plantPositionId:'plant1',status:'Detectado'}],products:[{id:'p1',unit:'mL',doseMin:100,doseMax:250,cost:2,reentryHours:12,withdrawalDays:3}],inventoryLots:[{id:'l1',productId:'p1',siteId:'s1',unit:'mL',quantity:1500}],inventoryMovements:[],treatments:[],costEntries:[]}
+ const base={...inventoryAuthority,findings:[{id:'f1',organizationId,plantPositionId:'plant1',status:'Detectado'}],products:[{id:'p1',organizationId,unit:'mL',doseMin:100,doseMax:250,cost:2,reentryHours:12,withdrawalDays:3}],inventoryLots:[{id:'l1',organizationId,productId:'p1',siteId:'s1',unit:'mL',quantity:1500}],inventoryMovements:[],treatments:[],costEntries:[]}
  const scheduled=scheduleTreatment(base,{id:'t1',findingId:'f1',productId:'p1',dose:200,doseUnit:'mL/100 L',mixVolume:500,createdAt:'2026-07-30T12:00:00.000Z'})
  assert.equal(scheduled.treatments[0].totalQuantity,1000)
  assert.equal(scheduled.findings[0].status,'Tratamiento aprobado')
@@ -41,7 +44,7 @@ test('programa y ejecuta un tratamiento de forma transaccional',()=>{
 })
 
 test('bloquea ejecución con inventario insuficiente',()=>{
- const state={sites:[{id:'s1'}],findings:[{id:'f1',status:'Tratamiento aprobado'}],products:[{id:'p1',unit:'mL',cost:1}],inventoryLots:[{id:'l1',productId:'p1',siteId:'s1',unit:'mL',quantity:50}],inventoryMovements:[],costEntries:[],treatments:[{id:'t1',findingId:'f1',productId:'p1',status:'Programado',totalQuantity:100,dose:1,doseUnit:'mL/L',mixVolume:100}]}
+ const state={...inventoryAuthority,findings:[{id:'f1',organizationId,status:'Tratamiento aprobado'}],products:[{id:'p1',organizationId,unit:'mL',cost:1}],inventoryLots:[{id:'l1',organizationId,productId:'p1',siteId:'s1',unit:'mL',quantity:50}],inventoryMovements:[],costEntries:[],treatments:[{id:'t1',organizationId,findingId:'f1',productId:'p1',status:'Programado',totalQuantity:100,dose:1,doseUnit:'mL/L',mixVolume:100}]}
  assert.throws(()=>executeTreatment(state,{treatmentId:'t1',lotId:'l1',movementId:'m1'}),/existencia disponible/)
  assert.equal(state.inventoryLots[0].quantity,50)
 })
