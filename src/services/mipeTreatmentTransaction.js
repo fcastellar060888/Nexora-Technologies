@@ -11,8 +11,16 @@ const number=(value,label)=>{const parsed=Number(value);if(!Number.isFinite(pars
 const version=value=>{const parsed=Number(value||0);if(!Number.isSafeInteger(parsed)||parsed<0)throw new Error('La versión de sync MIPE no es válida.');return parsed}
 
 function single(items,label){if(items.length!==1)throw new Error(`La transacción MIPE requiere exactamente un ${label}.`);return items[0]}
-
 function mutationMap(mutations,collection){return mutations.filter(item=>item.collection===collection)}
+
+function validateLegacyBootstrap(mutation,lotMutation,owner,site){
+ const movement=mutation?.payload,lot=lotMutation.payload,quantity=number(movement?.quantity,'quantity del bootstrap'),signed=number(movement?.signedQuantity,'signedQuantity del bootstrap'),before=number(movement?.balanceBefore,'balanceBefore del bootstrap'),after=number(movement?.balanceAfter,'balanceAfter del bootstrap'),sequence=Number(movement?.ledgerSequence)
+ if(mutation.baseVersion!==0)throw new Error('El bootstrap legacy MIPE debe iniciar en versión cero.')
+ if(movement?.id!==`inventory-opening:${owner}:${lotMutation.recordId}`||movement?.type!=='Saldo inicial'||movement?.sourceType!=='LegacyInventoryBootstrap'||text(movement?.sourceId)!==lotMutation.recordId)throw new Error('La evidencia inicial legacy MIPE no es canónica.')
+ if(text(movement?.lotId)!==lotMutation.recordId||text(movement?.productId)!==text(lot.productId)||text(movement?.siteId)!==site)throw new Error('El bootstrap legacy MIPE no coincide con lote, producto y sede.')
+ if(quantity<=0||signed!==quantity||before!==0||after!==quantity||sequence!==1||text(movement?.previousMovementId))throw new Error('La cadena inicial legacy MIPE no es consistente.')
+ return movement
+}
 
 export function buildMipeTreatmentTransaction(before,after,{commandId,signature,organizationId,treatmentId,siteId}={}){
  const command=text(commandId),owner=text(organizationId),commandSignature=text(signature),treatment=text(treatmentId),site=text(siteId)
@@ -31,24 +39,32 @@ export function buildMipeTreatmentTransaction(before,after,{commandId,signature,
   return Object.freeze({collection:change.collection,recordId:change.recordId,operation:'upsert',baseVersion:version(change.previousPayload?._syncVersion),payload:{...payload,siteId:payloadSite||site,_organizationId:owner}})
  })
  const lotMutation=single(mutationMap(mutations,'inventoryLots'),'lote de inventario')
- const movementMutation=single(mutationMap(mutations,'inventoryMovements'),'movimiento de inventario')
+ const movementMutations=mutationMap(mutations,'inventoryMovements')
  const treatmentMutation=single(mutationMap(mutations,'treatments'),'tratamiento ejecutado')
  const findingMutation=single(mutationMap(mutations,'findings'),'hallazgo en seguimiento')
  const costMutation=single(mutationMap(mutations,'costEntries'),'costo de tratamiento')
- if(mutations.length!==5)throw new Error('La transacción MIPE contiene consecuencias fuera de la unidad atómica esperada.')
+ if(movementMutations.length<1||movementMutations.length>2)throw new Error('La transacción MIPE requiere uno o dos movimientos de inventario.')
+ if(mutations.length!==4+movementMutations.length)throw new Error('La transacción MIPE contiene consecuencias fuera de la unidad atómica esperada.')
+ const operationalMutations=movementMutations.filter(item=>item.payload?.sourceType==='MipeTreatment'&&text(item.payload?.sourceId)===treatment)
+ const bootstrapMutations=movementMutations.filter(item=>item.payload?.sourceType==='LegacyInventoryBootstrap')
+ if(operationalMutations.length!==1||bootstrapMutations.length>1||operationalMutations.length+bootstrapMutations.length!==movementMutations.length)throw new Error('La transacción MIPE contiene una cadena de movimientos no autorizada.')
  if(treatmentMutation.recordId!==treatment||treatmentMutation.payload.status!=='Ejecutado')throw new Error('La transacción MIPE requiere exactamente el tratamiento ejecutado.')
  if(findingMutation.payload.id!==treatmentMutation.payload.findingId||findingMutation.payload.status!=='Seguimiento')throw new Error('El hallazgo MIPE no coincide con el tratamiento ejecutado.')
  if(text(treatmentMutation.payload.siteId)!==site||text(findingMutation.payload.siteId)!==site)throw new Error('Tratamiento y hallazgo deben pertenecer a la sede de ejecución.')
  const quantity=number(treatmentMutation.payload.totalQuantity,'totalQuantity del tratamiento')
  if(quantity<=0)throw new Error('La cantidad ejecutada del tratamiento debe ser positiva.')
- const movement=movementMutation.payload,lot=lotMutation.payload,cost=costMutation.payload
+ const movementMutation=operationalMutations[0],movement=movementMutation.payload,lot=lotMutation.payload,cost=costMutation.payload
  if(movement.type!=='Consumo'||movement.sourceType!=='MipeTreatment'||movement.sourceId!==treatment)throw new Error('El movimiento no pertenece al tratamiento MIPE.')
  if(text(movement.lotId)!==lotMutation.recordId||text(treatmentMutation.payload.lotId)!==lotMutation.recordId||text(cost.inventoryLotId)!==lotMutation.recordId)throw new Error('Lote, movimiento, tratamiento y costo MIPE no comparten la misma identidad física.')
  if(text(movement.productId)!==text(treatmentMutation.payload.productId)||text(cost.productId)!==text(treatmentMutation.payload.productId)||text(lot.productId)!==text(treatmentMutation.payload.productId))throw new Error('Producto, lote, movimiento, tratamiento y costo MIPE no coinciden.')
  const movementQuantity=number(movement.quantity,'quantity del movimiento'),signed=number(movement.signedQuantity,'signedQuantity'),beforeBalance=number(movement.balanceBefore,'balanceBefore'),afterBalance=number(movement.balanceAfter,'balanceAfter')
  if(movementQuantity!==quantity||signed!==-movementQuantity||afterBalance!==beforeBalance+signed||afterBalance<0||number(lot.quantity,'quantity del lote')!==afterBalance)throw new Error('La cadena de saldo MIPE no es consistente.')
+ if(bootstrapMutations.length){
+  const bootstrap=validateLegacyBootstrap(bootstrapMutations[0],lotMutation,owner,site)
+  if(Number(movement.ledgerSequence)!==Number(bootstrap.ledgerSequence)+1||text(movement.previousMovementId)!==text(bootstrap.id)||beforeBalance!==number(bootstrap.balanceAfter,'balanceAfter del bootstrap'))throw new Error('El consumo MIPE no continúa la evidencia inicial legacy.')
+ }
  if(text(cost.treatmentId)!==treatment||text(cost.findingId)!==text(findingMutation.recordId)||number(cost.quantity,'quantity del costo')!==quantity||number(cost.amount,'amount del costo')<0)throw new Error('El costo no pertenece a la ejecución MIPE.')
- if(movementMutation.baseVersion!==0||costMutation.baseVersion!==0)throw new Error('Movimiento y costo nuevos deben iniciar en versión cero.')
+ if(movementMutations.some(item=>item.baseVersion!==0)||costMutation.baseVersion!==0)throw new Error('Movimientos y costo nuevos deben iniciar en versión cero.')
  return Object.freeze({commandId:command,signature:commandSignature,organizationId:owner,treatmentId:treatment,siteId:site,mutations:Object.freeze(mutations)})
 }
 
