@@ -16,16 +16,29 @@ function tenantRecord(records,id,organizationId,label){
  return matches[0]
 }
 
-function validateMovementChain(movements,lot,preparationId){
- let expectedBefore=null
- for(const movement of movements){
-  if(movement.type!=='Consumo'||movement.sourceType!=='MirfePreparation'||movement.sourceId!==preparationId)throw new Error('La transacción MIRFE contiene un movimiento de inventario no autorizado.')
-  const quantity=number(movement.quantity,'quantity'),signed=number(movement.signedQuantity,'signedQuantity'),before=number(movement.balanceBefore,'balanceBefore'),after=number(movement.balanceAfter,'balanceAfter')
-  if(quantity<=0||signed!==-quantity||after!==before+signed||after<0)throw new Error('La cadena de saldos MIRFE no es consistente.')
-  if(expectedBefore!==null&&before!==expectedBefore)throw new Error('Los movimientos del lote no forman una cadena de saldos continua.')
-  expectedBefore=after
+function validateMovementChain(movements,lot,preparationId,organizationId){
+ const ordered=[...movements].sort((a,b)=>Number(a.ledgerSequence)-Number(b.ledgerSequence)),bootstrap=ordered.filter(item=>item.sourceType==='LegacyInventoryBootstrap')
+ if(bootstrap.length>1)throw new Error('La transacción MIRFE contiene más de un bootstrap legacy para el mismo lote.')
+ let expectedAfter=null,previous=null,operationalCount=0
+ for(let index=0;index<ordered.length;index+=1){
+  const movement=ordered[index],quantity=number(movement.quantity,'quantity'),signed=number(movement.signedQuantity,'signedQuantity'),before=number(movement.balanceBefore,'balanceBefore'),after=number(movement.balanceAfter,'balanceAfter'),sequence=Number(movement.ledgerSequence)
+  if(!Number.isSafeInteger(sequence)||sequence<1)throw new Error('La secuencia del kardex MIRFE no es válida.')
+  if(text(movement.lotId)!==text(lot.id)||text(movement.productId)!==text(lot.productId)||text(movement.siteId)!==text(lot.siteId))throw new Error('El movimiento MIRFE no coincide con lote, producto y sede.')
+  if(movement.sourceType==='LegacyInventoryBootstrap'){
+   if(index!==0||movement.id!==`inventory-opening:${organizationId}:${lot.id}`||movement.type!=='Saldo inicial'||text(movement.sourceId)!==text(lot.id)||quantity<=0||signed!==quantity||before!==0||after!==quantity||sequence!==1||text(movement.previousMovementId))throw new Error('La evidencia inicial legacy MIRFE no es canónica.')
+  }else{
+   operationalCount+=1
+   if(movement.type!=='Consumo'||movement.sourceType!=='MirfePreparation'||movement.sourceId!==preparationId)throw new Error('La transacción MIRFE contiene un movimiento de inventario no autorizado.')
+   if(quantity<=0||signed!==-quantity||after!==before+signed||after<0)throw new Error('La cadena de saldos MIRFE no es consistente.')
+  }
+  if(expectedAfter!==null){
+   if(before!==expectedAfter)throw new Error('Los movimientos del lote no forman una cadena de saldos continua.')
+   if(sequence!==Number(previous.ledgerSequence)+1||text(movement.previousMovementId)!==text(previous.id))throw new Error('La cadena append-only MIRFE está rota.')
+  }
+  expectedAfter=after;previous=movement
  }
- if(expectedBefore===null||number(lot.quantity,'quantity del lote')!==expectedBefore)throw new Error('El saldo final del lote no coincide con sus movimientos MIRFE.')
+ if(!operationalCount)throw new Error('Cada lote modificado requiere al menos un consumo MIRFE.')
+ if(expectedAfter===null||number(lot.quantity,'quantity del lote')!==expectedAfter)throw new Error('El saldo final del lote no coincide con sus movimientos MIRFE.')
 }
 
 export function buildMirfeInventoryTransaction(before,after,{commandId,signature,organizationId,preparationId}={}){
@@ -52,6 +65,7 @@ export function buildMirfeInventoryTransaction(before,after,{commandId,signature
  const lotMutations=mutations.filter(item=>item.collection==='inventoryLots')
  const movementMutations=mutations.filter(item=>item.collection==='inventoryMovements')
  if(!lotMutations.length||!movementMutations.length)throw new Error('La transacción MIRFE requiere lote y movimiento de inventario.')
+ if(movementMutations.some(item=>item.baseVersion!==0))throw new Error('Los movimientos MIRFE nuevos deben iniciar en versión cero.')
  if(mutations.filter(item=>item.collection==='workOrders').length!==1)throw new Error('La transacción MIRFE requiere exactamente una orden de trabajo.')
  if(mutations.filter(item=>item.collection==='costEntries').length>1)throw new Error('La transacción MIRFE no puede crear más de un costo.')
  const workOrder=mutations.find(item=>item.collection==='workOrders')?.payload
@@ -61,7 +75,7 @@ export function buildMirfeInventoryTransaction(before,after,{commandId,signature
  for(const lotMutation of lotMutations){
   const movements=movementMutations.map(item=>item.payload).filter(item=>item.lotId===lotMutation.recordId)
   if(!movements.length)throw new Error('Cada lote modificado requiere al menos un movimiento MIRFE.')
-  validateMovementChain(movements,lotMutation.payload,preparation)
+  validateMovementChain(movements,lotMutation.payload,preparation,owner)
  }
  for(const movement of movementMutations.map(item=>item.payload)){
   const lot=tenantRecord(after.inventoryLots,movement.lotId,owner,'El lote del movimiento')
