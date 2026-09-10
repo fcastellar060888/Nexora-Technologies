@@ -44,6 +44,7 @@ declare
   v_finding jsonb;
   v_lot jsonb;
   v_movement jsonb;
+  v_bootstrap jsonb;
   v_cost jsonb;
 begin
   if v_user_id is null then raise exception 'authentication required'; end if;
@@ -52,7 +53,7 @@ begin
     or nullif(btrim(p_treatment_id),'') is null
     or nullif(btrim(p_site_id),'') is null
   then raise exception 'incomplete MIPE treatment command'; end if;
-  if p_mutations is null or jsonb_typeof(p_mutations) is distinct from 'array' or jsonb_array_length(p_mutations)<>5 then
+  if p_mutations is null or jsonb_typeof(p_mutations) is distinct from 'array' or jsonb_array_length(p_mutations) not in (5,6) then
     raise exception 'invalid MIPE treatment mutation set';
   end if;
 
@@ -89,11 +90,19 @@ begin
   end if;
 
   if (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryLots')<>1
-    or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements')<>1
+    or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements' and mutation->'payload'->>'sourceType'='MipeTreatment' and mutation->'payload'->>'sourceId'=p_treatment_id)<>1
+    or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements' and mutation->'payload'->>'sourceType'='LegacyInventoryBootstrap')>1
+    or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements') not in (1,2)
     or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='treatments' and mutation->>'recordId'=p_treatment_id)<>1
     or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='findings')<>1
     or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='costEntries')<>1
   then raise exception 'incomplete MIPE treatment transaction'; end if;
+
+  if exists (
+    select 1 from jsonb_array_elements(p_mutations) mutation
+    where mutation->>'collection'='inventoryMovements'
+      and mutation->'payload'->>'sourceType' not in ('MipeTreatment','LegacyInventoryBootstrap')
+  ) then raise exception 'unauthorized MIPE inventory movement source'; end if;
 
   if (
     select count(*)<>count(distinct jsonb_build_array(mutation->>'collection',mutation->>'recordId'))
@@ -103,7 +112,8 @@ begin
   select mutation->'payload' into v_treatment from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='treatments' limit 1;
   select mutation->'payload' into v_finding from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='findings' limit 1;
   select mutation->'payload' into v_lot from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryLots' limit 1;
-  select mutation->'payload' into v_movement from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements' limit 1;
+  select mutation->'payload' into v_movement from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements' and mutation->'payload'->>'sourceType'='MipeTreatment' limit 1;
+  select mutation->'payload' into v_bootstrap from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='inventoryMovements' and mutation->'payload'->>'sourceType'='LegacyInventoryBootstrap' limit 1;
   select mutation->'payload' into v_cost from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='costEntries' limit 1;
 
   if v_treatment->>'id' is distinct from p_treatment_id or v_treatment->>'status' is distinct from 'Ejecutado' then
@@ -135,6 +145,26 @@ begin
     or coalesce((v_cost->>'amount')::numeric<0,true)
   then raise exception 'MIPE treatment quantity or balance mismatch'; end if;
 
+  if v_bootstrap is not null then
+    if v_bootstrap->>'id' is distinct from ('inventory-opening:'||p_organization_id::text||':'||(v_lot->>'id'))
+      or v_bootstrap->>'type' is distinct from 'Saldo inicial'
+      or v_bootstrap->>'sourceType' is distinct from 'LegacyInventoryBootstrap'
+      or v_bootstrap->>'sourceId' is distinct from v_lot->>'id'
+      or v_bootstrap->>'lotId' is distinct from v_lot->>'id'
+      or v_bootstrap->>'productId' is distinct from v_lot->>'productId'
+      or v_bootstrap->>'siteId' is distinct from p_site_id
+      or coalesce((v_bootstrap->>'quantity')::numeric<=0,true)
+      or (v_bootstrap->>'signedQuantity')::numeric is distinct from (v_bootstrap->>'quantity')::numeric
+      or (v_bootstrap->>'balanceBefore')::numeric is distinct from 0
+      or (v_bootstrap->>'balanceAfter')::numeric is distinct from (v_bootstrap->>'quantity')::numeric
+      or (v_bootstrap->>'ledgerSequence')::bigint is distinct from 1
+      or coalesce(nullif(btrim(v_bootstrap->>'previousMovementId'),''),'')<>''
+      or (v_movement->>'balanceBefore')::numeric is distinct from (v_bootstrap->>'balanceAfter')::numeric
+      or (v_movement->>'ledgerSequence')::bigint is distinct from ((v_bootstrap->>'ledgerSequence')::bigint+1)
+      or v_movement->>'previousMovementId' is distinct from v_bootstrap->>'id'
+    then raise exception 'invalid MIPE legacy inventory bootstrap'; end if;
+  end if;
+
   for v_mutation in
     select value
     from jsonb_array_elements(p_mutations)
@@ -163,12 +193,21 @@ begin
     if v_collection='inventoryLots' and coalesce((v_payload->>'quantity')::numeric<0,true) then
       raise exception 'MIPE inventory lot cannot become negative';
     end if;
-    if v_collection='inventoryMovements' and (
-      v_payload->>'type' is distinct from 'Consumo'
-      or v_payload->>'sourceType' is distinct from 'MipeTreatment'
-      or v_payload->>'sourceId' is distinct from p_treatment_id
-      or coalesce((v_payload->>'quantity')::numeric<=0,true)
-    ) then raise exception 'invalid MIPE inventory movement'; end if;
+    if v_collection='inventoryMovements' then
+      if v_payload->>'sourceType'='MipeTreatment' then
+        if v_payload->>'type' is distinct from 'Consumo'
+          or v_payload->>'sourceId' is distinct from p_treatment_id
+          or coalesce((v_payload->>'quantity')::numeric<=0,true)
+        then raise exception 'invalid MIPE inventory movement'; end if;
+      elsif v_payload->>'sourceType'='LegacyInventoryBootstrap' then
+        if v_payload->>'type' is distinct from 'Saldo inicial'
+          or v_payload->>'sourceId' is distinct from v_lot->>'id'
+          or v_payload->>'id' is distinct from ('inventory-opening:'||p_organization_id::text||':'||(v_lot->>'id'))
+        then raise exception 'invalid MIPE legacy inventory bootstrap'; end if;
+      else
+        raise exception 'invalid MIPE inventory movement';
+      end if;
+    end if;
     if v_collection='treatments' and (v_record_id<>p_treatment_id or v_payload->>'status' is distinct from 'Ejecutado') then
       raise exception 'invalid executed MIPE treatment mutation';
     end if;
