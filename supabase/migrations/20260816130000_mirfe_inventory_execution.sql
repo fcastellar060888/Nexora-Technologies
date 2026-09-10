@@ -118,6 +118,33 @@ begin
     or (select count(*) from jsonb_array_elements(p_mutations) mutation where mutation->>'collection'='costEntries') > 1
   then raise exception 'incomplete MIRFE inventory transaction'; end if;
 
+  if exists (
+    select 1 from jsonb_array_elements(p_mutations) mutation
+    where mutation->>'collection'='inventoryMovements'
+      and mutation->'payload'->>'sourceType' not in ('MirfePreparation','LegacyInventoryBootstrap')
+  ) then raise exception 'unauthorized MIRFE inventory movement source'; end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_mutations) mutation
+    where mutation->>'collection'='inventoryMovements'
+    group by mutation->'payload'->>'lotId'
+    having count(*) filter (where mutation->'payload'->>'sourceType'='LegacyInventoryBootstrap')>1
+  ) then raise exception 'duplicate MIRFE legacy inventory bootstrap'; end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_mutations) lot_mutation
+    where lot_mutation->>'collection'='inventoryLots'
+      and not exists (
+        select 1 from jsonb_array_elements(p_mutations) movement
+        where movement->>'collection'='inventoryMovements'
+          and movement->'payload'->>'lotId'=lot_mutation->>'recordId'
+          and movement->'payload'->>'sourceType'='MirfePreparation'
+          and movement->'payload'->>'sourceId'=p_preparation_id
+      )
+  ) then raise exception 'each MIRFE lot requires an operational consumption'; end if;
+
   if (
     select count(*)<>count(distinct jsonb_build_array(mutation->>'collection',mutation->>'recordId'))
     from jsonb_array_elements(p_mutations) mutation
@@ -153,17 +180,34 @@ begin
     if v_collection='inventoryLots' and coalesce((v_payload->>'quantity')::numeric,-1)<0 then
       raise exception 'MIRFE inventory lot cannot become negative';
     end if;
-    if v_collection='inventoryMovements' and (
-      v_payload->>'type' is distinct from 'Consumo'
-      or v_payload->>'sourceType' is distinct from 'MirfePreparation'
-      or v_payload->>'sourceId' is distinct from p_preparation_id
-      or nullif(v_payload->>'lotId','') is null
-      or nullif(v_payload->>'productId','') is null
-      or coalesce((v_payload->>'quantity')::numeric<=0,true)
-      or (v_payload->>'signedQuantity')::numeric is distinct from (-1*(v_payload->>'quantity')::numeric)
-      or (v_payload->>'balanceAfter')::numeric is distinct from ((v_payload->>'balanceBefore')::numeric+(v_payload->>'signedQuantity')::numeric)
-      or coalesce((v_payload->>'balanceAfter')::numeric<0,true)
-    ) then raise exception 'invalid MIRFE inventory movement'; end if;
+    if v_collection='inventoryMovements' then
+      if v_payload->>'sourceType'='MirfePreparation' then
+        if v_payload->>'type' is distinct from 'Consumo'
+          or v_payload->>'sourceId' is distinct from p_preparation_id
+          or nullif(v_payload->>'lotId','') is null
+          or nullif(v_payload->>'productId','') is null
+          or coalesce((v_payload->>'quantity')::numeric<=0,true)
+          or (v_payload->>'signedQuantity')::numeric is distinct from (-1*(v_payload->>'quantity')::numeric)
+          or (v_payload->>'balanceAfter')::numeric is distinct from ((v_payload->>'balanceBefore')::numeric+(v_payload->>'signedQuantity')::numeric)
+          or coalesce((v_payload->>'balanceAfter')::numeric<0,true)
+        then raise exception 'invalid MIRFE inventory movement'; end if;
+      elsif v_payload->>'sourceType'='LegacyInventoryBootstrap' then
+        if v_payload->>'type' is distinct from 'Saldo inicial'
+          or v_payload->>'sourceId' is distinct from v_payload->>'lotId'
+          or v_payload->>'id' is distinct from ('inventory-opening:'||p_organization_id::text||':'||(v_payload->>'lotId'))
+          or nullif(v_payload->>'lotId','') is null
+          or nullif(v_payload->>'productId','') is null
+          or coalesce((v_payload->>'quantity')::numeric<=0,true)
+          or (v_payload->>'signedQuantity')::numeric is distinct from (v_payload->>'quantity')::numeric
+          or (v_payload->>'balanceBefore')::numeric is distinct from 0
+          or (v_payload->>'balanceAfter')::numeric is distinct from (v_payload->>'quantity')::numeric
+          or (v_payload->>'ledgerSequence')::bigint is distinct from 1
+          or coalesce(nullif(btrim(v_payload->>'previousMovementId'),''),'')<>''
+        then raise exception 'invalid MIRFE legacy inventory bootstrap'; end if;
+      else
+        raise exception 'invalid MIRFE inventory movement';
+      end if;
+    end if;
     if v_collection='tankPreparations' and (v_record_id<>p_preparation_id or v_payload->>'status' is distinct from 'Preparada') then
       raise exception 'invalid prepared MIRFE preparation';
     end if;
@@ -221,10 +265,14 @@ begin
     with first_movement as (
       select distinct on (mutation->'payload'->>'lotId')
         mutation->'payload'->>'lotId' lot_id,
-        mutation->'payload' payload
-      from jsonb_array_elements(p_mutations) with ordinality as item(mutation,ordinality)
+        mutation->'payload' payload,
+        case when mutation->'payload'->>'sourceType'='LegacyInventoryBootstrap'
+          then (mutation->'payload'->>'balanceAfter')::numeric
+          else (mutation->'payload'->>'balanceBefore')::numeric
+        end expected_current_balance
+      from jsonb_array_elements(p_mutations) mutation
       where mutation->>'collection'='inventoryMovements'
-      order by mutation->'payload'->>'lotId',ordinality
+      order by mutation->'payload'->>'lotId',(mutation->'payload'->>'ledgerSequence')::bigint
     )
     select 1
     from jsonb_array_elements(p_mutations) lot_mutation
@@ -238,7 +286,7 @@ begin
         movement.payload is null
         or current_lot.record_id is null
         or current_lot.deleted_at is not null
-        or (current_lot.payload->>'quantity')::numeric<>(movement.payload->>'balanceBefore')::numeric
+        or (current_lot.payload->>'quantity')::numeric<>movement.expected_current_balance
         or current_lot.payload->>'productId' is distinct from movement.payload->>'productId'
         or current_lot.payload->>'siteId' is distinct from movement.payload->>'siteId'
         or (
@@ -251,17 +299,29 @@ begin
 
   if exists (
     with movement_rows as (
-      select ordinality,
+      select
         mutation->'payload' payload,
         (mutation->'payload'->>'balanceBefore')::numeric balance_before,
         (mutation->'payload'->>'balanceAfter')::numeric balance_after,
+        (mutation->'payload'->>'ledgerSequence')::bigint ledger_sequence,
         lag((mutation->'payload'->>'balanceAfter')::numeric) over (
-          partition by mutation->'payload'->>'lotId' order by ordinality
-        ) previous_after
-      from jsonb_array_elements(p_mutations) with ordinality as item(mutation,ordinality)
+          partition by mutation->'payload'->>'lotId' order by (mutation->'payload'->>'ledgerSequence')::bigint
+        ) previous_after,
+        lag(mutation->'payload'->>'id') over (
+          partition by mutation->'payload'->>'lotId' order by (mutation->'payload'->>'ledgerSequence')::bigint
+        ) previous_id,
+        lag((mutation->'payload'->>'ledgerSequence')::bigint) over (
+          partition by mutation->'payload'->>'lotId' order by (mutation->'payload'->>'ledgerSequence')::bigint
+        ) previous_sequence
+      from jsonb_array_elements(p_mutations) mutation
       where mutation->>'collection'='inventoryMovements'
     )
-    select 1 from movement_rows where previous_after is not null and balance_before<>previous_after
+    select 1 from movement_rows
+    where previous_after is not null and (
+      balance_before<>previous_after
+      or ledger_sequence<>previous_sequence+1
+      or payload->>'previousMovementId' is distinct from previous_id
+    )
   ) then raise exception 'MIRFE inventory movement chain is discontinuous'; end if;
 
   if exists (
@@ -271,9 +331,9 @@ begin
         mutation->'payload'->>'productId' product_id,
         mutation->'payload'->>'siteId' site_id,
         (mutation->'payload'->>'balanceAfter')::numeric balance_after
-      from jsonb_array_elements(p_mutations) with ordinality as item(mutation,ordinality)
+      from jsonb_array_elements(p_mutations) mutation
       where mutation->>'collection'='inventoryMovements'
-      order by mutation->'payload'->>'lotId',ordinality desc
+      order by mutation->'payload'->>'lotId',(mutation->'payload'->>'ledgerSequence')::bigint desc
     )
     select 1
     from last_movement movement
