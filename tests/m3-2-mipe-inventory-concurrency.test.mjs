@@ -66,32 +66,39 @@ function harness(initial,server,{loseFirstResponse=false,switchTenantBeforeCommi
 
 const execution=(commandId='cmd-execute')=>({operation:MIPE_OPERATIONS.EXECUTE_TREATMENT,entityId:'treatment-shared',input:{lotId:'lot-shared',responsible:'Aplicador'},commandId,occurredAt:'2026-08-17T02:00:00.000Z'})
 
-test('M32-F004: remote execution contains exactly the five canonical consequences with base versions',async()=>{
+test('M32-F004: remote execution preserves five canonical collections plus the required legacy bootstrap',async()=>{
  const server=remoteServer(),h=harness(baseState(),server)
  await executeMipeCommand(h.state,execution(),h.deps)
  assert.equal(server.calls.length,1)
  const transaction=server.calls[0]
  assert.deepEqual([...new Set(transaction.mutations.map(item=>item.collection))].sort(),[...MIPE_TREATMENT_TRANSACTION_COLLECTIONS].sort())
- assert.equal(transaction.mutations.length,5)
+ assert.equal(transaction.mutations.length,6)
  assert.equal(transaction.organizationId,'org-a')
  assert.equal(transaction.siteId,'site-a')
  assert.equal(transaction.treatmentId,'treatment-shared')
  assert.equal(transaction.mutations.find(item=>item.collection==='inventoryLots').baseVersion,7)
  assert.equal(transaction.mutations.find(item=>item.collection==='treatments').baseVersion,3)
  assert.equal(transaction.mutations.find(item=>item.collection==='findings').baseVersion,5)
- assert.equal(transaction.mutations.find(item=>item.collection==='inventoryMovements').baseVersion,0)
+ assert.equal(transaction.mutations.filter(item=>item.collection==='inventoryMovements').every(item=>item.baseVersion===0),true)
  assert.equal(transaction.mutations.find(item=>item.collection==='costEntries').baseVersion,0)
- const movement=transaction.mutations.find(item=>item.collection==='inventoryMovements').payload
+ const bootstrap=transaction.mutations.find(item=>item.collection==='inventoryMovements'&&item.payload.sourceType==='LegacyInventoryBootstrap').payload
+ const movement=transaction.mutations.find(item=>item.collection==='inventoryMovements'&&item.payload.sourceType==='MipeTreatment').payload
+ assert.equal(bootstrap.id,'inventory-opening:org-a:lot-shared')
+ assert.equal(bootstrap.balanceBefore,0)
+ assert.equal(bootstrap.balanceAfter,1000)
+ assert.equal(bootstrap.ledgerSequence,1)
  assert.equal(movement.id,'treatment-shared:cmd-execute:movement')
  assert.equal(movement.balanceBefore,1000)
  assert.equal(movement.balanceAfter,800)
+ assert.equal(movement.previousMovementId,bootstrap.id)
+ assert.equal(movement.ledgerSequence,2)
  assert.equal(transaction.mutations.find(item=>item.collection==='costEntries').payload.id,'treatment-shared:cmd-execute:cost')
  assert.equal(transaction.mutations.every(item=>item.payload.organizationId==='org-a'&&item.payload.siteId==='site-a'),true)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,800)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-b').quantity,5000)
  assert.equal(h.state.treatments.find(item=>item.organizationId==='org-a').status,'Ejecutado')
  assert.equal(h.state.findings.find(item=>item.organizationId==='org-a').status,'Seguimiento')
- assert.equal(h.state.inventoryMovements.length,1)
+ assert.equal(h.state.inventoryMovements.length,2)
  assert.equal(h.state.costEntries.length,1)
  assert.equal(h.commitMeta[0].sync,false)
  assert.equal(h.events.at(-1).name,'mipe.treatment.executed')
@@ -114,11 +121,11 @@ test('M32-F004: lost response is recovered by the same command without repeating
  await assert.rejects(()=>executeMipeCommand(h.state,request,h.deps),/response lost/)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,1000)
  assert.equal(h.state.inventoryMovements.length,0)
- assert.equal(server.receipt('cmd-lost')?.confirmation.records.length,5)
+ assert.equal(server.receipt('cmd-lost')?.confirmation.records.length,6)
  await executeMipeCommand(h.state,request,h.deps)
  assert.equal(server.calls.length,2)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,800)
- assert.equal(h.state.inventoryMovements.length,1)
+ assert.equal(h.state.inventoryMovements.length,2)
  assert.equal(h.state.costEntries.length,1)
  assert.equal(h.state.mipeCommandReceipts.filter(item=>item.commandId==='cmd-lost').length,1)
  assert.equal(h.events.filter(item=>item.name==='mipe.treatment.executed').length,1)
@@ -127,7 +134,7 @@ test('M32-F004: lost response is recovered by the same command without repeating
 test('M32-F004: a tenant switch after remote apply does not hydrate or publish completion in the wrong company',async()=>{
  const server=remoteServer(),h=harness(baseState(),server,{switchTenantBeforeCommit:true})
  await assert.rejects(()=>executeMipeCommand(h.state,execution('cmd-switch-remote'),h.deps),/empresa activa cambió/)
- assert.equal(server.receipt('cmd-switch-remote')?.confirmation.records.length,5)
+ assert.equal(server.receipt('cmd-switch-remote')?.confirmation.records.length,6)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,1000)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-b').quantity,5000)
  assert.equal(h.state.inventoryMovements.length,0)
@@ -148,7 +155,7 @@ test('M32-F004: transaction adapter rejects partial, foreign and duplicate remot
 test('M32-F004: confirmation hydration preserves foreign homonyms and applies only server versions',()=>{
  const initial=baseState(),transaction={organizationId:'org-a',mutations:[
   {collection:'inventoryLots',recordId:'lot-shared',baseVersion:7,payload:{...initial.inventoryLots[0],organizationId:'org-a',siteId:'site-a',quantity:800}},
-  {collection:'inventoryMovements',recordId:'move-1',baseVersion:0,payload:{id:'move-1',organizationId:'org-a',siteId:'site-a'}},
+  {collection:'inventoryMovements',recordId:'move-1',baseVersion:0,payload:{id:'move-1',organizationId:'org-a',siteId:'site-a',lotId:'lot-shared',productId:'product-shared',type:'Consumo',quantity:200,signedQuantity:-200,balanceBefore:1000,balanceAfter:800,sourceType:'MipeTreatment',sourceId:'treatment-shared',unit:'mL',unitCost:2,totalCost:400}},
   {collection:'treatments',recordId:'treatment-shared',baseVersion:3,payload:{...initial.treatments[0],organizationId:'org-a',siteId:'site-a',status:'Ejecutado'}},
   {collection:'findings',recordId:'finding-shared',baseVersion:5,payload:{...initial.findings[0],organizationId:'org-a',siteId:'site-a',status:'Seguimiento'}},
   {collection:'costEntries',recordId:'cost-1',baseVersion:0,payload:{id:'cost-1',organizationId:'org-a',siteId:'site-a'}}

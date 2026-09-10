@@ -20,12 +20,23 @@ function bootstrapLegacyLedger(state,lot,product,movementCreatedAt){
  const createdAt=openingTimestamp(lot,movementCreatedAt),snapshot=inventoryMovementSnapshot(product,lot,{sourceType:'LegacyInventoryBootstrap',sourceId:lot.id}),movement={id:`inventory-opening:${organizationId}:${lot.id}`,organizationId,lotId:lot.id,productId:lot.productId,siteId:lot.siteId,type:'Saldo inicial',quantity:openingBalance,signedQuantity:openingBalance,balanceBefore:0,balanceAfter:openingBalance,ledgerSequence:1,previousMovementId:'',date:createdAt.slice(0,10),createdAt,...snapshot,supplier:'',reference:text(lot.lotNumber),responsible:'system',notes:'Materialización determinista de saldo legacy previo al kardex append-only'}
  const next={...state,inventoryMovements:[...list(state.inventoryMovements),movement]};assertInventoryLotMatchesLedger(next,lot);return next
 }
+function movementProductAuthority(state,input,product,organizationId){
+ if(text(input?.sourceType)!=='MipeTreatment')return product
+ const sourceId=text(input?.sourceId);if(!sourceId)return product
+ const treatment=tenantRecord(state,'treatments',sourceId,organizationId,'El tratamiento MIPE del movimiento')
+ if(text(treatment?.productId)!==text(product?.id))throw new Error('El Treatment MIPE contradice el Product causal del movimiento.')
+ const snapshot=treatment?.productSnapshot
+ if(!snapshot?.id)return product
+ if(text(snapshot.id)!==text(product.id))throw new Error('El snapshot técnico MIPE contradice el Product causal del movimiento.')
+ const snapshotOwner=explicitOrganizationId(snapshot);if(snapshotOwner&&snapshotOwner!==organizationId)throw new Error('El snapshot técnico MIPE pertenece a otra empresa.')
+ return snapshot
+}
 export function movementSign(type){if(POSITIVE_TYPES.has(type))return 1;if(NEGATIVE_TYPES.has(type))return-1;throw new Error(`Tipo de movimiento no soportado: ${type}`)}
 export function transactInventory(state,input){
  const organizationId=activeOrganizationId(state),lot=tenantRecord(state,'inventoryLots',input.lotId,organizationId,'El lote de inventario'),lotOwner=ownerOf(state,lot,'el lote de inventario');if(lotOwner!==organizationId)throw new Error('El lote de inventario pertenece a otra empresa.')
  const product=tenantRecord(state,'products',lot.productId,organizationId,'El producto de inventario');assertSite(state,lot.siteId,organizationId);if(explicitOrganizationId(product)&&ownerOf(state,product,'el producto de inventario')!==organizationId)throw new Error('El producto de inventario pertenece a otra empresa.');if(text(lot.unit))assertInventoryLotProductCausality(product,lot)
  const createdAt=input.createdAt||new Date().toISOString(),movementDate=input.date||createdAt.slice(0,10);assertInventoryLotMovementAllowed(lot,{type:input.type,date:movementDate});const working=bootstrapLegacyLedger(state,lot,product,createdAt),ledger=assertInventoryLotMatchesLedger(working,lot),quantity=asPositiveNumber(input.quantity),signedQuantity=movementSign(input.type)*quantity,currentBalance=ledger.balance,balanceAfter=currentBalance+signedQuantity;if(balanceAfter<0)throw new Error('El movimiento supera la existencia disponible.')
- const snapshot=inventoryMovementSnapshot(product,lot,{sourceType:input.sourceType||'Manual',sourceId:input.sourceId||''}),movement={id:input.id||crypto.randomUUID(),organizationId,lotId:lot.id,productId:lot.productId,siteId:lot.siteId,type:input.type,quantity,signedQuantity,balanceBefore:currentBalance,balanceAfter,ledgerSequence:ledger.movementCount+1,previousMovementId:ledger.lastMovementId,date:movementDate,createdAt,...snapshot,supplier:input.supplier||'',reference:input.reference||'',responsible:input.responsible||'',notes:input.notes||''}
+ const movementProduct=movementProductAuthority(state,input,product,organizationId),snapshot=inventoryMovementSnapshot(movementProduct,lot,{sourceType:input.sourceType||'Manual',sourceId:input.sourceId||''}),movement={id:input.id||crypto.randomUUID(),organizationId,lotId:lot.id,productId:lot.productId,siteId:lot.siteId,type:input.type,quantity,signedQuantity,balanceBefore:currentBalance,balanceAfter,ledgerSequence:ledger.movementCount+1,previousMovementId:ledger.lastMovementId,date:movementDate,createdAt,...snapshot,supplier:input.supplier||'',reference:input.reference||'',responsible:input.responsible||'',notes:input.notes||''}
  const updatedLot={...lot,organizationId,quantity:balanceAfter,updatedAt:movement.createdAt},next={...working,inventoryLots:list(working.inventoryLots).map(item=>item===lot?updatedLot:item),inventoryMovements:[...list(working.inventoryMovements),movement]};assertInventoryLotMatchesLedger(next,updatedLot);return next
 }
 export function createInventoryLot(state,input){

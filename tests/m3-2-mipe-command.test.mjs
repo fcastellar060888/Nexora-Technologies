@@ -91,10 +91,15 @@ test('M32-F003: treatment execution mutates only active tenant and replay does n
  const activeAfter=h.state.inventoryLots.find(item=>item.organizationId==='org-a'),foreignAfter=h.state.inventoryLots.find(item=>item.organizationId==='org-b')
  assert.equal(activeAfter.quantity,9800)
  assert.equal(foreignAfter.quantity,10000)
- assert.equal(h.state.inventoryMovements.filter(item=>item.organizationId==='org-a').length,1)
+ assert.equal(h.state.inventoryMovements.filter(item=>item.organizationId==='org-a').length,2)
+ const opening=h.state.inventoryMovements.find(item=>item.organizationId==='org-a'&&item.sourceType==='LegacyInventoryBootstrap'),consumption=h.state.inventoryMovements.find(item=>item.organizationId==='org-a'&&item.sourceType==='MipeTreatment')
+ assert.equal(opening.id,'inventory-opening:org-a:lot-shared')
+ assert.equal(consumption.id,'cmd-schedule:cmd-execute-once:movement')
+ assert.equal(consumption.previousMovementId,opening.id)
+ assert.equal(consumption.ledgerSequence,2)
  await executeMipeCommand(h.state,executeRequest,h.deps)
  assert.equal(h.state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,9800)
- assert.equal(h.state.inventoryMovements.filter(item=>item.organizationId==='org-a').length,1)
+ assert.equal(h.state.inventoryMovements.filter(item=>item.organizationId==='org-a').length,2)
 })
 
 test('M32-F003: intervention command resolves the active-tenant finding before invoking legacy helper',async()=>{

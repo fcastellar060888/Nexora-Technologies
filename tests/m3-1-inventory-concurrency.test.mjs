@@ -10,16 +10,16 @@ const fixture=()=>({
  users:[{id:'user-1',name:'Ana',activeSession:true,active:true,remote:true}],
  roles:[{id:'agronomist',permissions:['manage_irrigation','approve_formulas','record_irrigation']}],
  memberships:[{id:'membership-1',userId:'user-1',companyId:'org-a',roleId:'agronomist',siteIds:['site-1'],status:'active'}],
- sites:[{id:'site-1',organizationId:'org-b'},{id:'site-1',organizationId:'org-a'}],
+ sites:[{id:'site-b',organizationId:'org-b'},{id:'site-1',organizationId:'org-a'}],
  genetics:[],houses:[],beds:[],plantPositions:[],propagationBanks:[],propagationUnits:[],
  products:[{id:'inventory-1',organizationId:'org-b',unit:'kg',cost:9000},{id:'inventory-1',organizationId:'org-a',unit:'kg',cost:3000}],
  nutrientProducts:[{id:'nutrient-1',organizationId:'org-b',inventoryProductId:'inventory-1'},{id:'nutrient-1',organizationId:'org-a',inventoryProductId:'inventory-1'}],
- formulations:[{id:'formula-1',organizationId:'org-b',siteId:'site-1',status:'Aprobada',items:[]},{id:'formula-1',organizationId:'org-a',siteId:'site-1',status:'Aprobada',volumeL:1000,stage:'Vegetativo',items:[{productId:'nutrient-1',tank:'A',grams:500}]}],
+ formulations:[{id:'formula-1',organizationId:'org-b',siteId:'site-b',status:'Aprobada',items:[]},{id:'formula-1',organizationId:'org-a',siteId:'site-1',status:'Aprobada',volumeL:1000,stage:'Vegetativo',items:[{productId:'nutrient-1',tank:'A',grams:500}]}],
  tankPreparations:[
-  {id:'prep-1',organizationId:'org-b',siteId:'site-1',formulationId:'formula-1',status:'Pendiente',items:[],_syncVersion:8},
+  {id:'prep-1',organizationId:'org-b',siteId:'site-b',formulationId:'formula-1',status:'Pendiente',items:[],_syncVersion:8},
   {id:'prep-1',organizationId:'org-a',siteId:'site-1',formulationId:'formula-1',volumeL:1000,stage:'Vegetativo',status:'Pendiente',items:[{id:'item-1',nutrientProductId:'nutrient-1',inventoryProductId:'inventory-1',requiredQuantity:500,requiredUnit:'g',tank:'A',lotId:'',consumedQuantity:0,cost:0}],_syncVersion:3}
  ],
- inventoryLots:[{id:'lot-1',organizationId:'org-b',productId:'inventory-1',siteId:'site-1',quantity:8,_syncVersion:9},{id:'lot-1',organizationId:'org-a',productId:'inventory-1',siteId:'site-1',quantity:0.8,_syncVersion:4}],
+ inventoryLots:[{id:'lot-1',organizationId:'org-b',productId:'inventory-1',siteId:'site-b',quantity:8,_syncVersion:9},{id:'lot-1',organizationId:'org-a',productId:'inventory-1',siteId:'site-1',quantity:0.8,_syncVersion:4}],
  inventoryMovements:[],waterAnalyses:[],nutrientObjectives:[],irrigationPlans:[],irrigationEmitters:[],irrigationSectors:[],irrigationAssignments:[],irrigationPulses:[],irrigationMeasurements:[],drainageMeasurements:[],
  irrigationApplications:[],workOrders:[],costEntries:[],mirfePrograms:[],mirfeMonitoring:[],mirfeReinforcements:[],irrigationCorrections:[],irrigationHistory:[]
 })
@@ -39,12 +39,12 @@ test('M31-F006: transacción remota ocurre antes del commit y confirma todas las
  assert.deepEqual([...new Set(captured.mutations.map(item=>item.collection))],['inventoryLots','inventoryMovements','tankPreparations','costEntries','workOrders'])
  assert.equal(captured.mutations.find(item=>item.collection==='inventoryLots').baseVersion,4)
  assert.equal(captured.mutations.find(item=>item.collection==='tankPreparations').baseVersion,3)
- assert.equal(captured.mutations.find(item=>item.collection==='inventoryMovements').recordId,'device-a-command:movement:0')
+ assert.equal(captured.mutations.find(item=>item.collection==='inventoryMovements'&&item.payload.sourceType==='MirfePreparation').recordId,'device-a-command:movement:0')
  assert.deepEqual(commitMeta,{sync:false,audit:false})
  assert.equal(state.inventoryLots.find(item=>item.organizationId==='org-a').quantity,0.30000000000000004)
  assert.equal(state.inventoryLots.find(item=>item.organizationId==='org-a')._syncVersion,5)
  assert.equal(state.inventoryLots.find(item=>item.organizationId==='org-b').quantity,8)
- assert.equal(state.inventoryMovements.length,1)
+ assert.equal(state.inventoryMovements.length,2)
  assert.equal(state.costEntries.length,1)
  assert.equal(state.workOrders.length,1)
  assert.equal(state.tankPreparations.find(item=>item.organizationId==='org-a').status,'Preparada')
@@ -81,7 +81,7 @@ test('M31-F006: cambio de tenant durante el RPC no aplica confirmación ni publi
   commitInventoryTransaction:async transaction=>{remoteCalls+=1;return confirmation(transaction)},
   commit:recipe=>{
    commitCalls+=1
-   const switched={...state,currentContext:{companyId:'org-b',siteId:'site-1'}}
+   const switched={...state,currentContext:{companyId:'org-b',siteId:'site-b'}}
    recipe(switched)
   }
  }),/empresa activa cambió/)

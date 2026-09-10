@@ -105,7 +105,7 @@ test('M31-F002: ejecución descuenta solo el lote homónimo activo y etiqueta de
   {id:'prep-1',organizationId:'org-b',formulationId:'f-1',siteId:'site-1',status:'Pendiente',items:[]},
   {id:'prep-1',organizationId:'org-a',formulationId:'f-1',siteId:'site-1',volumeL:1000,stage:'Vegetativo',status:'Pendiente',items:[{id:'i-1',nutrientProductId:'n-1',inventoryProductId:'p-1',requiredQuantity:500,tank:'A'}]}
  ]}
- const next=executeTankPreparation(state,{preparationId:'prep-1',allocations:{'i-1':'lot-1'},responsible:'Ana',executedAt:'2026-08-16T02:00:00.000Z',costEntryId:'cost-1',workOrderId:'order-1'})
+ const next=executeTankPreparation(state,{preparationId:'prep-1',allocations:{'i-1':'lot-1'},responsible:'Ana',executedAt:'2026-08-16T02:00:00.000Z',movementIdPrefix:'m31-f002-movement',costEntryId:'cost-1',workOrderId:'order-1'})
  assert.equal(next.inventoryLots.find(item=>item.organizationId==='org-b').quantity,8)
  assert.equal(next.inventoryLots.find(item=>item.organizationId==='org-a').quantity,0.30000000000000004)
  assert.equal(next.tankPreparations.find(item=>item.organizationId==='org-b').status,'Pendiente')

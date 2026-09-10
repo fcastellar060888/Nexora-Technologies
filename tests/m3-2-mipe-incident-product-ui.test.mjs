@@ -46,9 +46,10 @@ test('M32-F007: Treatment scheduling locks dose unit to the selected technical p
 })
 
 test('M32-F007: shared Inventory captures tenant-owned executable product metadata and coherent units',async()=>{
- const text=await source('pages/InventoryPage.jsx')
+ const text=await source('pages/InventoryPage.jsx'),store=await source('services/inventoryCommandStore.js')
  for(const token of['manufacturer','registrationNumber','validFrom','validUntil','technicalRevision'])assert.match(text,new RegExp(token))
- assert.match(text,/state\.currentContext\?\.companyId/)
+ assert.match(text,/useInventoryCommandStore/)
+ assert.match(store,/scopeInventoryUiState\(store\.state\)/)
  assert.match(text,/organizationId/)
  assert.match(text,/executableMipeCategory/)
  assert.match(text,/expectedInventoryUnit/)
@@ -67,6 +68,7 @@ test('M32-F007: command and execution consume canonical catalog authority and fr
  assert.match(domain,/productSnapshot/)
  assert.match(domain,/assertExecutableMipeProductSnapshot/)
  assert.match(domain,/profile=snapshot\|\|product/)
- assert.match(domain,/quantity\*Number\(profile\.cost/)
+ assert.match(domain,/movementBackedCostEntry\(movement/)
+ assert.match(domain,/const cost=costEntry\.amount/)
  assert.doesNotMatch(domain,/quantity\*Number\(product\.cost/)
 })

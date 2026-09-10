@@ -13,6 +13,15 @@ test('F007 operational origin cannot omit sourceId',()=>{assert.throws(()=>inven
 test('F007 contradictory Product/Lot units fail closed',()=>{assert.throws(()=>inventoryMovementSnapshot(product,{...lot,unit:'g'},{sourceType:'Manual'}),/contradictorias/)})
 test('F007 negative or non finite product cost cannot enter movement evidence',()=>{assert.throws(()=>inventoryMovementSnapshot({...product,cost:-1},lot,{sourceType:'Manual'}),/costo unitario/)})
 test('F007 transactInventory persists causal snapshot instead of caller supplied evidence',()=>{const next=transactInventory(state,{id:'m1',lotId:'l1',type:'Entrada',quantity:2,sourceType:'Manual',unit:'g',unitCost:999});const movement=next.inventoryMovements.find(x=>x.id==='m1');assert.equal(movement.unit,'mL');assert.equal(movement.unitCost,12.5);assert.equal(movement.sourceType,'Manual')})
+test('F007 MIPE execution uses the approved Treatment snapshot after live Product repricing',()=>{
+ const treatment={id:'t1',organizationId:'org1',siteId:'s1',productId:'p1',productSnapshot:{id:'p1',organizationId:'org1',siteId:'s1',unit:'mL',cost:4,source:'mipe-product-profile'}}
+ const next=transactInventory({...state,products:[{...product,cost:500}],treatments:[treatment]},{id:'m-treatment',lotId:'l1',type:'Consumo',quantity:2,sourceType:'MipeTreatment',sourceId:'t1'})
+ const movement=next.inventoryMovements.find(item=>item.id==='m-treatment')
+ assert.equal(movement.unit,'mL')
+ assert.equal(movement.unitCost,4)
+ assert.equal(movement.sourceType,'MipeTreatment')
+ assert.equal(movement.sourceId,'t1')
+})
 test('F007 persisted movement causality detects later contradictory evidence',()=>{const movement={unit:'mL',unitCost:99,sourceType:'MIPE',sourceId:'t1'};assert.throws(()=>assertInventoryMovementCausality(product,lot,movement),/costo unitario/)})
 
 test('F007 persistence enforces causal snapshot server-side for every inventory movement write',()=>{
@@ -21,9 +30,13 @@ test('F007 persistence enforces causal snapshot server-side for every inventory 
  assert.match(sql,/new\.collection='inventoryMovements'/)
  assert.match(sql,/collection='inventoryLots'/)
  assert.match(sql,/collection='products'/)
+ assert.match(sql,/collection='treatments'/)
+ assert.match(sql,/productSnapshot/)
+ assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:mipe-treatment-product/)
+ assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:mipe-snapshot-cost/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:lot-product/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:unit'/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:unit-cost/)
- assert.match(sql,/v_source_type <> 'Manual' and v_source_id is null/)
+ assert.match(sql,/v_source_type\s*<>\s*'Manual'\s+and\s+v_source_id\s+is\s+null/)
  assert.match(sql,/INVENTORY_MOVEMENT_CAUSALITY_CONFLICT:immutable/)
 })

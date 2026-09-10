@@ -17,7 +17,12 @@ function normalizedTimestamp(value){if(value===null||value===undefined||value===
 function firstTimestamp(...values){for(const value of values){const normalized=normalizedTimestamp(value);if(normalized)return normalized}return null}
 function latestTimestamp(...values){let latest=null;for(const value of values){const normalized=normalizedTimestamp(value);if(!normalized)continue;const time=Date.parse(normalized);if(latest===null||time>latest)latest=time}return latest===null?null:new Date(latest).toISOString()}
 
-function canonicalLotForState(state,lot){return{...lot,organizationId:resolveOrganizationId(state,{record:lot,siteId:lot?.siteId,label:`el lote ${lot?.id||''}`})}}
+function canonicalLotForState(state,lot){
+ const explicit=explicitOrganizationId(lot),siteId=text(lot?.siteId),siteMatches=siteId?list(state?.sites).filter(item=>text(item?.id)===siteId):[]
+ if(explicit&&siteMatches.length&&!siteMatches.some(item=>explicitOrganizationId(item)===explicit))throw new Error(`Ownership organizacional contradictorio para el lote ${lot?.id||''}.`)
+ const scopedState=explicit&&siteId?{...state,sites:list(state?.sites).filter(item=>text(item?.id)!==siteId||explicitOrganizationId(item)===explicit)}:state
+ return{...lot,organizationId:resolveOrganizationId(scopedState,{record:lot,siteId,label:`el lote ${lot?.id||''}`})}
+}
 function registrySealed(state,registry,lot,plantType){const scoped=scopedMaterialPlantRegistryKey(organizationOf(lot),lot.id,plantType);if(registry[scoped])return true;return list(state?.companies).length<=1&&Boolean(registry[materialPlantRegistryKey(lot.id,plantType)])}
 
 function normalizeUnit(unit,lot){
